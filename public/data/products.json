@@ -1,0 +1,79 @@
+[
+  {
+    "id": "p1",
+    "title": "เติม ROV 1000 บาท",
+    "image": "/products/rov.png",
+    "price": 950,
+    "originalPrice": 1000,
+    "discount": 5,
+    "sellerCount": 8,
+    "category": "เติมเกม",
+    "platform": "PC"
+  },
+  {
+    "id": "p2",
+    "title": "เติม PUBG 500 บาท",
+    "image": "/products/pubg.png",
+    "price": 450,
+    "originalPrice": 500,
+    "discount": 10,
+    "sellerCount": 5,
+    "category": "เติมเกม",
+    "platform": "Mobile"
+  },
+  {
+    "id": "p3",
+    "title": "Steam Wallet 200 บาท",
+    "image": "/products/steam.png",
+    "price": 180,
+    "originalPrice": 200,
+    "discount": 10,
+    "sellerCount": 4,
+    "category": "Gift Card",
+    "platform": "Web"
+  },
+  {
+    "id": "p4",
+    "title": "Netflix 1 เดือน",
+    "image": "/products/netflix.png",
+    "price": 250,
+    "originalPrice": 300,
+    "discount": 17,
+    "sellerCount": 3,
+    "category": "Subscription",
+    "platform": "Web"
+  },
+  {
+    "id": "p5",
+    "title": "Spotify Premium 1 เดือน",
+    "image": "/products/spotify.png",
+    "price": 199,
+    "originalPrice": 250,
+    "discount": 20,
+    "sellerCount": 6,
+    "category": "Subscription",
+    "platform": "Mobile"
+  },
+  {
+    "id": "p6",
+    "title": "AI Tool – Prompt Generator",
+    "image": "/products/ai_tool.png",
+    "price": 350,
+    "originalPrice": 500,
+    "discount": 30,
+    "sellerCount": 2,
+    "category": "AI Tools",
+    "platform": "Web"
+  },
+  {
+    "id": "p7",
+    "title": "โปรโมชั่นพิเศษ – โปรวันนี้",
+    "image": "/products/promo.png",
+    "price": 120,
+    "originalPrice": 150,
+    "discount": 20,
+    "sellerCount": 7,
+    "category": "โปรวันนี้",
+    "platform": "Mobile"
+  }
+]
