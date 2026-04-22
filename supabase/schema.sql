@@ -83,7 +83,7 @@ create index if not exists idx_orders_buyer_id on public.orders (buyer_id);
 create table if not exists public.seller_ledger_entries (
     id uuid primary key default uuid_generate_v4(),
     seller_id uuid not null references public.sellers(id) on delete cascade,
-    type text not null check (type in ('sale', 'commission_fee', 'withdrawal')),
+    type text not check (type in ('sale', 'commission_fee', 'withdrawal')),
     amount numeric(10, 2) not null,
     order_id uuid references public.orders(id) on delete set null,
     description text,
@@ -181,17 +181,17 @@ alter table public.seller_ledger_entries enable row level security;
 -- USERS POLICIES
 -- ============================================================
 
--- Users can read their own data
+drop policy if exists "Users can read own data" on public.users;
 create policy "Users can read own data"
     on public.users for select
     using (auth.uid() = id);
 
--- Users can update their own data
+drop policy if exists "Users can update own data" on public.users;
 create policy "Users can update own data"
     on public.users for update
     using (auth.uid() = id);
 
--- Users can insert their own data (for signup)
+drop policy if exists "Users can insert own data" on public.users;
 create policy "Users can insert own data"
     on public.users for insert
     with check (auth.uid() = id);
@@ -200,21 +200,21 @@ create policy "Users can insert own data"
 -- SELLERS POLICIES
 -- ============================================================
 
--- Sellers can read their own seller record
+drop policy if exists "Sellers can read own record" on public.sellers;
 create policy "Sellers can read own record"
     on public.sellers for select
     using (user_id in (
         select id from public.users where auth.uid() = id
     ));
 
--- Sellers can update their own record
+drop policy if exists "Sellers can update own record" on public.sellers;
 create policy "Sellers can update own record"
     on public.sellers for update
     using (user_id in (
         select id from public.users where auth.uid() = id
     ));
 
--- Sellers can insert their own record
+drop policy if exists "Sellers can insert own record" on public.sellers;
 create policy "Sellers can insert own record"
     on public.sellers for insert
     with check (user_id in (
@@ -225,12 +225,12 @@ create policy "Sellers can insert own record"
 -- PRODUCTS POLICIES
 -- ============================================================
 
--- Anyone can read active products (public marketplace view)
+drop policy if exists "Anyone can read active products" on public.products;
 create policy "Anyone can read active products"
     on public.products for select
     using (is_active = true);
 
--- Sellers can manage their own products
+drop policy if exists "Sellers can manage own products" on public.products;
 create policy "Sellers can manage own products"
     on public.products for all
     using (seller_id in (
@@ -243,12 +243,12 @@ create policy "Sellers can manage own products"
 -- ORDERS POLICIES
 -- ============================================================
 
--- Buyers can read their own orders
+drop policy if exists "Buyers can read own orders" on public.orders;
 create policy "Buyers can read own orders"
     on public.orders for select
     using (buyer_id = auth.uid());
 
--- Sellers can read orders for their products
+drop policy if exists "Sellers can read own orders" on public.orders;
 create policy "Sellers can read own orders"
     on public.orders for select
     using (seller_id in (
@@ -257,17 +257,17 @@ create policy "Sellers can read own orders"
         where u.id = auth.uid()
     ));
 
--- Buyers can insert orders (create new orders)
+drop policy if exists "Buyers can create orders" on public.orders;
 create policy "Buyers can create orders"
     on public.orders for insert
     with check (buyer_id = auth.uid());
 
--- Buyers can update their own orders (cancel pending orders)
+drop policy if exists "Buyers can update own orders" on public.orders;
 create policy "Buyers can update own orders"
     on public.orders for update
     using (buyer_id = auth.uid());
 
--- Sellers can update orders for their products (change status to shipped/completed)
+drop policy if exists "Sellers can update order status" on public.orders;
 create policy "Sellers can update order status"
     on public.orders for update
     using (seller_id in (
@@ -280,7 +280,7 @@ create policy "Sellers can update order status"
 -- SELLER LEDGER ENTRIES POLICIES
 -- ============================================================
 
--- Sellers can read their own ledger entries
+drop policy if exists "Sellers can read own ledger" on public.seller_ledger_entries;
 create policy "Sellers can read own ledger"
     on public.seller_ledger_entries for select
     using (seller_id in (
@@ -289,7 +289,7 @@ create policy "Sellers can read own ledger"
         where u.id = auth.uid()
     ));
 
--- System can insert ledger entries (via service role/API)
+drop policy if exists "System can insert ledger entries" on public.seller_ledger_entries;
 create policy "System can insert ledger entries"
     on public.seller_ledger_entries for insert
     with check (seller_id in (
@@ -313,27 +313,27 @@ begin
 end;
 $$ language plpgsql security definer;
 
--- Admin can read all users (for admin overview)
+drop policy if exists "Admins can read all users" on public.users;
 create policy "Admins can read all users"
     on public.users for select
     using (public.is_admin());
 
--- Admin can read all sellers
+drop policy if exists "Admins can read all sellers" on public.sellers;
 create policy "Admins can read all sellers"
     on public.sellers for select
     using (public.is_admin());
 
--- Admin can read all products
+drop policy if exists "Admins can read all products" on public.products;
 create policy "Admins can read all products"
     on public.products for select
     using (public.is_admin());
 
--- Admin can read all orders
+drop policy if exists "Admins can read all orders" on public.orders;
 create policy "Admins can read all orders"
     on public.orders for select
     using (public.is_admin());
 
--- Admin can read all ledger entries
+drop policy if exists "Admins can read all ledger entries" on public.seller_ledger_entries;
 create policy "Admins can read all ledger entries"
     on public.seller_ledger_entries for select
     using (public.is_admin());
