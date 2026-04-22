@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { jwtVerify } from "jose";
 import { ObjectId } from "mongodb";
+import { getBearerPayload } from "@/lib/auth/jwt";
 import { connectDB } from "@/lib/db/mongodb";
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
+    const payload = await getBearerPayload(req);
+    const userId = typeof payload?.userId === "string" ? payload.userId : null;
+
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    const token = authHeader.split(" ")[1];
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    const userId = payload.userId as string;
 
     const { shopName, phone } = await req.json();
     if (!shopName || !phone) {
@@ -45,6 +41,11 @@ export async function POST(req: NextRequest) {
       salesCount: 0,
       balance: 0,
       pendingBalance: 0,
+      verificationStatus: "verified",
+      payoutStatus: "manual",
+      responseTimeMinutes: 5,
+      fulfillmentRate: 100,
+      disputeRate: 0,
       createdAt: now,
     };
 

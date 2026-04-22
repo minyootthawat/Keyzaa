@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/app/context/AuthContext";
+import { getStoredToken } from "@/app/lib/auth-client";
 import { useLanguage } from "@/app/context/LanguageContext";
 import OrderCard from "@/app/components/OrderCard";
 import CTAButton from "@/app/components/CTAButton";
@@ -12,34 +13,36 @@ export default function BuyerOrdersPage() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const saved = localStorage.getItem("keyzaa_orders");
-      if (saved) {
-        try {
-          const allOrders: Order[] = JSON.parse(saved);
-          const userOrders = user
-            ? allOrders.filter((o) => o.buyerId === user.id)
-            : [];
-          setOrders(userOrders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-        } catch {
-          setOrders([]);
-        }
-      }
-      setLoading(false);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [user]);
+    const token = getStoredToken();
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-primary border-t-transparent" />
-      </div>
-    );
-  }
+    if (!user || !token) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    fetch("/api/orders", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Failed to load orders");
+        }
+
+        const data = (await response.json()) as { orders: Order[] };
+        setOrders(data.orders);
+      })
+      .catch(() => {
+        setOrders([]);
+      });
+
+    return () => controller.abort();
+  }, [user]);
 
   return (
     <div className="section-container max-w-3xl py-8 md:py-12">

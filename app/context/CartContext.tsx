@@ -1,17 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
-
-export interface CartItem {
-  id: string;
-  title: string;
-  price: number;
-  image: string;
-  quantity: number;
-  sellerId: string;
-  sellerName: string;
-  platform?: string;
-}
+import React, { createContext, useContext, useEffect, useState } from "react";
+import type { CartItem } from "@/app/types";
 
 interface CartContextType {
   items: CartItem[];
@@ -29,25 +19,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>(() => {
     const demoItems: CartItem[] = [
       {
-        id: "p1",
-        title: "เติม ROV 1000 เพชร",
-        price: 950,
+        id: "p8",
+        title: "ROV 500 Diamonds Top Up",
+        titleTh: "เติม ROV 500 เพชร",
+        titleEn: "ROV 500 Diamonds Top Up",
+        price: 65,
         image: "/products/rov.png",
         quantity: 1,
         sellerId: "sel_1",
         sellerName: "Keyzaa Official",
         platform: "Mobile",
-      },
-      {
-        id: "p3",
-        title: "Steam Wallet ฿200",
-        price: 180,
-        image: "/products/steam.png",
-        quantity: 1,
-        sellerId: "sel_3",
-        sellerName: "BestDeal Digital",
-        platform: "PC",
-      },
+        regionCode: "TH",
+        deliveryLabelTh: "รับผลลัพธ์ใน 1 นาที",
+        deliveryLabelEn: "Delivered in 1 minute",
+        activationMethodTh: "เติมผ่าน UID บนระบบอัตโนมัติ",
+        activationMethodEn: "Automated top-up via UID"
+      }
     ];
 
     if (typeof window === "undefined") return demoItems;
@@ -68,25 +55,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addItem = (newItem: CartItem) => {
     setItems((prev) => {
-      const existing = prev.find((i) => i.id === newItem.id);
+      const existing = prev.find((item) => item.id === newItem.id);
+
       if (existing) {
-        return prev.map((i) =>
-          i.id === newItem.id ? { ...i, quantity: i.quantity + newItem.quantity } : i
-        );
+        return prev.map((item) => (item.id === newItem.id ? { ...item, quantity: item.quantity + newItem.quantity } : item));
       }
+
       return [...prev, newItem];
     });
   };
 
   const removeItem = (id: string) => {
-    setItems((prev) => prev.filter((i) => i.id !== id));
+    setItems((prev) => prev.filter((item) => item.id !== id));
   };
 
   const updateQuantity = (id: string, quantity: number) => {
     if (quantity < 1) return;
-    setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, quantity } : i))
-    );
+
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, quantity } : item)));
   };
 
   const clearCart = () => setItems([]);
@@ -95,17 +81,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const totalPrice = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
 
   return (
-    <CartContext.Provider
-      value={{
-        items,
-        addItem,
-        removeItem,
-        updateQuantity,
-        clearCart,
-        totalItems,
-        totalPrice,
-      }}
-    >
+    <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, clearCart, totalItems, totalPrice }}>
       {children}
     </CartContext.Provider>
   );

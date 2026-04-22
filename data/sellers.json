@@ -7,7 +7,11 @@
     "rating": 4.9,
     "salesCount": 15420,
     "balance": 284500,
-    "pendingBalance": 12300
+    "pendingBalance": 12300,
+    "verificationStatus": "top_rated",
+    "responseTimeMinutes": 2,
+    "fulfillmentRate": 99.6,
+    "disputeRate": 0.2
   },
   {
     "id": "sel_2",
@@ -17,7 +21,11 @@
     "rating": 4.8,
     "salesCount": 3200,
     "balance": 45600,
-    "pendingBalance": 4200
+    "pendingBalance": 4200,
+    "verificationStatus": "verified",
+    "responseTimeMinutes": 8,
+    "fulfillmentRate": 98.9,
+    "disputeRate": 0.5
   },
   {
     "id": "sel_3",
@@ -27,6 +35,10 @@
     "rating": 4.5,
     "salesCount": 890,
     "balance": 12800,
-    "pendingBalance": 1800
+    "pendingBalance": 1800,
+    "verificationStatus": "verified",
+    "responseTimeMinutes": 12,
+    "fulfillmentRate": 97.8,
+    "disputeRate": 0.8
   }
 ]

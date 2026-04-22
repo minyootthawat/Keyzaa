@@ -13,7 +13,7 @@ interface NavItem {
 export default function SellerSidebar() {
   const pathname = usePathname();
   const { t } = useLanguage();
-  const { toggleSellerMode, seller } = useAuth();
+  const { seller } = useAuth();
 
   const navItems: NavItem[] = [
     { label: t("seller_overview"), href: "/seller/dashboard" },
@@ -42,12 +42,12 @@ export default function SellerSidebar() {
       </nav>
       <div className="mt-4 border-t border-border-subtle pt-4">
         <p className="text-xs text-text-muted mb-2">{seller?.shopName}</p>
-        <button
-          onClick={toggleSellerMode}
-          className="w-full rounded-xl px-3 py-2.5 text-left text-sm text-text-subtle hover:bg-bg-surface"
+        <Link
+          href="/"
+          className="block w-full rounded-xl px-3 py-2.5 text-left text-sm text-text-subtle hover:bg-bg-surface"
         >
           ← {t("seller_switchToBuyer")}
-        </button>
+        </Link>
       </div>
     </aside>
   );

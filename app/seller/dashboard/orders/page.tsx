@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { useAuth } from "@/app/context/AuthContext";
+import { getStoredToken } from "@/app/lib/auth-client";
 import OrderCard from "@/app/components/OrderCard";
 import type { Order } from "@/app/types";
 
@@ -13,31 +14,41 @@ export default function SellerOrdersPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const saved = localStorage.getItem("keyzaa_orders");
-      if (saved) {
-        try {
-          const allOrders: Order[] = JSON.parse(saved);
-          // Filter orders that have items for this seller
-          const sellerOrders = allOrders
-            .filter((o) => o.items.some((i) => i.sellerId === seller?.id))
-            .map((o) => ({
-              ...o,
-              items: o.items.filter((i) => i.sellerId === seller?.id),
-              totalPrice: o.items
-                .filter((i) => i.sellerId === seller?.id)
-                .reduce((sum, i) => sum + i.price * i.quantity, 0),
-            }))
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-          setOrders(sellerOrders);
-        } catch {
-          setOrders([]);
+    const token = getStoredToken();
+
+    if (!token) {
+      const timeout = window.setTimeout(() => {
+        setLoading(false);
+      }, 0);
+
+      return () => window.clearTimeout(timeout);
+    }
+
+    const controller = new AbortController();
+
+    fetch("/api/seller/orders", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Failed to load seller orders");
         }
-      }
-      setLoading(false);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [seller]);
+
+        const data = (await response.json()) as { orders: Order[] };
+        setOrders(data.orders);
+      })
+      .catch(() => {
+        setOrders([]);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, []);
 
   if (loading) {
     return (
@@ -67,10 +78,12 @@ export default function SellerOrdersPage() {
               key={order.id}
               order={order}
               showSellerName={false}
-              viewDetailsLabel={t("buyerOrders_viewDetails")}
+              viewDetailsLabel="Marketplace order"
               orderIdLabel={t("sellerOrders_orderId")}
               dateLabel={t("buyerOrders_date")}
-              totalLabel={t("seller_revenue")}
+              totalLabel="Net earnings"
+              amountOverride={order.sellerNetAmount}
+              hideDetailsLink
             />
           ))}
         </div>

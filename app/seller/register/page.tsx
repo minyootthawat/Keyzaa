@@ -34,7 +34,7 @@ export default function SellerRegisterPage() {
       await registerSeller({ shopName: shopName.trim(), phone: phone.trim() });
       router.push("/seller/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      setError(err instanceof Error ? err.message : t("register_required"));
     } finally {
       setLoading(false);
     }
@@ -51,6 +51,9 @@ export default function SellerRegisterPage() {
             </svg>
           </div>
           <h1 className="type-h1">{t("register_title")}</h1>
+          <p className="mt-3 text-sm leading-6 text-text-subtle">
+            {t("register_subtitle")}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -60,7 +63,7 @@ export default function SellerRegisterPage() {
               type="text"
               value={shopName}
               onChange={(e) => setShopName(e.target.value)}
-              placeholder="ชื่อร้านค้าของคุณ"
+              placeholder={t("register_shopName")}
               className="w-full rounded-xl bg-bg-surface border border-border-subtle px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:border-brand-primary focus:outline-none"
             />
           </div>
@@ -84,6 +87,15 @@ export default function SellerRegisterPage() {
             {loading ? "..." : t("register_submit")}
           </CTAButton>
         </form>
+
+        <div className="mt-6 rounded-2xl border border-white/8 bg-bg-surface/70 p-4 text-sm leading-7 text-text-subtle">
+          <p className="font-semibold text-text-main">{t("register_marketplaceNoteTitle")}</p>
+          <ul className="mt-2 space-y-1">
+            <li>{t("register_marketplaceNoteItem1")}</li>
+            <li>{t("register_marketplaceNoteItem2")}</li>
+            <li>{t("register_marketplaceNoteItem3")}</li>
+          </ul>
+        </div>
       </div>
     </div>
   );

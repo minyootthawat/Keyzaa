@@ -12,13 +12,37 @@ interface AuthDialogProps {
 
 export default function AuthDialog({ onClose }: AuthDialogProps) {
   const { login, register } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const demoAccounts = [
+    {
+      id: "buyer",
+      label: lang === "th" ? "บัญชีเดโมผู้ซื้อ" : "Demo buyer",
+      description: lang === "th" ? "ใช้ทดสอบเส้นทางซื้อสินค้าและคำสั่งซื้อ" : "Use for storefront and order-flow testing",
+      email: process.env.NEXT_PUBLIC_DEMO_BUYER_EMAIL || "buyer@demo.keyzaa.local",
+      password: process.env.NEXT_PUBLIC_DEMO_BUYER_PASSWORD || "demo123",
+    },
+    {
+      id: "seller",
+      label: lang === "th" ? "บัญชีเดโมผู้ขาย" : "Demo seller",
+      description: lang === "th" ? "ใช้เข้าหน้า seller register และ dashboard" : "Use for seller register and dashboard testing",
+      email: process.env.NEXT_PUBLIC_DEMO_SELLER_EMAIL || "seller@demo.keyzaa.local",
+      password: process.env.NEXT_PUBLIC_DEMO_SELLER_PASSWORD || "demo123",
+    },
+  ] as const;
+
+  const applyDemoCredentials = (demoEmail: string, demoPassword: string) => {
+    setMode("login");
+    setEmail(demoEmail);
+    setPassword(demoPassword);
+    setError("");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,6 +91,15 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
           <h2 className="type-h2">
             {mode === "login" ? t("auth_login") : t("register_title")}
           </h2>
+          <p className="mt-2 text-sm leading-6 text-text-subtle">
+            {mode === "login"
+              ? lang === "th"
+                ? "บัญชีเดียวใช้ได้ทั้งการซื้อสินค้าและการเข้าร่วมเป็นผู้ขายในมาร์เก็ตเพลส"
+                : "One account works for both buying and joining the marketplace as a seller."
+              : lang === "th"
+                ? "สร้างบัญชีผู้ใช้ก่อน แล้วค่อยสร้างโปรไฟล์ร้านค้าในขั้นตอนถัดไป"
+                : "Create your buyer account first, then add your seller profile in the marketplace onboarding step."}
+          </p>
         </div>
 
         <div className="space-y-2 mb-4">
@@ -110,6 +143,38 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
           <span className="text-xs text-text-muted">or</span>
           <div className="flex-1 h-px bg-border-subtle" />
         </div>
+
+        {mode === "login" ? (
+          <div className="mb-4 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+              {lang === "th" ? "บัญชีเดโม" : "Demo accounts"}
+            </p>
+            <div className="grid gap-2">
+              {demoAccounts.map((account) => (
+                <button
+                  key={account.id}
+                  type="button"
+                  onClick={() => applyDemoCredentials(account.email, account.password)}
+                  className="rounded-2xl border border-white/8 bg-bg-surface/70 px-4 py-3 text-left transition-colors hover:border-brand-primary/30 hover:bg-bg-surface"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-text-main">{account.label}</p>
+                      <p className="mt-1 text-xs text-text-muted">{account.description}</p>
+                    </div>
+                    <span className="rounded-full bg-brand-primary/10 px-2.5 py-1 text-[11px] font-semibold text-brand-primary">
+                      {lang === "th" ? "เติมอัตโนมัติ" : "Auto-fill"}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-subtle">
+                    <span>{account.email}</span>
+                    <span>{account.password}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === "register" && (
@@ -171,6 +236,13 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
               ? `${t("auth_noAccount")} ${t("register_title")}`
               : `${t("auth_hasAccount")} ${t("auth_login")}`}
           </button>
+          {mode === "login" ? (
+            <p className="mt-3 text-xs leading-5 text-text-muted">
+              {lang === "th"
+                ? "ต้องการขายสินค้า? เข้าสู่ระบบแล้วไปที่หน้าสมัครผู้ขายเพื่อเข้าร่วมมาร์เก็ตเพลส"
+                : "Want to sell? Sign in, then open seller onboarding to join the marketplace."}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

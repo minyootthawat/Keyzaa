@@ -25,7 +25,7 @@ export default function CTAButton({
   const style =
     variant === "primary"
       ? "btn-primary text-white"
-      : "bg-bg-surface/85 text-text-subtle shadow-[0_7px_14px_rgba(5,10,24,0.14)] hover:bg-bg-surface-hover hover:text-text-main";
+      : "btn-secondary";
 
   const width = fullWidth ? "w-full" : "";
 

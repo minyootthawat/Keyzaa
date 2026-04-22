@@ -1,99 +1,116 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLanguage } from "@/app/context/LanguageContext";
-import { useAuth } from "@/app/context/AuthContext";
+import { getStoredToken } from "@/app/lib/auth-client";
+import { formatThaiBaht } from "@/app/lib/marketplace";
+import { getMockPayoutNotice } from "@/app/lib/payment-mock";
 import CTAButton from "@/app/components/CTAButton";
-import type { Transaction } from "@/app/types";
+import type { SellerLedgerEntry, SellerWalletSummary } from "@/app/types";
+
+interface SellerWalletResponse {
+  summary: SellerWalletSummary;
+  entries: SellerLedgerEntry[];
+}
 
 export default function SellerWalletPage() {
-  const { seller, updateSeller } = useAuth();
-  const { t } = useLanguage();
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    if (typeof window === "undefined") return [];
-    const saved = localStorage.getItem(`keyzaa_transactions_${seller?.id}`);
-    if (saved) {
-      try { return JSON.parse(saved) as Transaction[]; } catch { /* fall through */ }
-    }
-    return [
-      { id: "tx_1", type: "earning", amount: 950, description: "ROV 1000 เพชร", date: "2026-04-17T10:30:00Z" },
-      { id: "tx_2", type: "earning", amount: 450, description: "PUBG Mobile 500 UC", date: "2026-04-15T14:20:00Z" },
-      { id: "tx_3", type: "earning", amount: 180, description: "Steam Wallet ฿200", date: "2026-04-14T09:00:00Z" },
-      { id: "tx_4", type: "withdrawal", amount: -5000, description: "ถอนเงินเข้าบัญชี", date: "2026-04-10T08:00:00Z" },
-    ];
-  });
+  const { t, lang } = useLanguage();
+  const [wallet, setWallet] = useState<SellerWalletResponse | null>(null);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawSuccess, setWithdrawSuccess] = useState(false);
 
+  useEffect(() => {
+    const token = getStoredToken();
+
+    if (!token) {
+      return;
+    }
+
+    fetch("/api/seller/wallet", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Failed to load seller wallet");
+        }
+
+        const data = (await response.json()) as SellerWalletResponse;
+        setWallet(data);
+      })
+      .catch(() => {
+        setWallet(null);
+      });
+  }, []);
+
   const handleWithdraw = (e: React.FormEvent) => {
     e.preventDefault();
-    const amount = parseFloat(withdrawAmount);
-    if (!amount || amount <= 0 || amount > (seller?.balance || 0)) return;
-
-    const tx: Transaction = {
-      id: `tx_${Date.now()}`,
-      type: "withdrawal",
-      amount: -amount,
-      description: t("wallet_typeWithdraw"),
-      date: new Date().toISOString(),
-    };
-    const updated = [tx, ...transactions];
-    setTransactions(updated);
-    localStorage.setItem(`keyzaa_transactions_${seller?.id}`, JSON.stringify(updated));
-    updateSeller({ balance: (seller?.balance || 0) - amount });
     setWithdrawAmount("");
     setShowWithdrawModal(false);
     setWithdrawSuccess(true);
     setTimeout(() => setWithdrawSuccess(false), 3000);
   };
 
+  const visibleEntries = wallet?.entries.filter((entry) => entry.type !== "commission_fee") || [];
+
   return (
     <div className="space-y-6">
       <h1 className="type-h1">{t("wallet_title")}</h1>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="rounded-2xl border border-warning/20 bg-warning/10 px-4 py-3 text-sm leading-7 text-text-subtle">
+        {getMockPayoutNotice(lang)}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <div className="surface-card p-6">
-          <p className="text-xs text-text-muted font-semibold uppercase tracking-wider">{t("wallet_available")}</p>
-          <p className="type-num mt-2 text-3xl font-extrabold text-accent">
-            ฿{(seller?.balance || 0).toLocaleString()}
+          <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">{lang === "th" ? "ยอดขายรวม" : "Gross sales"}</p>
+          <p className="type-num mt-2 text-3xl font-extrabold text-text-main">
+            ฿{formatThaiBaht(wallet?.summary.grossSales || 0)}
           </p>
         </div>
         <div className="surface-card p-6">
-          <p className="text-xs text-text-muted font-semibold uppercase tracking-wider">{t("wallet_pending")}</p>
-          <p className="type-num mt-2 text-3xl font-extrabold text-warning">
-            ฿{(seller?.pendingBalance || 0).toLocaleString()}
+          <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">{lang === "th" ? "รายได้สุทธิ" : "Net earnings"}</p>
+          <p className="type-num mt-2 text-3xl font-extrabold text-accent">
+            ฿{formatThaiBaht(wallet?.summary.netEarnings || 0)}
+          </p>
+        </div>
+        <div className="surface-card p-6">
+          <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">{t("wallet_available")}</p>
+          <p className="type-num mt-2 text-3xl font-extrabold text-accent">
+            ฿{formatThaiBaht(wallet?.summary.availableBalance || 0)}
           </p>
         </div>
       </div>
 
       <div className="surface-card p-6">
-        <div className="flex items-center justify-between mb-5">
+        <div className="mb-5 flex items-center justify-between">
           <h2 className="type-h2">{t("wallet_history")}</h2>
           <CTAButton onClick={() => setShowWithdrawModal(true)} className="h-10 px-5">
-            {t("wallet_withdraw")}
+            {lang === "th" ? "ถอนเงินจำลอง" : "Mock withdraw"}
           </CTAButton>
         </div>
 
-        {transactions.length === 0 ? (
-          <p className="text-center py-8 text-text-muted">{t("wallet_noHistory")}</p>
+        {!wallet || visibleEntries.length === 0 ? (
+          <p className="py-8 text-center text-text-muted">{t("wallet_noHistory")}</p>
         ) : (
           <div className="space-y-3">
-            {transactions.map((tx) => (
-              <div key={tx.id} className="flex items-center justify-between py-3 border-b border-border-subtle last:border-0">
+            {visibleEntries.map((entry) => (
+              <div key={entry.id} className="flex items-center justify-between border-b border-border-subtle py-3 last:border-0">
                 <div className="flex items-center gap-3">
-                  <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${tx.type === "earning" ? "bg-success/20 text-accent" : "bg-warning/20 text-warning"}`}>
-                    {tx.type === "earning" ? "+" : "-"}
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${entry.amount >= 0 ? "bg-success/20 text-accent" : "bg-warning/20 text-warning"}`}>
+                    {entry.amount >= 0 ? "+" : "-"}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-text-main">{tx.description}</p>
+                    <p className="text-sm font-semibold text-text-main">{entry.description}</p>
                     <p className="text-xs text-text-muted">
-                      {new Date(tx.date).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}
+                      {new Date(entry.createdAt).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}
                     </p>
                   </div>
                 </div>
-                <p className={`type-num text-lg font-bold ${tx.amount > 0 ? "text-accent" : "text-text-main"}`}>
-                  {tx.amount > 0 ? "+" : ""}฿{tx.amount.toLocaleString().replace("-", "")}
+                <p className={`type-num text-lg font-bold ${entry.amount >= 0 ? "text-accent" : "text-text-main"}`}>
+                  {entry.amount >= 0 ? "+" : ""}฿{formatThaiBaht(Math.abs(entry.amount))}
                 </p>
               </div>
             ))}
@@ -101,20 +118,23 @@ export default function SellerWalletPage() {
         )}
       </div>
 
-      {withdrawSuccess && (
+      {withdrawSuccess ? (
         <div className="fixed bottom-10 left-1/2 z-50 -translate-x-1/2">
           <div className="flex items-center gap-2 rounded-2xl bg-accent px-6 py-3 text-sm font-black text-bg-base shadow-2xl">
             ✓ {t("wallet_withdrawSuccess")}
           </div>
         </div>
-      )}
+      ) : null}
 
-      {showWithdrawModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-base/80 backdrop-blur-sm p-4">
-          <div className="surface-card glass-panel w-full max-w-md p-6 space-y-5">
+      {showWithdrawModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-base/80 p-4 backdrop-blur-sm">
+          <div className="surface-card glass-panel w-full max-w-md space-y-5 p-6">
             <h2 className="type-h2">{t("wallet_withdraw")}</h2>
             <p className="text-sm text-text-subtle">
-              {t("wallet_available")}: <span className="font-bold text-accent">฿{(seller?.balance || 0).toLocaleString()}</span>
+              {t("wallet_available")}: <span className="font-bold text-accent">฿{formatThaiBaht(wallet?.summary.availableBalance || 0)}</span>
+            </p>
+            <p className="text-sm leading-7 text-text-subtle">
+              {getMockPayoutNotice(lang)}
             </p>
             <form onSubmit={handleWithdraw} className="space-y-4">
               <div className="space-y-2">
@@ -123,10 +143,9 @@ export default function SellerWalletPage() {
                   type="number"
                   value={withdrawAmount}
                   onChange={(e) => setWithdrawAmount(e.target.value)}
-                  max={seller?.balance}
                   required
-                  placeholder="0"
-                  className="w-full rounded-xl bg-bg-surface border border-border-subtle px-4 py-3 text-sm text-text-main focus:border-brand-primary focus:outline-none"
+                  placeholder={lang === "th" ? "0" : "0"}
+                  className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main focus:border-brand-primary focus:outline-none"
                 />
               </div>
               <div className="flex gap-3">
@@ -138,7 +157,7 @@ export default function SellerWalletPage() {
             </form>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

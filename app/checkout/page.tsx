@@ -1,234 +1,354 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCart } from "@/app/context/CartContext";
 import { useAuth } from "@/app/context/AuthContext";
-import CTAButton from "@/app/components/CTAButton";
-import PriceTag from "@/app/components/PriceTag";
-import Badge from "@/app/components/Badge";
+import { useCart } from "@/app/context/CartContext";
+import { getStoredToken } from "@/app/lib/auth-client";
 import { useLanguage } from "@/app/context/LanguageContext";
+import { formatThaiBaht } from "@/app/lib/marketplace";
+import { getMockPaymentMethodLabel, getMockPaymentNotice } from "@/app/lib/payment-mock";
 import type { Order, OrderItem } from "@/app/types";
+import CTAButton from "@/app/components/CTAButton";
 
 type CheckoutStep = "cart" | "payment" | "success";
-type PaymentMethod = "promptpay" | "truemoney" | "card";
-type PaymentState = "pending" | "verifying" | "success";
+type PaymentMethod = "promptpay" | "card";
+type PaymentState = "idle" | "awaiting_scan" | "verifying" | "confirmed" | "expired";
+
+const PROMPTPAY_EXPIRY_SECONDS = 180;
 
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, removeItem, updateQuantity, totalPrice, clearCart } = useCart();
   const { user } = useAuth();
+  const { lang, t } = useLanguage();
+
   const [step, setStep] = useState<CheckoutStep>("cart");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("promptpay");
-  const [paymentState, setPaymentState] = useState<PaymentState>("pending");
-  const [orderId, setOrderId] = useState<string>("");
-  const { t } = useLanguage();
+  const [paymentState, setPaymentState] = useState<PaymentState>("idle");
+  const [countdown, setCountdown] = useState(PROMPTPAY_EXPIRY_SECONDS);
+  const [orderIds, setOrderIds] = useState<string[]>([]);
 
   const itemsRef = useRef(items);
   const totalPriceRef = useRef(totalPrice);
   const paymentMethodRef = useRef(paymentMethod);
   const userIdRef = useRef(user?.id);
 
-  useEffect(() => { itemsRef.current = items; }, [items]);
-  useEffect(() => { totalPriceRef.current = totalPrice; }, [totalPrice]);
-  useEffect(() => { paymentMethodRef.current = paymentMethod; }, [paymentMethod]);
-  useEffect(() => { userIdRef.current = user?.id; }, [user?.id]);
-
-  // Auto-detect payment simulation
   useEffect(() => {
-    if (step === "payment") {
-      const verifyTimer = setTimeout(() => setPaymentState("verifying"), 1800);
-      const successTimer = setTimeout(() => {
-        const newOrderId = `ord_${Date.now()}`;
-        const orderItems: OrderItem[] = itemsRef.current.map((item, idx) => ({
-          id: `oi_${Date.now()}_${idx}`,
-          orderId: newOrderId,
-          productId: item.id,
-          title: item.title,
-          image: item.image,
-          price: item.price,
-          quantity: item.quantity,
-          sellerId: item.sellerId,
-          keys: [],
-          platform: item.platform || "",
-        }));
-        const newOrder: Order = {
-          id: newOrderId,
-          buyerId: userIdRef.current || "guest",
-          date: new Date().toISOString(),
-          status: "paid",
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    totalPriceRef.current = totalPrice;
+  }, [totalPrice]);
+
+  useEffect(() => {
+    paymentMethodRef.current = paymentMethod;
+  }, [paymentMethod]);
+
+  useEffect(() => {
+    userIdRef.current = user?.id;
+  }, [user?.id]);
+
+  const startPaymentFlow = () => {
+    setPaymentMethod("promptpay");
+    setPaymentState("awaiting_scan");
+    setCountdown(PROMPTPAY_EXPIRY_SECONDS);
+    setStep("payment");
+  };
+
+  useEffect(() => {
+    if (step !== "payment") return;
+
+    const countdownTimer = window.setInterval(() => {
+      setCountdown((current) => {
+        if (current <= 1) {
+          window.clearInterval(countdownTimer);
+          setPaymentState("expired");
+          return 0;
+        }
+
+        return current - 1;
+      });
+    }, 1000);
+
+    const verifyTimer = window.setTimeout(() => {
+      setPaymentState("verifying");
+    }, 5000);
+
+    const successTimer = window.setTimeout(() => {
+      const newOrderId = `ord_${Date.now()}`;
+      const orderItems: OrderItem[] = itemsRef.current.map((item, index) => ({
+        id: `oi_${Date.now()}_${index}`,
+        orderId: newOrderId,
+        productId: item.id,
+        title: item.title,
+        titleTh: item.titleTh,
+        titleEn: item.titleEn,
+        image: item.image,
+        price: item.price,
+        quantity: item.quantity,
+        sellerId: item.sellerId,
+        keys: [`KZ-${item.id.toUpperCase()}-${Date.now().toString().slice(-6)}-${index + 1}`],
+        platform: item.platform || "",
+        regionCode: item.regionCode,
+        activationMethodTh: item.activationMethodTh,
+        activationMethodEn: item.activationMethodEn
+      }));
+      const token = getStoredToken();
+
+      if (!token) {
+        setPaymentState("expired");
+        return;
+      }
+
+      fetch("/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
           totalPrice: totalPriceRef.current,
-          paymentMethod: paymentMethodRef.current === "promptpay" ? "PromptPay" : paymentMethodRef.current === "truemoney" ? "TrueMoney" : "Card",
-          items: orderItems,
-        };
-        const saved = localStorage.getItem("keyzaa_orders");
-        const existing: Order[] = saved ? JSON.parse(saved) : [];
-        localStorage.setItem("keyzaa_orders", JSON.stringify([newOrder, ...existing]));
-        setOrderId(newOrderId);
-        setPaymentState("success");
-        setStep("success");
-      }, 5000);
-      return () => {
-        clearTimeout(verifyTimer);
-        clearTimeout(successTimer);
-      };
-    }
+          paymentMethod: getMockPaymentMethodLabel(paymentMethodRef.current, "en"),
+          status: "delivered",
+          items: orderItems.map((item) => ({
+            ...item,
+            orderId: newOrderId,
+          })),
+        }),
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error("Order creation failed");
+          }
+
+          const data = (await response.json()) as { order: Order; orders?: Order[] };
+          const createdOrderIds = data.orders?.map((order) => order.id) || (data.order ? [data.order.id] : []);
+          setOrderIds(createdOrderIds);
+          setPaymentState("confirmed");
+          setStep("success");
+        })
+        .catch(() => {
+          setPaymentState("expired");
+        });
+    }, 9000);
+
+    return () => {
+      window.clearInterval(countdownTimer);
+      window.clearTimeout(verifyTimer);
+      window.clearTimeout(successTimer);
+    };
   }, [step]);
 
-  const paymentMethods: { id: PaymentMethod; label: string; hint: string }[] = [
-    { id: "promptpay", label: "PromptPay QR", hint: t("checkout_hintFastest") },
-    { id: "truemoney", label: "TrueMoney Wallet", hint: t("checkout_hintConvenient") },
-    { id: "card", label: t("checkout_cardLabel"), hint: "Visa / Mastercard" },
+  const paymentLabel =
+    paymentState === "awaiting_scan"
+      ? t("checkout_statusAwaiting")
+      : paymentState === "verifying"
+        ? t("checkout_statusVerifying")
+        : paymentState === "expired"
+          ? t("checkout_statusExpired")
+          : paymentState === "confirmed"
+            ? t("checkout_statusConfirmed")
+            : t("checkout_statusReady");
+
+  const paymentMethods: Array<{ id: PaymentMethod; label: string; hint: string }> = [
+    {
+      id: "promptpay",
+      label: t("checkout_mockPromptPayLabel"),
+      hint: t("checkout_mockPromptPayHint")
+    },
+    {
+      id: "card",
+      label: t("checkout_mockCardLabel"),
+      hint: t("checkout_mockCardHint")
+    }
   ];
 
-  const paymentStatusLabel = (() => {
-    if (paymentState === "pending") return t("checkout_waiting");
-    if (paymentState === "verifying") return t("checkout_verifying");
-    return t("checkout_paid");
-  })();
+  const minutes = Math.floor(countdown / 60);
+  const seconds = String(countdown % 60).padStart(2, "0");
 
   if (items.length === 0 && step !== "success") {
     return (
-      <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 space-y-6">
-        <div className="surface-card p-10 text-center">
-          <h2 className="text-2xl font-black text-text-main">{t("checkout_emptyTitle")}</h2>
-          <p className="mt-2 text-sm text-text-muted">{t("checkout_emptyDesc")}</p>
-          <Link href="/" className="mt-6 inline-block">
-            <CTAButton>{t("checkout_startShopping")}</CTAButton>
-          </Link>
+      <div className="section-container py-16">
+        <div className="surface-card mx-auto max-w-xl space-y-5 p-8 text-center">
+          <h1 className="type-h2 text-text-main">{t("checkout_emptyTitle")}</h1>
+          <p className="text-text-subtle">{t("checkout_emptyThailand")}</p>
+          <CTAButton onClick={() => router.push("/products")}>{t("checkout_browseProducts")}</CTAButton>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen pb-safe">
-      <div className="section-container max-w-3xl py-8">
-        <div className="mb-8 flex items-center justify-between motion-fade-up">
-          <button
-            onClick={() => (step === "cart" ? router.push("/") : setStep("cart"))}
-            className="elevation-1 rounded-xl bg-bg-surface/90 px-3 py-2 text-sm text-text-subtle"
-          >
-            {t("common_back")}
-          </button>
-          <h1 className="type-h2">
-            {step === "cart" ? t("checkout_titleCart") : step === "payment" ? t("checkout_titlePayment") : t("checkout_titleSuccess")}
-          </h1>
-          <Badge label={t("checkout_secure")} tone="success" />
-        </div>
+    <div className="min-h-screen pb-24 md:pb-12">
+      <div className="section-container grid gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_420px] lg:py-12">
+        <div className="space-y-6">
+          {step === "cart" ? (
+            <div className="surface-card space-y-6 p-6">
+              <div>
+                <h1 className="type-h2 text-text-main">{t("checkout_reviewTitle")}</h1>
+                <p className="mt-2 text-text-subtle">{t("checkout_reviewDescMock")}</p>
+              </div>
 
-        {step === "cart" ? (
-          <div className="space-y-5 motion-fade-up">
-            {items.map((item) => (
-              <div key={item.id} className="surface-card flex gap-4 p-5">
-                <div className="elevation-1 relative h-20 w-20 overflow-hidden rounded-xl bg-bg-subtle">
-                  <Image src={item.image} alt={item.title} fill className="object-cover" />
-                </div>
-                <div className="flex min-w-0 flex-1 flex-col justify-between">
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="line-clamp-2 min-w-0 text-base font-semibold leading-snug text-text-main">{item.title}</h3>
-                    <button onClick={() => removeItem(item.id)} className="text-sm text-text-muted hover:text-danger">{t("common_remove")}</button>
-                  </div>
-                  <div className="flex items-end justify-between">
-                    <span className="type-num text-lg font-extrabold">฿{(item.price * item.quantity).toLocaleString()}</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                        aria-label={t("checkout_decreaseQty")}
-                        className="elevation-1 min-h-11 min-w-11 rounded-md bg-bg-subtle px-2 py-1"
-                      >
-                        -
-                      </button>
-                      <span className="type-num min-w-5 text-center text-base font-semibold">{item.quantity}</span>
-                      <button
-                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                        aria-label={t("checkout_increaseQty")}
-                        className="elevation-1 min-h-11 min-w-11 rounded-md bg-bg-subtle px-2 py-1"
-                      >
-                        +
+              <div className="space-y-4">
+                {items.map((item) => (
+                  <div key={item.id} className="flex items-start gap-4 rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                    <div className="relative h-20 w-20 overflow-hidden rounded-2xl">
+                      <Image src={item.image} alt={(lang === "th" ? item.titleTh : item.titleEn) || item.title} fill className="object-cover" sizes="80px" />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <p className="font-semibold text-text-main">{(lang === "th" ? item.titleTh : item.titleEn) || item.title}</p>
+                      <p className="text-sm text-text-muted">{item.platform}</p>
+                      <p className="text-sm text-text-muted">
+                        {lang === "th" ? item.activationMethodTh : item.activationMethodEn}
+                      </p>
+                      <p className="text-sm text-accent">
+                        {lang === "th" ? item.deliveryLabelTh : item.deliveryLabelEn}
+                      </p>
+                    </div>
+                    <div className="space-y-3 text-right">
+                      <p className="text-lg font-semibold text-text-main">฿{formatThaiBaht(item.price)}</p>
+                      <div className="flex items-center gap-2">
+                        <button className="h-8 w-8 rounded-full bg-bg-elevated text-text-main" onClick={() => updateQuantity(item.id, item.quantity - 1)}>-</button>
+                        <span className="w-8 text-center text-text-main">{item.quantity}</span>
+                        <button className="h-8 w-8 rounded-full bg-bg-elevated text-text-main" onClick={() => updateQuantity(item.id, item.quantity + 1)}>+</button>
+                      </div>
+                      <button className="text-sm text-danger" onClick={() => removeItem(item.id)}>
+                        {t("checkout_removeItem")}
                       </button>
                     </div>
                   </div>
-                </div>
+                ))}
               </div>
-            ))}
 
-            <div className="glass-panel fixed bottom-0 left-0 right-0 z-40 p-3">
-              <div className="section-container flex items-center justify-between px-0">
-                <PriceTag price={totalPrice} />
-                <CTAButton
-                  onClick={() => {
-                    setPaymentState("pending");
-                    setStep("payment");
-                  }}
-                >
-                  {t("checkout_proceed")}
-                </CTAButton>
-              </div>
+              <CTAButton fullWidth onClick={startPaymentFlow}>
+                {t("checkout_continueMock")}
+              </CTAButton>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {step === "payment" ? (
-          <div className="space-y-5 motion-fade-up">
-            <div className="surface-card glass-panel space-y-4 p-6">
-              <p className="text-base font-semibold text-text-main">{t("checkout_paymentMethods")}</p>
+          {step === "payment" ? (
+            <div className="surface-card space-y-6 p-6">
               <div className="space-y-2">
+                <h1 className="type-h2 text-text-main">{t("checkout_mockTitle")}</h1>
+                <p className="text-text-subtle">{getMockPaymentNotice(lang)}</p>
+              </div>
+
+              <div className="grid gap-3">
                 {paymentMethods.map((method) => (
                   <button
                     key={method.id}
                     onClick={() => setPaymentMethod(method.id)}
-                    className={`w-full rounded-2xl p-4 text-left transition-all ${paymentMethod === method.id ? "accent-ring bg-linear-to-b from-bg-elevated to-bg-surface" : "elevation-1 bg-bg-surface/90"}`}
+                    className={`rounded-2xl border p-4 text-left transition-all ${paymentMethod === method.id ? "border-brand-primary bg-brand-primary/10" : "border-white/8 bg-bg-surface/70"}`}
                   >
-                    <p className="text-base font-semibold text-text-main">{method.label}</p>
-                    <p className="text-sm text-text-muted">{method.hint}</p>
+                    <p className="font-semibold text-text-main">{method.label}</p>
+                    <p className="mt-1 text-sm text-text-muted">{method.hint}</p>
                   </button>
                 ))}
               </div>
-            </div>
 
-            <div className="surface-card p-7 text-center">
-              <p className="text-base text-text-subtle">{t("checkout_totalAmount")}</p>
-              <p className="type-num text-5xl font-extrabold text-gradient-brand">฿{totalPrice.toLocaleString()}</p>
-              <div className="elevation-2 mx-auto mt-6 grid h-56 w-56 place-items-center rounded-3xl bg-bg-elevated text-text-main">
-                QR
-              </div>
-              <p className="mt-4 text-base font-semibold text-accent">{paymentStatusLabel}</p>
-            </div>
-          </div>
-        ) : null}
-
-        {step === "success" ? (
-          <div className="surface-card motion-fade-up space-y-6 p-7 text-center">
-            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-success-bg text-accent">✓</div>
-            <h2 className="type-h2 text-text-main">{t("checkout_paid")}</h2>
-            <p className="type-body text-text-subtle">{t("checkout_autoVerified")}</p>
-            <div className="elevation-1 space-y-2 rounded-2xl bg-bg-surface/90 p-4 text-left">
-              {items.map((item) => (
-                <div key={item.id} className="flex items-center justify-between text-base">
-                  <span className="text-text-subtle">{item.title}</span>
-                  <span className="type-num font-semibold text-text-main">{item.quantity} {t("common_itemSuffix")}</span>
+              <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                    <p className="text-sm font-semibold text-text-main">{t("checkout_mockHowToPay")}</p>
+                    <ol className="mt-3 list-inside list-decimal space-y-2 text-sm leading-7 text-text-subtle">
+                      <li>{t("checkout_mockStep1")}</li>
+                      <li>{t("checkout_mockStep2")}</li>
+                      <li>{t("checkout_mockStep3")}</li>
+                    </ol>
+                  </div>
+                  <div className="rounded-2xl border border-accent/15 bg-accent/5 p-4 text-sm leading-7 text-text-subtle">
+                    {getMockPaymentNotice(lang)}
+                  </div>
                 </div>
-              ))}
+
+                <div className="surface-card p-5 text-center">
+                  <p className="text-base text-text-subtle">{t("checkout_totalAmount")}</p>
+                  <p className="type-num text-5xl font-extrabold text-gradient-brand">฿{formatThaiBaht(totalPrice)}</p>
+                  <div className="elevation-2 mx-auto mt-5 grid h-56 w-56 place-items-center rounded-3xl border border-white/8 bg-[radial-gradient(circle_at_top,rgba(99,91,255,0.16),transparent_60%),linear-gradient(180deg,rgba(26,35,68,1),rgba(12,17,32,1))] text-text-main">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-text-muted">{t("checkout_mockPaymentBadge")}</p>
+                      <p className="mt-3 text-5xl">▣</p>
+                      <p className="mt-3 text-sm text-text-subtle">{t("checkout_mockQrCaption")}</p>
+                    </div>
+                  </div>
+                  <p className="mt-4 text-base font-semibold text-accent">{paymentLabel}</p>
+                  <p className="mt-2 text-sm text-text-muted">
+                    {lang === "th" ? `หมดอายุใน ${minutes}:${seconds}` : `Expires in ${minutes}:${seconds}`}
+                  </p>
+                  {paymentState === "expired" ? (
+                    <div className="mt-4">
+                      <CTAButton fullWidth variant="secondary" onClick={startPaymentFlow}>
+                        {t("checkout_mockGenerateQr")}
+                      </CTAButton>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col gap-2">
+          ) : null}
+
+          {step === "success" ? (
+            <div className="surface-card space-y-6 p-7 text-center">
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-success-bg text-accent">✓</div>
+              <h1 className="type-h2 text-text-main">{t("checkout_mockSuccessTitle")}</h1>
+              <p className="text-text-subtle">{t("checkout_mockSuccessDesc")}</p>
               <CTAButton
                 fullWidth
                 onClick={() => {
                   clearCart();
-                  router.push(`/orders/${orderId}`);
+                  if (orderIds.length > 1) {
+                    router.push("/orders");
+                    return;
+                  }
+
+                  if (orderIds[0]) {
+                    router.push(`/orders/${orderIds[0]}`);
+                  }
                 }}
               >
-                {t("checkout_getKeys")}
-              </CTAButton>
-              <CTAButton fullWidth variant="secondary" onClick={() => router.push("/")}>
-                {t("common_backHome")}
+                {orderIds.length > 1
+                  ? t("checkout_viewAllOrders")
+                  : t("checkout_goToDelivery")}
               </CTAButton>
             </div>
+          ) : null}
+        </div>
+
+        <aside className="lg:sticky lg:top-[96px] lg:self-start">
+          <div className="surface-card space-y-5 p-6">
+            <h2 className="text-lg font-semibold text-text-main">{t("checkout_orderSummaryTitle")}</h2>
+            <div className="space-y-3">
+              {items.map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-3 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate text-text-main">{(lang === "th" ? item.titleTh : item.titleEn) || item.title}</p>
+                    <p className="text-text-muted">{item.quantity} x ฿{formatThaiBaht(item.price)}</p>
+                  </div>
+                  <p className="font-semibold text-text-main">฿{formatThaiBaht(item.price * item.quantity)}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="border-t border-white/8 pt-4">
+              <div className="flex items-center justify-between text-base">
+                <span className="text-text-subtle">{t("checkout_totalLabel")}</span>
+                <span className="type-num text-xl font-bold text-text-main">฿{formatThaiBaht(totalPrice)}</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4 text-sm leading-7 text-text-subtle">
+              <p className="font-semibold text-text-main">{t("checkout_trustSignalsTitle")}</p>
+              <ul className="mt-2 space-y-1">
+                <li>{t("checkout_trustSignalThb")}</li>
+                <li>{t("checkout_trustSignalMock")}</li>
+                <li>{t("checkout_trustSignalActivation")}</li>
+              </ul>
+            </div>
           </div>
-        ) : null}
+        </aside>
       </div>
     </div>
   );

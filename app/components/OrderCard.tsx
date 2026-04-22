@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useLanguage } from "@/app/context/LanguageContext";
 import type { Order } from "@/app/types";
@@ -11,12 +12,18 @@ interface OrderCardProps {
   orderIdLabel?: string;
   dateLabel?: string;
   totalLabel?: string;
+  amountOverride?: number;
+  hideDetailsLink?: boolean;
+  detailsHref?: string;
 }
 
 const statusColors: Record<string, string> = {
-  pending: "bg-warning/20 text-warning",
+  pending_payment: "bg-warning/20 text-warning",
   paid: "bg-brand-primary/20 text-brand-primary",
+  fulfilling: "bg-brand-primary/20 text-brand-primary",
   delivered: "bg-success/20 text-accent",
+  disputed: "bg-warning/20 text-warning",
+  refunded: "bg-white/10 text-text-subtle",
   cancelled: "bg-danger/20 text-danger",
 };
 
@@ -27,16 +34,31 @@ export default function OrderCard({
   orderIdLabel,
   dateLabel,
   totalLabel,
+  amountOverride,
+  hideDetailsLink = false,
+  detailsHref,
 }: OrderCardProps) {
   const { t } = useLanguage();
   const vdLabel = viewDetailsLabel ?? t("buyerOrders_viewDetails");
   const oidLabel = orderIdLabel ?? t("buyerOrders_orderId");
   const dLabel = dateLabel ?? t("buyerOrders_date");
   const total = totalLabel ?? t("buyerOrders_total");
+  const displayAmount = amountOverride ?? order.totalPrice;
+  const orderDetailsHref = detailsHref ?? `/orders/${order.id}`;
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
     return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
+  };
+
+  const getStatusLabel = () => {
+    if (order.status === "delivered") return t("sellerOrders_delivered");
+    if (order.status === "paid" || order.status === "fulfilling") return t("sellerOrders_paid");
+    if (order.status === "pending_payment") return t("sellerOrders_pending");
+    if (order.status === "disputed") return "Disputed";
+    if (order.status === "refunded") return "Refunded";
+    if (order.status === "cancelled") return "Cancelled";
+    return order.status;
   };
 
   return (
@@ -47,25 +69,19 @@ export default function OrderCard({
           <span className="font-mono text-sm font-bold text-text-main">{order.id}</span>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusColors[order.status]}`}>
-          {order.status === "delivered"
-            ? t("sellerOrders_delivered")
-            : order.status === "paid"
-            ? t("sellerOrders_paid")
-            : order.status === "pending"
-            ? t("sellerOrders_pending")
-            : order.status}
+          {getStatusLabel()}
         </span>
       </div>
       <div className="p-5 space-y-3">
         {order.items.map((item) => (
           <div key={item.id} className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-lg bg-bg-surface overflow-hidden relative shrink-0">
-              <img src={item.image} alt={item.title} className="object-cover w-full h-full" />
+              <Image src={item.image} alt={item.title} fill className="object-cover" sizes="40px" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-text-main truncate">{item.title}</p>
               {showSellerName && (
-                <p className="text-xs text-text-muted">{item.sellerId}</p>
+                <p className="text-xs text-text-muted">Seller: {item.sellerId}</p>
               )}
               <p className="text-xs text-text-muted">x{item.quantity}</p>
             </div>
@@ -78,14 +94,16 @@ export default function OrderCard({
       <div className="flex items-center justify-between px-5 py-4 border-t border-border-subtle bg-bg-surface/50">
         <div className="flex items-center gap-4 text-xs text-text-muted">
           <span>{dLabel}: {formatDate(order.date)}</span>
-          <span>{total}: <span className="font-bold text-text-main">฿{order.totalPrice.toLocaleString()}</span></span>
+          <span>{total}: <span className="font-bold text-text-main">฿{displayAmount.toLocaleString()}</span></span>
         </div>
-        <Link
-          href={`/orders/${order.id}`}
-          className="rounded-xl bg-brand-primary/20 px-4 py-2 text-xs font-semibold text-brand-primary hover:bg-brand-primary/30 transition-colors"
-        >
-          {vdLabel}
-        </Link>
+        {hideDetailsLink ? null : (
+          <Link
+            href={orderDetailsHref}
+            className="rounded-xl bg-brand-primary/20 px-4 py-2 text-xs font-semibold text-brand-primary hover:bg-brand-primary/30 transition-colors"
+          >
+            {vdLabel}
+          </Link>
+        )}
       </div>
     </div>
   );

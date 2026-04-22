@@ -1,11 +1,23 @@
 import type { Metadata } from "next";
+import { Inter, Noto_Sans_Thai } from "next/font/google";
 import "./globals.css";
 import StickyHeader from "./components/StickyHeader";
 import BottomNav from "./components/BottomNav";
 import FloatingChat from "./components/FloatingChat";
-import { CartProvider } from "./context/CartContext";
 import { LanguageProvider } from "./context/LanguageContext";
 import { Providers } from "./components/Providers";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
+
+const notoSansThai = Noto_Sans_Thai({
+  subsets: ["thai", "latin"],
+  display: "swap",
+  variable: "--font-noto-sans-thai",
+});
 
 export const metadata: Metadata = {
   title: "Keyzaa - เติมเกม & ซื้อ Gift Card ราคาถูก จัดส่งทันที",
@@ -18,7 +30,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="th" className="h-full antialiased" suppressHydrationWarning>
+    <html
+      lang="th"
+      className={`${inter.variable} ${notoSansThai.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
       <body className="min-h-full flex flex-col font-sans mb-16 sm:mb-0 bg-bg-subtle">
         <LanguageProvider>
           <Providers>

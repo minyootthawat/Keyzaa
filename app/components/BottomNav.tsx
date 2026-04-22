@@ -7,18 +7,27 @@ import { useCart } from "@/app/context/CartContext";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { useAuth } from "@/app/context/AuthContext";
 
+interface NavItem {
+  id: string;
+  label: string;
+  href: string;
+  icon: React.ReactNode;
+  badge?: number;
+}
+
 export default function BottomNav() {
   const pathname = usePathname();
   const { totalItems } = useCart();
   const { t } = useLanguage();
-  const { isSellerMode } = useAuth();
+  const { isRegisteredSeller } = useAuth();
   const isClient = useSyncExternalStore(
     () => () => {},
     () => true,
     () => false
   );
+  const isSellerRoute = pathname?.startsWith("/seller") ?? false;
 
-  const baseNavItems = [
+  const buyerNavItems: NavItem[] = [
     {
       id: "nav-home",
       label: t("common_home"),
@@ -62,7 +71,7 @@ export default function BottomNav() {
     },
     {
       id: "nav-seller",
-      label: isSellerMode ? t("seller_myShop") : t("common_seller"),
+      label: isRegisteredSeller ? t("seller_myShop") : t("common_seller"),
       href: "/seller/dashboard",
       icon: (
         <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -72,7 +81,60 @@ export default function BottomNav() {
     },
   ];
 
-  const navItems = isSellerMode ? baseNavItems.filter((i) => i.id !== "nav-orders") : baseNavItems;
+  const sellerNavItems: NavItem[] = [
+    {
+      id: "seller-home",
+      label: t("seller_overview"),
+      href: "/seller/dashboard",
+      icon: (
+        <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3h16.5v4.5H3.75zM3.75 9.75h7.5v10.5h-7.5zM13.5 9.75h6.75v4.5H13.5zM13.5 16.5h6.75v3.75H13.5z" />
+        </svg>
+      ),
+    },
+    {
+      id: "seller-orders",
+      label: t("sellerOrders_title"),
+      href: "/seller/dashboard/orders",
+      icon: (
+        <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6M9 16h6M5.25 5.25h13.5a1.5 1.5 0 0 1 1.5 1.5v10.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5V6.75a1.5 1.5 0 0 1 1.5-1.5z" />
+        </svg>
+      ),
+    },
+    {
+      id: "seller-products",
+      label: t("sellerProducts_title"),
+      href: "/seller/dashboard/products",
+      icon: (
+        <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 6.75 12 3l7.5 3.75M4.5 6.75V17.25L12 21l7.5-3.75V6.75M4.5 6.75 12 10.5m7.5-3.75L12 10.5m0 0v10.5" />
+        </svg>
+      ),
+    },
+    {
+      id: "seller-wallet",
+      label: t("wallet_title"),
+      href: "/seller/dashboard/wallet",
+      icon: (
+        <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5V6A2.25 2.25 0 0 0 18.75 3.75H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25h13.5A2.25 2.25 0 0 0 21 18v-1.5m0-9h-4.5a2.25 2.25 0 0 0 0 4.5H21m0-4.5v4.5" />
+        </svg>
+      ),
+    },
+    {
+      id: "seller-store",
+      label: t("common_home"),
+      href: "/",
+      icon: (
+        <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+        </svg>
+      ),
+    },
+  ];
+
+  const navItems = isSellerRoute ? sellerNavItems : buyerNavItems;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border-subtle bg-bg-base/80 pb-safe backdrop-blur-xl sm:hidden">

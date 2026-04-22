@@ -1,25 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { jwtVerify } from "jose";
 import { ObjectId } from "mongodb";
+import { getBearerPayload } from "@/lib/auth/jwt";
 import { connectDB } from "@/lib/db/mongodb";
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
 
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
+    const payload = await getBearerPayload(req);
+    const userId = typeof payload?.userId === "string" ? payload.userId : null;
+
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    const token = authHeader.split(" ")[1];
-    const { payload } = await jwtVerify(token, JWT_SECRET);
 
     const { db } = await connectDB();
     const users = db.collection("users");
 
     const user = await users.findOne(
-      { _id: new ObjectId(payload.userId) },
+      { _id: new ObjectId(userId) },
       { projection: { passwordHash: 0 } }
     );
 

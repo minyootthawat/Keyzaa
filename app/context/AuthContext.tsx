@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useSession, signIn, signOut as nextAuthSignOut } from "next-auth/react";
@@ -8,14 +7,12 @@ import type { User, Seller } from "@/app/types";
 interface AuthContextType {
   user: User | null;
   seller: Seller | null;
-  isSellerMode: boolean;
   isRegisteredSeller: boolean;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   registerSeller: (data: { shopName: string; phone: string }) => Promise<void>;
-  toggleSellerMode: () => void;
   updateSeller: (data: Partial<Seller>) => void;
 }
 
@@ -51,12 +48,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { data: session, status, update: updateSession } = useSession();
   const sellerIdRef = useRef<string | null>(null);
   const [seller, setSeller] = useState<Seller | null>(null);
-  const [isSellerMode, setIsSellerMode] = useState(false);
 
   const user = userFromSession(session);
   const loading = status === "loading";
 
-  const fetchSeller = async (sid: string) => {
+  const fetchSeller = async () => {
     const token = getToken();
     if (!token) return;
 
@@ -75,18 +71,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!user?.sellerId) {
+      // Clearing seller state is required when switching back to a buyer-only session.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSeller(null);
       sellerIdRef.current = null;
       return;
     }
     if (user.sellerId !== sellerIdRef.current) {
       sellerIdRef.current = user.sellerId;
-      fetchSeller(user.sellerId);
+      fetchSeller();
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
   }, [user?.sellerId]);
 
   const login = async (email: string, password: string) => {
+    const loginResponse = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!loginResponse.ok) {
+      const data = await loginResponse.json();
+      throw new Error(data.error || "Login failed");
+    }
+
+    const loginData = await loginResponse.json();
+    setToken(loginData.token);
+
     const res = await signIn("credentials", {
       email,
       password,
@@ -135,7 +146,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const resData = await res.json();
     setSeller(resData.seller);
-    setIsSellerMode(true);
     await updateSession();
   };
 
@@ -143,15 +153,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSeller((prev) => prev ? { ...prev, ...data } : prev);
   };
 
-  const toggleSellerMode = () => {
-    if (!seller) return;
-    setIsSellerMode((prev) => !prev);
-  };
-
   const logout = async () => {
     clearToken();
     setSeller(null);
-    setIsSellerMode(false);
     await nextAuthSignOut({ redirect: false });
   };
 
@@ -160,14 +164,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         seller,
-        isSellerMode,
         isRegisteredSeller: !!seller,
         loading,
         login,
         register,
         logout,
         registerSeller,
-        toggleSellerMode,
         updateSeller,
       }}
     >
