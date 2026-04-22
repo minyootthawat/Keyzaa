@@ -130,6 +130,35 @@ async function upsertSeller(db, now) {
   return { email, password };
 }
 
+async function upsertAdmin(db, now) {
+  const users = db.collection("users");
+  const email = process.env.NEXT_PUBLIC_DEMO_ADMIN_EMAIL || "admin@demo.keyzaa.local";
+  const password = process.env.NEXT_PUBLIC_DEMO_ADMIN_PASSWORD || "demo123";
+  const passwordHash = await bcrypt.hash(password, 12);
+
+  await users.updateOne(
+    { email },
+    {
+      $set: {
+        name: "Demo Admin",
+        email,
+        passwordHash,
+        role: "buyer",
+        sellerId: undefined,
+        adminRole: "super_admin",
+        adminPermissions: ["admin:access", "admin:overview:read", "admin:orders:read", "admin:sellers:read", "admin:listings:read"],
+        updatedAt: now,
+      },
+      $setOnInsert: {
+        createdAt: now,
+      },
+    },
+    { upsert: true }
+  );
+
+  return { email, password };
+}
+
 async function main() {
   loadLocalEnv();
 
@@ -145,10 +174,12 @@ async function main() {
     const now = new Date().toISOString();
     const buyer = await upsertBuyer(db, now);
     const seller = await upsertSeller(db, now);
+    const admin = await upsertAdmin(db, now);
 
     console.log("Seeded demo users:");
     console.log(`buyer: ${buyer.email} / ${buyer.password}`);
     console.log(`seller: ${seller.email} / ${seller.password}`);
+    console.log(`admin: ${admin.email} / ${admin.password}`);
   } finally {
     await client.close();
   }

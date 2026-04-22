@@ -38,9 +38,24 @@ export default function AdminDashboardPage() {
   const { lang } = useLanguage();
   const [overview, setOverview] = useState<AdminOverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/admin/overview")
+    const token = window.localStorage.getItem("keyzaa_token");
+
+    if (!token) {
+      queueMicrotask(() => {
+        setError(lang === "th" ? "ไม่พบสิทธิ์แอดมิน" : "Admin access was not found.");
+        setLoading(false);
+      });
+      return;
+    }
+
+    fetch("/api/admin/overview", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
       .then(async (response) => {
         if (!response.ok) {
           throw new Error("Failed to load admin overview");
@@ -48,14 +63,16 @@ export default function AdminDashboardPage() {
 
         const data = (await response.json()) as AdminOverviewResponse;
         setOverview(data);
+        setError(null);
       })
       .catch(() => {
         setOverview(null);
+        setError(lang === "th" ? "โหลดข้อมูลแอดมินไม่สำเร็จ" : "Failed to load admin data.");
       })
       .finally(() => {
         setLoading(false);
       });
-  }, []);
+  }, [lang]);
 
   const cards = useMemo(
     () => [
@@ -91,6 +108,17 @@ export default function AdminDashboardPage() {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="surface-card flex min-h-[320px] items-center justify-center p-6 text-center">
+        <div className="max-w-md space-y-3">
+          <h1 className="type-h2">{lang === "th" ? "เข้าใช้งานไม่ได้" : "Access unavailable"}</h1>
+          <p className="type-body text-text-subtle">{error}</p>
+        </div>
       </div>
     );
   }

@@ -1,11 +1,22 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getAdminAccessFromRequest, hasAdminPermission } from "@/lib/auth/admin";
 import { connectDB } from "@/lib/db/mongodb";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const accessResult = await getAdminAccessFromRequest(req);
+    if (!accessResult.access) {
+      return NextResponse.json({ error: accessResult.error }, { status: accessResult.status });
+    }
+
+    if (!hasAdminPermission(accessResult.access, "admin:overview:read")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { db } = await connectDB();
+    const usersCollection = db.collection("users");
     const [users, sellers, orders, products, ledgerEntries] = await Promise.all([
-      db.collection("users").countDocuments(),
+      usersCollection.countDocuments(),
       db.collection("sellers").countDocuments(),
       db.collection("orders").find({}).sort({ date: -1 }).limit(6).toArray(),
       db.collection("products").find({}).sort({ createdAt: -1 }).toArray(),

@@ -11,7 +11,7 @@ interface AuthDialogProps {
 }
 
 export default function AuthDialog({ onClose }: AuthDialogProps) {
-  const { login, register } = useAuth();
+  const { user, isRegisteredSeller, isAdmin, login, register, logout } = useAuth();
   const { t, lang } = useLanguage();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
@@ -68,6 +68,17 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
     await signIn(provider, { callbackUrl: "/" });
   };
 
+  const handleLogout = async () => {
+    setLoading(true);
+
+    try {
+      await logout();
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-bg-base/80 backdrop-blur-sm" onClick={onClose} />
@@ -101,6 +112,71 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
                 : "Create your buyer account first, then add your seller profile in the marketplace onboarding step."}
           </p>
         </div>
+
+        {user ? (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-text-main">{user.name}</p>
+                  <p className="mt-1 text-xs text-text-muted">{user.email}</p>
+                </div>
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-primary text-sm font-bold text-white">
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className="rounded-full border border-white/8 bg-bg-base/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                  {user.role}
+                </span>
+                {isRegisteredSeller ? (
+                  <span className="rounded-full border border-accent/18 bg-accent/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent">
+                    {lang === "th" ? "ผู้ขาย" : "Seller"}
+                  </span>
+                ) : null}
+                {isAdmin ? (
+                  <span className="rounded-full border border-warning/20 bg-warning/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-warning">
+                    {t("admin_title")}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <a
+                href="/profile"
+                className="flex h-11 items-center justify-center rounded-xl border border-border-subtle bg-bg-surface text-sm font-semibold text-text-main transition-colors hover:border-border-main"
+              >
+                {lang === "th" ? "เปิดหน้าโปรไฟล์" : "Open profile"}
+              </a>
+              {isRegisteredSeller ? (
+                <a
+                  href="/seller/dashboard"
+                  className="flex h-11 items-center justify-center rounded-xl border border-border-subtle bg-bg-surface text-sm font-semibold text-text-main transition-colors hover:border-border-main"
+                >
+                  {lang === "th" ? "ไปหน้าแดชบอร์ดผู้ขาย" : "Open seller dashboard"}
+                </a>
+              ) : null}
+              {isAdmin ? (
+                <a
+                  href="/admin/dashboard"
+                  className="flex h-11 items-center justify-center rounded-xl border border-warning/20 bg-warning/10 text-sm font-semibold text-warning transition-colors hover:bg-warning/15"
+                >
+                  {lang === "th" ? "ไปหน้าแอดมิน" : "Open admin dashboard"}
+                </a>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={loading}
+                className="flex h-11 items-center justify-center rounded-xl border border-danger/20 bg-danger/10 text-sm font-semibold text-danger transition-colors hover:bg-danger/15 disabled:opacity-50"
+              >
+                {loading ? "..." : t("auth_logout")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
 
         <div className="space-y-2 mb-4">
           <button
@@ -244,6 +320,8 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
             </p>
           ) : null}
         </div>
+          </>
+        )}
       </div>
     </div>
   );

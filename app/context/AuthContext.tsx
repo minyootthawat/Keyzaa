@@ -8,6 +8,9 @@ interface AuthContextType {
   user: User | null;
   seller: Seller | null;
   isRegisteredSeller: boolean;
+  isAdmin: boolean;
+  adminRole: User["adminRole"];
+  adminPermissions: NonNullable<User["adminPermissions"]>;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
@@ -48,9 +51,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { data: session, status, update: updateSession } = useSession();
   const sellerIdRef = useRef<string | null>(null);
   const [seller, setSeller] = useState<Seller | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminRole, setAdminRole] = useState<User["adminRole"]>(null);
+  const [adminPermissions, setAdminPermissions] = useState<NonNullable<User["adminPermissions"]>>([]);
+  const [accountResolved, setAccountResolved] = useState(false);
 
   const user = userFromSession(session);
-  const loading = status === "loading";
+  const loading = status === "loading" || !accountResolved;
+
+  const fetchAccount = async () => {
+    setAccountResolved(false);
+
+    const token = getToken();
+    if (!token) {
+      setIsAdmin(false);
+      setAdminRole(null);
+      setAdminPermissions([]);
+      setAccountResolved(true);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setIsAdmin(Boolean(data.user?.isAdmin));
+        setAdminRole(data.user?.adminRole ?? null);
+        setAdminPermissions(Array.isArray(data.user?.adminPermissions) ? data.user.adminPermissions : []);
+        setAccountResolved(true);
+        return;
+      }
+    } catch {
+      // ignore
+    }
+
+    setIsAdmin(false);
+    setAdminRole(null);
+    setAdminPermissions([]);
+    setAccountResolved(true);
+  };
 
   const fetchSeller = async () => {
     const token = getToken();
@@ -68,6 +110,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // ignore
     }
   };
+
+  useEffect(() => {
+    if (!user) {
+      // Clearing account state is required when switching to an anonymous session.
+      queueMicrotask(() => {
+        setSeller(null);
+        setIsAdmin(false);
+        setAdminRole(null);
+        setAdminPermissions([]);
+        setAccountResolved(true);
+      });
+      sellerIdRef.current = null;
+      return;
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    queueMicrotask(() => {
+      void fetchAccount();
+    });
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.sellerId) {
@@ -165,6 +229,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         seller,
         isRegisteredSeller: !!seller,
+        isAdmin,
+        adminRole,
+        adminPermissions,
         loading,
         login,
         register,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
+import { getAdminAccessForEmail } from "@/lib/auth/admin";
 import { getBearerPayload } from "@/lib/auth/jwt";
 import { connectDB } from "@/lib/db/mongodb";
 
@@ -24,6 +25,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    const adminAccess = getAdminAccessForEmail(typeof user.email === "string" ? user.email : null);
+
     return NextResponse.json({
       user: {
         id: user._id.toString(),
@@ -31,6 +34,9 @@ export async function GET(req: NextRequest) {
         email: user.email,
         role: user.role,
         sellerId: user.sellerId,
+        isAdmin: adminAccess.isAdmin,
+        adminRole: adminAccess.adminRole,
+        adminPermissions: adminAccess.permissions,
         createdAt: user.createdAt,
       },
     });
