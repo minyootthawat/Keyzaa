@@ -1,6 +1,8 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import React, { createContext, useContext, useState } from "react";
+import { useSession, signIn, signOut as nextAuthSignOut } from "next-auth/react";
+import { createContext, useContext, useEffect, useState, useRef } from "react";
 import type { User, Seller } from "@/app/types";
 
 interface AuthContextType {
@@ -8,95 +10,137 @@ interface AuthContextType {
   seller: Seller | null;
   isSellerMode: boolean;
   isRegisteredSeller: boolean;
-  login: (name: string) => void;
-  logout: () => void;
-  registerSeller: (data: { name: string; shopName: string; phone: string }) => void;
+  loading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  registerSeller: (data: { shopName: string; phone: string }) => Promise<void>;
   toggleSellerMode: () => void;
   updateSeller: (data: Partial<Seller>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("keyzaa_token");
+}
+
+function setToken(token: string) {
+  localStorage.setItem("keyzaa_token", token);
+}
+
+function clearToken() {
+  localStorage.removeItem("keyzaa_token");
+}
+
+function userFromSession(session: { user?: { id: string; name?: string | null; email?: string | null; role?: string; sellerId?: string } } | null): User | null {
+  if (!session?.user) return null;
+  const u = session.user;
+  return {
+    id: u.id,
+    name: u.name || "",
+    email: u.email || "",
+    role: (u.role || "buyer") as User["role"],
+    sellerId: u.sellerId,
+    createdAt: "",
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    if (typeof window === "undefined") return null;
-    const saved = localStorage.getItem("keyzaa_user");
-    if (!saved) return null;
-    try { return JSON.parse(saved) as User; } catch { return null; }
-  });
-  const [seller, setSeller] = useState<Seller | null>(() => {
-    if (typeof window === "undefined") return null;
-    const saved = localStorage.getItem("keyzaa_seller");
-    if (!saved) return null;
-    try { return JSON.parse(saved) as Seller; } catch { return null; }
-  });
+  const { data: session, status, update: updateSession } = useSession();
+  const sellerIdRef = useRef<string | null>(null);
+  const [seller, setSeller] = useState<Seller | null>(null);
   const [isSellerMode, setIsSellerMode] = useState(false);
 
-  const login = (name: string) => {
-    const newUser: User = {
-      id: `user_${Date.now()}`,
-      name,
-      role: "buyer",
-      createdAt: new Date().toISOString(),
-    };
-    setUser(newUser);
-    localStorage.setItem("keyzaa_user", JSON.stringify(newUser));
+  const user = userFromSession(session);
+  const loading = status === "loading";
+
+  const fetchSeller = async (sid: string) => {
+    const token = getToken();
+    if (!token) return;
+
+    try {
+      const res = await fetch("/api/seller/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSeller(data.seller);
+      }
+    } catch {
+      // ignore
+    }
   };
 
-  const registerSeller = (data: { name: string; shopName: string; phone: string }) => {
-    if (!user) {
-      const newUser: User = {
-        id: `user_${Date.now()}`,
-        name: data.name,
-        role: "seller",
-        createdAt: new Date().toISOString(),
-      };
-      setUser(newUser);
-      localStorage.setItem("keyzaa_user", JSON.stringify(newUser));
-
-      const newSeller: Seller = {
-        id: `sel_${Date.now()}`,
-        userId: newUser.id,
-        shopName: data.shopName,
-        phone: data.phone,
-        rating: 0,
-        salesCount: 0,
-        balance: 0,
-        pendingBalance: 0,
-        createdAt: new Date().toISOString(),
-      };
-      newUser.sellerId = newSeller.id;
-      localStorage.setItem("keyzaa_user", JSON.stringify(newUser));
-      setSeller(newSeller);
-      localStorage.setItem("keyzaa_seller", JSON.stringify(newSeller));
-      setIsSellerMode(true);
+  useEffect(() => {
+    if (!user?.sellerId) {
+      setSeller(null);
+      sellerIdRef.current = null;
       return;
     }
+    if (user.sellerId !== sellerIdRef.current) {
+      sellerIdRef.current = user.sellerId;
+      fetchSeller(user.sellerId);
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+  }, [user?.sellerId]);
 
-    const newSeller: Seller = {
-      id: `sel_${Date.now()}`,
-      userId: user.id,
-      shopName: data.shopName,
-      phone: data.phone,
-      rating: 0,
-      salesCount: 0,
-      balance: 0,
-      pendingBalance: 0,
-      createdAt: new Date().toISOString(),
-    };
-    const updatedUser: User = { ...user, role: user.role === "buyer" ? "both" : user.role, sellerId: newSeller.id };
-    setUser(updatedUser);
-    setSeller(newSeller);
+  const login = async (email: string, password: string) => {
+    const res = await signIn("credentials", {
+      email,
+      password,
+      redirect: false,
+    });
+
+    if (res?.error) {
+      throw new Error(res.error);
+    }
+  };
+
+  const register = async (name: string, email: string, password: string) => {
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, password }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || "Registration failed");
+    }
+
+    const data = await res.json();
+    setToken(data.token);
+    await updateSession();
+  };
+
+  const registerSeller = async (data: { shopName: string; phone: string }) => {
+    const token = getToken();
+    if (!token) throw new Error("Not authenticated");
+
+    const res = await fetch("/api/seller/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!res.ok) {
+      const resData = await res.json();
+      throw new Error(resData.error || "Seller registration failed");
+    }
+
+    const resData = await res.json();
+    setSeller(resData.seller);
     setIsSellerMode(true);
-    localStorage.setItem("keyzaa_user", JSON.stringify(updatedUser));
-    localStorage.setItem("keyzaa_seller", JSON.stringify(newSeller));
+    await updateSession();
   };
 
   const updateSeller = (data: Partial<Seller>) => {
-    if (!seller) return;
-    const updated = { ...seller, ...data };
-    setSeller(updated);
-    localStorage.setItem("keyzaa_seller", JSON.stringify(updated));
+    setSeller((prev) => prev ? { ...prev, ...data } : prev);
   };
 
   const toggleSellerMode = () => {
@@ -104,12 +148,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsSellerMode((prev) => !prev);
   };
 
-  const logout = () => {
-    setUser(null);
+  const logout = async () => {
+    clearToken();
     setSeller(null);
     setIsSellerMode(false);
-    localStorage.removeItem("keyzaa_user");
-    localStorage.removeItem("keyzaa_seller");
+    await nextAuthSignOut({ redirect: false });
   };
 
   return (
@@ -119,7 +162,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         seller,
         isSellerMode,
         isRegisteredSeller: !!seller,
+        loading,
         login,
+        register,
         logout,
         registerSeller,
         toggleSellerMode,

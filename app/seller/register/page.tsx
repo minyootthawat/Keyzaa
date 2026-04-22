@@ -10,24 +10,34 @@ export default function SellerRegisterPage() {
   const router = useRouter();
   const { registerSeller, isRegisteredSeller } = useAuth();
   const { t } = useLanguage();
-  const [name, setName] = useState("");
   const [shopName, setShopName] = useState("");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   if (isRegisteredSeller) {
     router.push("/seller/dashboard");
     return null;
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !shopName.trim() || !phone.trim()) {
+    if (!shopName.trim() || !phone.trim()) {
       setError(t("register_required"));
       return;
     }
-    registerSeller({ name: name.trim(), shopName: shopName.trim(), phone: phone.trim() });
-    router.push("/seller/dashboard");
+
+    setLoading(true);
+    setError("");
+
+    try {
+      await registerSeller({ shopName: shopName.trim(), phone: phone.trim() });
+      router.push("/seller/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -44,17 +54,6 @@ export default function SellerRegisterPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-2">
-            <label className="text-sm font-semibold text-text-subtle">{t("auth_login")} / Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="ชื่อของคุณ"
-              className="w-full rounded-xl bg-bg-surface border border-border-subtle px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:border-brand-primary focus:outline-none"
-            />
-          </div>
-
           <div className="space-y-2">
             <label className="text-sm font-semibold text-text-subtle">{t("register_shopName")}</label>
             <input
@@ -81,8 +80,8 @@ export default function SellerRegisterPage() {
             <p className="text-sm text-danger font-semibold">{error}</p>
           )}
 
-          <CTAButton type="submit" fullWidth className="h-12">
-            {t("register_submit")}
+          <CTAButton type="submit" fullWidth className="h-12" disabled={loading}>
+            {loading ? "..." : t("register_submit")}
           </CTAButton>
         </form>
       </div>

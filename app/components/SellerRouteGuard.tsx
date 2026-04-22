@@ -5,16 +5,16 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 
 export default function SellerRouteGuard({ children }: { children: React.ReactNode }) {
-  const { isRegisteredSeller } = useAuth();
+  const { isRegisteredSeller, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isRegisteredSeller) {
+    if (!loading && !isRegisteredSeller) {
       router.push("/seller/register");
     }
-  }, [isRegisteredSeller, router]);
+  }, [loading, isRegisteredSeller, router]);
 
-  if (!isRegisteredSeller) return null;
+  if (loading || !isRegisteredSeller) return null;
 
   return <>{children}</>;
 }

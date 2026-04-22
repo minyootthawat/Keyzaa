@@ -5,7 +5,7 @@ import BottomNav from "./components/BottomNav";
 import FloatingChat from "./components/FloatingChat";
 import { CartProvider } from "./context/CartContext";
 import { LanguageProvider } from "./context/LanguageContext";
-import { AuthProvider } from "./context/AuthContext";
+import { Providers } from "./components/Providers";
 
 export const metadata: Metadata = {
   title: "Keyzaa - เติมเกม & ซื้อ Gift Card ราคาถูก จัดส่งทันที",
@@ -21,14 +21,12 @@ export default function RootLayout({
     <html lang="th" className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full flex flex-col font-sans mb-16 sm:mb-0 bg-bg-subtle">
         <LanguageProvider>
-          <AuthProvider>
-            <CartProvider>
+          <Providers>
             <StickyHeader />
             <main className="flex-1 flex flex-col pt-[116px] sm:pt-[76px]">{children}</main>
             <FloatingChat />
             <BottomNav />
-          </CartProvider>
-          </AuthProvider>
+          </Providers>
         </LanguageProvider>
       </body>
     </html>
