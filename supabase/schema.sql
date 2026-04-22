@@ -100,86 +100,86 @@ alter table public.seller_ledger_entries enable row level security;
 
 -- USERS POLICIES
 drop policy if exists "Users can read own data" on public.users;
-create or replace policy "Users can read own data" on public.users for select using (auth.uid() = id);
+create policy "Users can read own data" on public.users for select using (auth.uid() = id);
 
 drop policy if exists "Users can update own data" on public.users;
-create or replace policy "Users can update own data" on public.users for update using (auth.uid() = id);
+create policy "Users can update own data" on public.users for update using (auth.uid() = id);
 
 drop policy if exists "Users can insert own data" on public.users;
-create or replace policy "Users can insert own data" on public.users for insert with check (auth.uid() = id);
+create policy "Users can insert own data" on public.users for insert with check (auth.uid() = id);
 
 drop policy if exists "Admins can read all users" on public.users;
-create or replace policy "Admins can read all users" on public.users for select using (
+create policy "Admins can read all users" on public.users for select using (
     exists (select 1 from public.users where id = auth.uid() and role = 'both')
 );
 
 -- SELLERS POLICIES
 drop policy if exists "Sellers can read own record" on public.sellers;
-create or replace policy "Sellers can read own record" on public.sellers for select using (user_id in (select id from public.users where auth.uid() = id));
+create policy "Sellers can read own record" on public.sellers for select using (user_id in (select id from public.users where auth.uid() = id));
 
 drop policy if exists "Sellers can update own record" on public.sellers;
-create or replace policy "Sellers can update own record" on public.sellers for update using (user_id in (select id from public.users where auth.uid() = id));
+create policy "Sellers can update own record" on public.sellers for update using (user_id in (select id from public.users where auth.uid() = id));
 
 drop policy if exists "Sellers can insert own record" on public.sellers;
-create or replace policy "Sellers can insert own record" on public.sellers for insert with check (user_id in (select id from public.users where auth.uid() = id));
+create policy "Sellers can insert own record" on public.sellers for insert with check (user_id in (select id from public.users where auth.uid() = id));
 
 drop policy if exists "Admins can read all sellers" on public.sellers;
-create or replace policy "Admins can read all sellers" on public.sellers for select using (
+create policy "Admins can read all sellers" on public.sellers for select using (
     exists (select 1 from public.users where id = auth.uid() and role = 'both')
 );
 
 -- PRODUCTS POLICIES
 drop policy if exists "Anyone can read active products" on public.products;
-create or replace policy "Anyone can read active products" on public.products for select using (is_active = true);
+create policy "Anyone can read active products" on public.products for select using (is_active = true);
 
 drop policy if exists "Sellers can manage own products" on public.products;
-create or replace policy "Sellers can manage own products" on public.products for all using (
+create policy "Sellers can manage own products" on public.products for all using (
     seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
 );
 
 drop policy if exists "Admins can read all products" on public.products;
-create or replace policy "Admins can read all products" on public.products for select using (
+create policy "Admins can read all products" on public.products for select using (
     exists (select 1 from public.users where id = auth.uid() and role = 'both')
 );
 
 -- ORDERS POLICIES
 drop policy if exists "Buyers can read own orders" on public.orders;
-create or replace policy "Buyers can read own orders" on public.orders for select using (buyer_id = auth.uid());
+create policy "Buyers can read own orders" on public.orders for select using (buyer_id = auth.uid());
 
 drop policy if exists "Sellers can read own orders" on public.orders;
-create or replace policy "Sellers can read own orders" on public.orders for select using (
+create policy "Sellers can read own orders" on public.orders for select using (
     seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
 );
 
 drop policy if exists "Buyers can create orders" on public.orders;
-create or replace policy "Buyers can create orders" on public.orders for insert with check (buyer_id = auth.uid());
+create policy "Buyers can create orders" on public.orders for insert with check (buyer_id = auth.uid());
 
 drop policy if exists "Buyers can update own orders" on public.orders;
-create or replace policy "Buyers can update own orders" on public.orders for update using (buyer_id = auth.uid());
+create policy "Buyers can update own orders" on public.orders for update using (buyer_id = auth.uid());
 
 drop policy if exists "Sellers can update order status" on public.orders;
-create or replace policy "Sellers can update order status" on public.orders for update using (
+create policy "Sellers can update order status" on public.orders for update using (
     seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
 );
 
 drop policy if exists "Admins can read all orders" on public.orders;
-create or replace policy "Admins can read all orders" on public.orders for select using (
+create policy "Admins can read all orders" on public.orders for select using (
     exists (select 1 from public.users where id = auth.uid() and role = 'both')
 );
 
 -- LEDGER POLICIES
 drop policy if exists "Sellers can read own ledger" on public.seller_ledger_entries;
-create or replace policy "Sellers can read own ledger" on public.seller_ledger_entries for select using (
+create policy "Sellers can read own ledger" on public.seller_ledger_entries for select using (
     seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
 );
 
 drop policy if exists "System can insert ledger entries" on public.seller_ledger_entries;
-create or replace policy "System can insert ledger entries" on public.seller_ledger_entries for insert with check (
+create policy "System can insert ledger entries" on public.seller_ledger_entries for insert with check (
     seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
 );
 
 drop policy if exists "Admins can read all ledger entries" on public.seller_ledger_entries;
-create or replace policy "Admins can read all ledger entries" on public.seller_ledger_entries for select using (
+create policy "Admins can read all ledger entries" on public.seller_ledger_entries for select using (
     exists (select 1 from public.users where id = auth.uid() and role = 'both')
 );
 
