@@ -1,12 +1,7 @@
 -- Keyzaa Marketplace Schema
--- Supabase PostgreSQL with RLS (Row Level Security)
-
--- Enable UUID extension
 create extension if not exists "uuid-ossp";
 
--- ============================================================
 -- USERS TABLE
--- ============================================================
 create table if not exists public.users (
     id uuid primary key default uuid_generate_v4(),
     email text unique not null,
@@ -19,13 +14,9 @@ create table if not exists public.users (
     updated_at timestamptz not null default now(),
     last_login_at timestamptz
 );
-
--- Index on email for fast lookups
 create index if not exists idx_users_email on public.users (email);
 
--- ============================================================
 -- SELLERS TABLE
--- ============================================================
 create table if not exists public.sellers (
     id uuid primary key default uuid_generate_v4(),
     user_id uuid not null references public.users(id) on delete cascade,
@@ -37,9 +28,7 @@ create table if not exists public.sellers (
     updated_at timestamptz not null default now()
 );
 
--- ============================================================
 -- PRODUCTS TABLE
--- ============================================================
 create table if not exists public.products (
     id uuid primary key default uuid_generate_v4(),
     seller_id uuid not null references public.sellers(id) on delete cascade,
@@ -53,13 +42,9 @@ create table if not exists public.products (
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
-
--- Index on seller_id for products queries
 create index if not exists idx_products_seller_id on public.products (seller_id);
 
--- ============================================================
 -- ORDERS TABLE
--- ============================================================
 create table if not exists public.orders (
     id uuid primary key default uuid_generate_v4(),
     buyer_id uuid not null references public.users(id) on delete restrict,
@@ -72,277 +57,133 @@ create table if not exists public.orders (
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
-
--- Indexes for orders
 create index if not exists idx_orders_seller_id on public.orders (seller_id);
 create index if not exists idx_orders_buyer_id on public.orders (buyer_id);
 
--- ============================================================
 -- SELLER LEDGER ENTRIES TABLE
--- ============================================================
 create table if not exists public.seller_ledger_entries (
     id uuid primary key default uuid_generate_v4(),
     seller_id uuid not null references public.sellers(id) on delete cascade,
-    type text not check (type in ('sale', 'commission_fee', 'withdrawal')),
+    type text not null check (type in ('sale', 'commission_fee', 'withdrawal')),
     amount numeric(10, 2) not null,
     order_id uuid references public.orders(id) on delete set null,
     description text,
     created_at timestamptz not null default now()
 );
-
--- Index on seller_id for ledger queries
 create index if not exists idx_seller_ledger_entries_seller_id on public.seller_ledger_entries (seller_id);
 
--- ============================================================
--- TRIGGER FUNCTIONS FOR created_at / updated_at
--- ============================================================
+-- TRIGGER FUNCTIONS
+create or replace function public.handle_updated_at() returns trigger as $$ begin new.updated_at = now(); return new; end; $$ language plpgsql;
 
--- Function to update updated_at timestamp
-create or replace function public.handle_updated_at()
-returns trigger as $$
-begin
-    new.updated_at = now();
-    return new;
-end;
-$$ language plpgsql;
-
--- Users trigger
-create or replace function public.handle_users_updated_at()
-returns trigger as $$
-begin
-    new.updated_at = now();
-    return new;
-end;
-$$ language plpgsql;
-
+create or replace function public.handle_users_updated_at() returns trigger as $$ begin new.updated_at = now(); return new; end; $$ language plpgsql;
 drop trigger if exists set_users_updated_at on public.users;
-create trigger set_users_updated_at
-    before update on public.users
-    for each row
-    execute function public.handle_users_updated_at();
+create trigger set_users_updated_at before update on public.users for each row execute function public.handle_users_updated_at();
 
--- Sellers triggers
-create or replace function public.handle_sellers_updated_at()
-returns trigger as $$
-begin
-    new.updated_at = now();
-    return new;
-end;
-$$ language plpgsql;
-
+create or replace function public.handle_sellers_updated_at() returns trigger as $$ begin new.updated_at = now(); return new; end; $$ language plpgsql;
 drop trigger if exists set_sellers_updated_at on public.sellers;
-create trigger set_sellers_updated_at
-    before update on public.sellers
-    for each row
-    execute function public.handle_sellers_updated_at();
+create trigger set_sellers_updated_at before update on public.sellers for each row execute function public.handle_sellers_updated_at();
 
--- Products triggers
-create or replace function public.handle_products_updated_at()
-returns trigger as $$
-begin
-    new.updated_at = now();
-    return new;
-end;
-$$ language plpgsql;
-
+create or replace function public.handle_products_updated_at() returns trigger as $$ begin new.updated_at = now(); return new; end; $$ language plpgsql;
 drop trigger if exists set_products_updated_at on public.products;
-create trigger set_products_updated_at
-    before update on public.products
-    for each row
-    execute function public.handle_products_updated_at();
+create trigger set_products_updated_at before update on public.products for each row execute function public.handle_products_updated_at();
 
--- Orders triggers
-create or replace function public.handle_orders_updated_at()
-returns trigger as $$
-begin
-    new.updated_at = now();
-    return new;
-end;
-$$ language plpgsql;
-
+create or replace function public.handle_orders_updated_at() returns trigger as $$ begin new.updated_at = now(); return new; end; $$ language plpgsql;
 drop trigger if exists set_orders_updated_at on public.orders;
-create trigger set_orders_updated_at
-    before update on public.orders
-    for each row
-    execute function public.handle_orders_updated_at();
+create trigger set_orders_updated_at before update on public.orders for each row execute function public.handle_orders_updated_at();
 
--- ============================================================
--- ROW LEVEL SECURITY (RLS)
--- ============================================================
-
--- Enable RLS on all tables
+-- RLS
 alter table public.users enable row level security;
 alter table public.sellers enable row level security;
 alter table public.products enable row level security;
 alter table public.orders enable row level security;
 alter table public.seller_ledger_entries enable row level security;
 
--- ============================================================
 -- USERS POLICIES
--- ============================================================
-
 drop policy if exists "Users can read own data" on public.users;
-create policy "Users can read own data"
-    on public.users for select
-    using (auth.uid() = id);
+create or replace policy "Users can read own data" on public.users for select using (auth.uid() = id);
 
 drop policy if exists "Users can update own data" on public.users;
-create policy "Users can update own data"
-    on public.users for update
-    using (auth.uid() = id);
+create or replace policy "Users can update own data" on public.users for update using (auth.uid() = id);
 
 drop policy if exists "Users can insert own data" on public.users;
-create policy "Users can insert own data"
-    on public.users for insert
-    with check (auth.uid() = id);
-
--- ============================================================
--- SELLERS POLICIES
--- ============================================================
-
-drop policy if exists "Sellers can read own record" on public.sellers;
-create policy "Sellers can read own record"
-    on public.sellers for select
-    using (user_id in (
-        select id from public.users where auth.uid() = id
-    ));
-
-drop policy if exists "Sellers can update own record" on public.sellers;
-create policy "Sellers can update own record"
-    on public.sellers for update
-    using (user_id in (
-        select id from public.users where auth.uid() = id
-    ));
-
-drop policy if exists "Sellers can insert own record" on public.sellers;
-create policy "Sellers can insert own record"
-    on public.sellers for insert
-    with check (user_id in (
-        select id from public.users where auth.uid() = id
-    ));
-
--- ============================================================
--- PRODUCTS POLICIES
--- ============================================================
-
-drop policy if exists "Anyone can read active products" on public.products;
-create policy "Anyone can read active products"
-    on public.products for select
-    using (is_active = true);
-
-drop policy if exists "Sellers can manage own products" on public.products;
-create policy "Sellers can manage own products"
-    on public.products for all
-    using (seller_id in (
-        select s.id from public.sellers s
-        inner join public.users u on s.user_id = u.id
-        where u.id = auth.uid()
-    ));
-
--- ============================================================
--- ORDERS POLICIES
--- ============================================================
-
-drop policy if exists "Buyers can read own orders" on public.orders;
-create policy "Buyers can read own orders"
-    on public.orders for select
-    using (buyer_id = auth.uid());
-
-drop policy if exists "Sellers can read own orders" on public.orders;
-create policy "Sellers can read own orders"
-    on public.orders for select
-    using (seller_id in (
-        select s.id from public.sellers s
-        inner join public.users u on s.user_id = u.id
-        where u.id = auth.uid()
-    ));
-
-drop policy if exists "Buyers can create orders" on public.orders;
-create policy "Buyers can create orders"
-    on public.orders for insert
-    with check (buyer_id = auth.uid());
-
-drop policy if exists "Buyers can update own orders" on public.orders;
-create policy "Buyers can update own orders"
-    on public.orders for update
-    using (buyer_id = auth.uid());
-
-drop policy if exists "Sellers can update order status" on public.orders;
-create policy "Sellers can update order status"
-    on public.orders for update
-    using (seller_id in (
-        select s.id from public.sellers s
-        inner join public.users u on s.user_id = u.id
-        where u.id = auth.uid()
-    ));
-
--- ============================================================
--- SELLER LEDGER ENTRIES POLICIES
--- ============================================================
-
-drop policy if exists "Sellers can read own ledger" on public.seller_ledger_entries;
-create policy "Sellers can read own ledger"
-    on public.seller_ledger_entries for select
-    using (seller_id in (
-        select s.id from public.sellers s
-        inner join public.users u on s.user_id = u.id
-        where u.id = auth.uid()
-    ));
-
-drop policy if exists "System can insert ledger entries" on public.seller_ledger_entries;
-create policy "System can insert ledger entries"
-    on public.seller_ledger_entries for insert
-    with check (seller_id in (
-        select s.id from public.sellers s
-        inner join public.users u on s.user_id = u.id
-        where u.id = auth.uid()
-    ));
-
--- ============================================================
--- ADMIN POLICIES
--- ============================================================
-
--- Admin role check function
-create or replace function public.is_admin()
-returns boolean as $$
-begin
-    return exists (
-        select 1 from public.users
-        where id = auth.uid() and role = 'both'
-    );
-end;
-$$ language plpgsql security definer;
+create or replace policy "Users can insert own data" on public.users for insert with check (auth.uid() = id);
 
 drop policy if exists "Admins can read all users" on public.users;
-create policy "Admins can read all users"
-    on public.users for select
-    using (public.is_admin());
+create or replace policy "Admins can read all users" on public.users for select using (
+    exists (select 1 from public.users where id = auth.uid() and role = 'both')
+);
+
+-- SELLERS POLICIES
+drop policy if exists "Sellers can read own record" on public.sellers;
+create or replace policy "Sellers can read own record" on public.sellers for select using (user_id in (select id from public.users where auth.uid() = id));
+
+drop policy if exists "Sellers can update own record" on public.sellers;
+create or replace policy "Sellers can update own record" on public.sellers for update using (user_id in (select id from public.users where auth.uid() = id));
+
+drop policy if exists "Sellers can insert own record" on public.sellers;
+create or replace policy "Sellers can insert own record" on public.sellers for insert with check (user_id in (select id from public.users where auth.uid() = id));
 
 drop policy if exists "Admins can read all sellers" on public.sellers;
-create policy "Admins can read all sellers"
-    on public.sellers for select
-    using (public.is_admin());
+create or replace policy "Admins can read all sellers" on public.sellers for select using (
+    exists (select 1 from public.users where id = auth.uid() and role = 'both')
+);
+
+-- PRODUCTS POLICIES
+drop policy if exists "Anyone can read active products" on public.products;
+create or replace policy "Anyone can read active products" on public.products for select using (is_active = true);
+
+drop policy if exists "Sellers can manage own products" on public.products;
+create or replace policy "Sellers can manage own products" on public.products for all using (
+    seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
+);
 
 drop policy if exists "Admins can read all products" on public.products;
-create policy "Admins can read all products"
-    on public.products for select
-    using (public.is_admin());
+create or replace policy "Admins can read all products" on public.products for select using (
+    exists (select 1 from public.users where id = auth.uid() and role = 'both')
+);
+
+-- ORDERS POLICIES
+drop policy if exists "Buyers can read own orders" on public.orders;
+create or replace policy "Buyers can read own orders" on public.orders for select using (buyer_id = auth.uid());
+
+drop policy if exists "Sellers can read own orders" on public.orders;
+create or replace policy "Sellers can read own orders" on public.orders for select using (
+    seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
+);
+
+drop policy if exists "Buyers can create orders" on public.orders;
+create or replace policy "Buyers can create orders" on public.orders for insert with check (buyer_id = auth.uid());
+
+drop policy if exists "Buyers can update own orders" on public.orders;
+create or replace policy "Buyers can update own orders" on public.orders for update using (buyer_id = auth.uid());
+
+drop policy if exists "Sellers can update order status" on public.orders;
+create or replace policy "Sellers can update order status" on public.orders for update using (
+    seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
+);
 
 drop policy if exists "Admins can read all orders" on public.orders;
-create policy "Admins can read all orders"
-    on public.orders for select
-    using (public.is_admin());
+create or replace policy "Admins can read all orders" on public.orders for select using (
+    exists (select 1 from public.users where id = auth.uid() and role = 'both')
+);
+
+-- LEDGER POLICIES
+drop policy if exists "Sellers can read own ledger" on public.seller_ledger_entries;
+create or replace policy "Sellers can read own ledger" on public.seller_ledger_entries for select using (
+    seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
+);
+
+drop policy if exists "System can insert ledger entries" on public.seller_ledger_entries;
+create or replace policy "System can insert ledger entries" on public.seller_ledger_entries for insert with check (
+    seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
+);
 
 drop policy if exists "Admins can read all ledger entries" on public.seller_ledger_entries;
-create policy "Admins can read all ledger entries"
-    on public.seller_ledger_entries for select
-    using (public.is_admin());
+create or replace policy "Admins can read all ledger entries" on public.seller_ledger_entries for select using (
+    exists (select 1 from public.users where id = auth.uid() and role = 'both')
+);
 
--- ============================================================
 -- UTILITY FUNCTIONS
--- ============================================================
-
--- Function to get seller's current balance from ledger
 create or replace function public.get_seller_balance(seller_uuid uuid)
 returns numeric(10, 2) as $$
 declare
@@ -350,48 +191,22 @@ declare
     total_fees numeric(10, 2);
     total_withdrawals numeric(10, 2);
 begin
-    select coalesce(sum(amount), 0) into total_sales
-    from public.seller_ledger_entries
-    where seller_id = seller_uuid and type = 'sale';
-
-    select coalesce(sum(amount), 0) into total_fees
-    from public.seller_ledger_entries
-    where seller_id = seller_uuid and type = 'commission_fee';
-
-    select coalesce(sum(amount), 0) into total_withdrawals
-    from public.seller_ledger_entries
-    where seller_id = seller_uuid and type = 'withdrawal';
-
+    select coalesce(sum(amount), 0) into total_sales from public.seller_ledger_entries where seller_id = seller_uuid and type = 'sale';
+    select coalesce(sum(amount), 0) into total_fees from public.seller_ledger_entries where seller_id = seller_uuid and type = 'commission_fee';
+    select coalesce(sum(amount), 0) into total_withdrawals from public.seller_ledger_entries where seller_id = seller_uuid and type = 'withdrawal';
     return total_sales - total_fees - total_withdrawals;
 end;
 $$ language plpgsql security definer;
 
--- Function to record a sale (creates ledger entry and updates order status)
-create or replace function public.record_sale(
-    order_uuid uuid,
-    commission_amount numeric(10, 2)
-)
+create or replace function public.record_sale(order_uuid uuid, commission_amount numeric(10, 2))
 returns void as $$
-declare
-    v_seller_id uuid;
-    v_total_price numeric(10, 2);
+declare v_seller_id uuid; v_total_price numeric(10, 2);
 begin
-    -- Get order details
-    select seller_id, total_price into v_seller_id, v_total_price
-    from public.orders
-    where id = order_uuid;
-
-    -- Record sale entry
+    select seller_id, total_price into v_seller_id, v_total_price from public.orders where id = order_uuid;
     insert into public.seller_ledger_entries (seller_id, type, amount, order_id, description)
     values (v_seller_id, 'sale', v_total_price, order_uuid, 'Sale from order ' || order_uuid::text);
-
-    -- Record commission fee entry
     insert into public.seller_ledger_entries (seller_id, type, amount, order_id, description)
     values (v_seller_id, 'commission_fee', commission_amount, order_uuid, 'Commission fee for order ' || order_uuid::text);
-
-    -- Update order status to completed
-    update public.orders
-    set status = 'completed', updated_at = now()
-    where id = order_uuid;
+    update public.orders set status = 'completed', updated_at = now() where id = order_uuid;
 end;
 $$ language plpgsql security definer;
