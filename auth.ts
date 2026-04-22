@@ -16,11 +16,21 @@ import type { Adapter } from "next-auth/adapters";
 
 type UserRole = "buyer" | "seller" | "both";
 
+// Lazy adapter — only created when env vars are available (not at module load)
+function getAdapter(): Adapter | undefined {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    return undefined;
+  }
+  return SupabaseAdapter({
+    url: supabaseUrl,
+    secret: serviceRoleKey,
+  }) as Adapter;
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: SupabaseAdapter({
-    url: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    secret: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  }) as Adapter,
+  adapter: getAdapter(),
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
