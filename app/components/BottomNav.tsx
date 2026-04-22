@@ -18,7 +18,7 @@ interface NavItem {
 export default function BottomNav() {
   const pathname = usePathname();
   const { totalItems } = useCart();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { isRegisteredSeller } = useAuth();
   const isClient = useSyncExternalStore(
     () => () => {},
@@ -26,6 +26,7 @@ export default function BottomNav() {
     () => false
   );
   const isSellerRoute = pathname?.startsWith("/seller") ?? false;
+  const isAdminRoute = pathname?.startsWith("/admin") ?? false;
 
   const buyerNavItems: NavItem[] = [
     {
@@ -134,7 +135,50 @@ export default function BottomNav() {
     },
   ];
 
-  const navItems = isSellerRoute ? sellerNavItems : buyerNavItems;
+  const adminNavItems: NavItem[] = [
+    {
+      id: "admin-overview",
+      label: "Admin",
+      href: "/admin/dashboard",
+      icon: (
+        <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3h16.5v4.5H3.75zM3.75 9.75h7.5v10.5h-7.5zM13.5 9.75h6.75v4.5H13.5zM13.5 16.5h6.75v3.75H13.5z" />
+        </svg>
+      ),
+    },
+    {
+      id: "admin-orders",
+      label: lang === "th" ? "ออเดอร์" : "Orders",
+      href: "/admin/dashboard",
+      icon: (
+        <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6M9 16h6M5.25 5.25h13.5a1.5 1.5 0 0 1 1.5 1.5v10.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5V6.75a1.5 1.5 0 0 1 1.5-1.5z" />
+        </svg>
+      ),
+    },
+    {
+      id: "admin-sellers",
+      label: lang === "th" ? "ผู้ขาย" : "Sellers",
+      href: "/admin/dashboard",
+      icon: (
+        <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5V4H2v16h5m10 0v-8H7v8m10 0H7" />
+        </svg>
+      ),
+    },
+    {
+      id: "admin-store",
+      label: t("common_home"),
+      href: "/",
+      icon: (
+        <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+        </svg>
+      ),
+    },
+  ];
+
+  const navItems = isAdminRoute ? adminNavItems : isSellerRoute ? sellerNavItems : buyerNavItems;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border-subtle bg-bg-base/80 pb-safe backdrop-blur-xl sm:hidden">

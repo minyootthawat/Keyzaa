@@ -24,6 +24,7 @@ export default function StickyHeader() {
     () => false
   );
   const isSellerRoute = pathname?.startsWith("/seller") ?? false;
+  const isAdminRoute = pathname?.startsWith("/admin") ?? false;
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
@@ -42,7 +43,7 @@ export default function StickyHeader() {
       >
         <div className="section-container flex items-center justify-between gap-4 py-3">
           <Link
-            href={isSellerRoute ? "/seller/dashboard" : "/"}
+            href={isSellerRoute ? "/seller/dashboard" : isAdminRoute ? "/admin/dashboard" : "/"}
             className="flex items-center gap-2.5 shrink-0 group rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-brand-tertiary/20 bg-linear-to-br from-brand-primary to-brand-secondary text-white font-bold text-lg shadow-lg shadow-brand-primary/20 group-hover:shadow-brand-primary/35 transition-shadow">
@@ -51,12 +52,12 @@ export default function StickyHeader() {
             <div className="hidden sm:flex flex-col">
               <span className="text-xl font-black tracking-tight text-gradient-brand">Keyzaa</span>
               <span className="text-[11px] font-semibold tracking-[0.14em] uppercase text-text-muted">
-                {isSellerRoute ? t("seller_panel") : t("common_trustedDelivery")}
+                {isSellerRoute ? t("seller_panel") : isAdminRoute ? "Admin" : t("common_trustedDelivery")}
               </span>
             </div>
           </Link>
 
-          {!isSellerRoute ? (
+          {!isSellerRoute && !isAdminRoute ? (
           <div className="relative mx-4 hidden max-w-2xl flex-1 sm:block">
             <div
               className={`flex items-center gap-2.5 rounded-2xl border transition-all duration-200 px-4 py-2.5 ${
@@ -84,10 +85,10 @@ export default function StickyHeader() {
                 href="/"
                 className="rounded-xl border border-border-subtle bg-bg-surface/70 px-4 py-2.5 text-sm font-semibold text-text-subtle transition-colors hover:border-border-main hover:text-text-main"
               >
-                {t("seller_switchToBuyer")}
+                {isAdminRoute ? "Storefront" : t("seller_switchToBuyer")}
               </Link>
               <div className="rounded-xl border border-accent/18 bg-accent/8 px-4 py-2.5 text-sm font-semibold text-accent">
-                {t("seller_myShop")}
+                {isAdminRoute ? "Platform control" : t("seller_myShop")}
               </div>
             </div>
           )}
@@ -95,7 +96,7 @@ export default function StickyHeader() {
           <div className="flex items-center gap-1.5 shrink-0">
             <div className="hidden lg:flex items-center gap-2 rounded-full border border-accent/18 bg-accent/8 px-3 py-2 text-[11px] font-semibold tracking-[0.12em] uppercase text-accent">
               <span className="h-2 w-2 rounded-full bg-accent" />
-              {isSellerRoute ? t("seller_overview") : t("common_verifiedSellers")}
+              {isSellerRoute ? t("seller_overview") : isAdminRoute ? "Central platform" : t("common_verifiedSellers")}
             </div>
             <button
               onClick={toggleLang}
@@ -104,7 +105,7 @@ export default function StickyHeader() {
             >
               {lang === "th" ? "TH" : "EN"}
             </button>
-            {!isSellerRoute ? (
+            {!isSellerRoute && !isAdminRoute ? (
               <button
                 onClick={() => setShowCartDialog(true)}
                 aria-label={t("common_openCart")}
@@ -129,7 +130,7 @@ export default function StickyHeader() {
                 <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3h16.5v4.5H3.75zM3.75 9.75h7.5v10.5h-7.5zM13.5 9.75h6.75v4.5H13.5zM13.5 16.5h6.75v3.75H13.5z" />
                 </svg>
-                <span>{isSellerRoute ? t("seller_overview") : t("seller_myShop")}</span>
+                <span>{isSellerRoute ? t("seller_overview") : isAdminRoute ? "Admin" : t("seller_myShop")}</span>
               </Link>
             ) : null}
             <button
@@ -150,7 +151,7 @@ export default function StickyHeader() {
           </div>
         </div>
 
-        {!isSellerRoute ? (
+        {!isSellerRoute && !isAdminRoute ? (
         <div className="sm:hidden px-4 pb-3 w-full">
           <div
             className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-all ${
