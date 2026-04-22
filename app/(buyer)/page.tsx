@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import Badge from "./components/Badge";
-import CTAButton from "./components/CTAButton";
-import PriceTag from "./components/PriceTag";
+import Badge from "@/app/components/Badge";
+import CTAButton from "@/app/components/CTAButton";
+import PriceTag from "@/app/components/PriceTag";
 import products from "@/data/products.json";
-import { useLanguage } from "./context/LanguageContext";
+import { useLanguage } from "@/app/context/LanguageContext";
 
 const categoryIcons: Record<string, string> = {
   "เติมเกม": `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="m12 12 4.5 3.5"/><path d="m7.5 9.5 3-3"/><circle cx="17" cy="10" r="1"/><circle cx="7" cy="10" r="1"/></svg>`,

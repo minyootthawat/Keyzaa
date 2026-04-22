@@ -1,4 +1,6 @@
 // User & Auth
+import type { AdminPermission, AdminRole } from "@/lib/auth/admin";
+
 export type UserRole = "buyer" | "seller" | "both";
 
 export interface User {
@@ -7,6 +9,9 @@ export interface User {
   name: string;
   role: UserRole;
   sellerId?: string | null;
+  isAdmin?: boolean;
+  adminRole?: AdminRole | null;
+  adminPermissions?: AdminPermission[];
   createdAt: string;
 }
 

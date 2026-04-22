@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Noto_Sans_Thai } from "next/font/google";
 import "./globals.css";
-import StickyHeader from "./components/StickyHeader";
-import BottomNav from "./components/BottomNav";
-import FloatingChat from "./components/FloatingChat";
 import { LanguageProvider } from "./context/LanguageContext";
 import { Providers } from "./components/Providers";
 
@@ -35,13 +32,10 @@ export default function RootLayout({
       className={`${inter.variable} ${notoSansThai.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col font-sans mb-16 sm:mb-0 bg-bg-subtle">
+      <body className="min-h-full flex flex-col font-sans bg-bg-subtle">
         <LanguageProvider>
           <Providers>
-            <StickyHeader />
-            <main className="flex-1 flex flex-col pt-[116px] sm:pt-[76px]">{children}</main>
-            <FloatingChat />
-            <BottomNav />
+            {children}
           </Providers>
         </LanguageProvider>
       </body>
