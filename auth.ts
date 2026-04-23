@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { type User } from "next-auth";
 import Google from "next-auth/providers/google";
 import Facebook from "next-auth/providers/facebook";
 import LineProvider from "next-auth/providers/line";
@@ -12,7 +12,10 @@ import {
   updateUser,
   updateUserLastLogin,
 } from "@/lib/db/supabase";
+import { getAdminAccessForEmail } from "@/lib/auth/admin";
 import type { Adapter } from "next-auth/adapters";
+
+import type { AdminRole, AdminPermission } from "@/lib/auth/admin";
 
 type UserRole = "buyer" | "seller" | "both";
 
@@ -69,13 +72,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // Update last login
         await updateUserLastLogin(user.id);
 
-        return {
+        // Get admin access
+        const adminAccess = getAdminAccessForEmail(user.email);
+
+        const result: User = {
           id: user.id,
           name: user.name,
           email: user.email,
           role: (user as { role?: UserRole }).role,
           sellerId: (user as { sellerId?: string }).sellerId || undefined,
+          isAdmin: adminAccess.isAdmin,
+          adminRole: (adminAccess.adminRole ?? undefined) as string | undefined,
+          adminPermissions: adminAccess.permissions,
         };
+        return result;
       },
     }),
   ],
@@ -134,18 +144,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        const extUser = user as { role?: UserRole; sellerId?: string };
+        const extUser = user as { role?: UserRole; sellerId?: string; isAdmin?: boolean; adminRole?: string; adminPermissions?: string[] };
         token.role = extUser.role;
         token.sellerId = extUser.sellerId;
+        token.isAdmin = extUser.isAdmin;
+        token.adminRole = extUser.adminRole;
+        token.adminPermissions = extUser.adminPermissions;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
-        const extSession = session.user as { role?: UserRole; sellerId?: string };
+        const extSession = session.user as { role?: UserRole; sellerId?: string; isAdmin?: boolean; adminRole?: string; adminPermissions?: string[] };
         extSession.role = token.role as UserRole;
         extSession.sellerId = token.sellerId as string | undefined;
+        extSession.isAdmin = token.isAdmin as boolean | undefined;
+        extSession.adminRole = token.adminRole as string | undefined;
+        extSession.adminPermissions = token.adminPermissions as string[] | undefined;
       }
       return session;
     },
@@ -162,6 +178,9 @@ declare module "next-auth" {
   interface User {
     role?: UserRole;
     sellerId?: string;
+    isAdmin?: boolean;
+    adminRole?: string;
+    adminPermissions?: string[];
   }
   interface Session {
     user: {
@@ -171,6 +190,9 @@ declare module "next-auth" {
       image?: string | null;
       role: UserRole;
       sellerId?: string;
+      isAdmin?: boolean;
+      adminRole?: string;
+      adminPermissions?: string[];
     };
   }
 }
