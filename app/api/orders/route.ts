@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getBearerPayload } from "@/lib/auth/jwt";
 import { connectDB } from "@/lib/db/mongodb";
 import { buildLedgerEntries, calculateMarketplaceAmounts, deriveOrderState, mapOrderDocument } from "@/lib/marketplace-server";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import type { Order, OrderItem, OrderStatus, PaymentStatus, FulfillmentStatus } from "@/app/types";
 
 interface CreateOrderBody {
@@ -130,6 +131,26 @@ export async function POST(req: NextRequest) {
       };
 
       await orders.insertOne(orderDocument);
+
+      // Insert into Supabase orders table
+      const supabase = createServiceRoleClient();
+      for (const item of mappedItems) {
+        const { error: supabaseError } = await supabase.from("orders").insert({
+          id: randomUUID(),
+          buyer_id: userId,
+          seller_id: sellerId,
+          product_id: item.productId,
+          quantity: item.quantity,
+          total_price: item.price * item.quantity,
+          status: status,
+          payment_method: body.paymentMethod,
+          created_at: createdAt,
+          updated_at: createdAt,
+        });
+        if (supabaseError) {
+          console.error("Supabase order insert error:", supabaseError);
+        }
+      }
 
       const entries = buildLedgerEntries({
         sellerId,

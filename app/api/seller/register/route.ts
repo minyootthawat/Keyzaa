@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ObjectId } from "mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,56 +11,66 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { shopName, phone } = await req.json();
-    if (!shopName || !phone) {
-      return NextResponse.json(
-        { error: "Shop name and phone are required" },
-        { status: 400 }
-      );
+    const { storeName, phone } = await req.json();
+    if (!storeName || typeof storeName !== "string" || storeName.trim() === "") {
+      return NextResponse.json({ error: "Store name is required" }, { status: 400 });
+    }
+    if (!phone || typeof phone !== "string" || phone.trim() === "") {
+      return NextResponse.json({ error: "Phone is required" }, { status: 400 });
     }
 
-    const { db } = await connectDB();
-    const sellers = db.collection("sellers");
-    const users = db.collection("users");
+    const supabase = createServiceRoleClient();
 
-    const existingSeller = await sellers.findOne({ userId });
+    // Check if already registered as seller
+    const { data: existingSeller } = await supabase
+      .from("sellers")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
     if (existingSeller) {
-      return NextResponse.json(
-        { error: "Already registered as a seller" },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: "Already registered as a seller" }, { status: 409 });
     }
 
-    const now = new Date().toISOString();
-    const seller = {
-      userId,
-      shopName,
-      phone,
-      rating: 0,
-      salesCount: 0,
-      balance: 0,
-      pendingBalance: 0,
-      verificationStatus: "verified",
-      payoutStatus: "manual",
-      responseTimeMinutes: 5,
-      fulfillmentRate: 100,
-      disputeRate: 0,
-      createdAt: now,
-    };
+    // Create seller record
+    const { data: seller, error: sellerError } = await supabase
+      .from("sellers")
+      .insert({
+        user_id: userId,
+        store_name: storeName.trim(),
+        phone: phone.trim(),
+        verified: false,
+      })
+      .select()
+      .single();
 
-    const result = await sellers.insertOne(seller);
-    const sellerId = result.insertedId.toString();
+    if (sellerError) {
+      console.error("Supabase seller insert error:", sellerError);
+      return NextResponse.json({ error: "Failed to register seller" }, { status: 500 });
+    }
 
-    const newRole = "seller";
-    await users.updateOne(
-      { _id: new ObjectId(userId) },
-      { $set: { role: newRole, sellerId } }
-    );
+    // Update user role to 'seller'
+    const { error: userError } = await supabase
+      .from("users")
+      .update({ role: "seller" })
+      .eq("id", userId);
+
+    if (userError) {
+      console.error("Supabase user update error:", userError);
+      return NextResponse.json({ error: "Failed to update user role" }, { status: 500 });
+    }
 
     return NextResponse.json({
-      seller: { id: sellerId, ...seller },
-      user: { id: userId, role: newRole, sellerId },
-    });
+      seller: {
+        id: seller.id,
+        userId: seller.user_id,
+        shopName: seller.store_name,
+        phone: seller.phone,
+        verified: seller.verified,
+        createdAt: seller.created_at,
+      },
+      user: { id: userId, role: "seller" },
+    }, { status: 201 });
   } catch (error) {
     console.error("Seller register error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
-import { calculateWalletSummary } from "@/lib/marketplace-server";
-import type { SellerLedgerEntry } from "@/app/types";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,49 +11,74 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { db } = await connectDB();
-    const sellers = db.collection("sellers");
-    const ledgerEntries = db.collection("seller_ledger_entries");
+    const supabase = createServiceRoleClient();
 
-    const seller = await sellers.findOne({ userId });
+    // Get seller by user_id
+    const { data: seller, error: sellerError } = await supabase
+      .from("sellers")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (sellerError) {
+      console.error("Supabase seller lookup error:", sellerError);
+      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    }
+
     if (!seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const entries = await ledgerEntries.find({ sellerId: seller._id.toString() }).sort({ createdAt: -1 }).toArray();
-    const walletSummary = calculateWalletSummary(
-      entries.map((entry) => ({
-        id: entry._id.toString(),
-        sellerId: entry.sellerId as string,
-        orderId: entry.orderId as string | undefined,
-        type: entry.type as SellerLedgerEntry["type"],
-        amount: entry.amount as number,
-        currency: entry.currency as string,
-        createdAt: entry.createdAt as string,
-        description: entry.description as string,
-        metadata: entry.metadata as SellerLedgerEntry["metadata"],
-      }))
-    );
+    // Get ledger entries for balance calculation
+    const { data: ledgerRows } = await supabase
+      .from("seller_ledger_entries")
+      .select("type, amount")
+      .eq("seller_id", seller.id)
+      .order("created_at", { ascending: false });
+
+    let grossSales = 0;
+    let totalCommission = 0;
+    let netEarnings = 0;
+    const pendingBalance = Number(seller.pending_balance ?? 0);
+
+    if (ledgerRows) {
+      for (const entry of ledgerRows) {
+        const amount = Number(entry.amount);
+        if (entry.type === "sale") {
+          grossSales += amount;
+          netEarnings += amount;
+        } else if (entry.type === "commission_fee") {
+          totalCommission += amount;
+          netEarnings -= amount;
+        } else if (entry.type === "withdrawal") {
+          netEarnings -= amount;
+        }
+      }
+    }
 
     return NextResponse.json({
       seller: {
-        id: seller._id.toString(),
-        userId: seller.userId,
-        shopName: seller.shopName,
-        phone: seller.phone,
-        rating: seller.rating,
-        salesCount: seller.salesCount,
-        balance: walletSummary.availableBalance,
-        pendingBalance: walletSummary.pendingBalance,
-        createdAt: seller.createdAt,
-        verificationStatus: seller.verificationStatus,
-        payoutStatus: seller.payoutStatus,
-        totalGrossSales: walletSummary.grossSales,
-        totalNetEarnings: walletSummary.netEarnings,
-        totalCommissionPaid: walletSummary.totalCommission,
+        id: seller.id,
+        userId: seller.user_id,
+        shopName: seller.store_name,
+        phone: seller.phone ?? "",
+        rating: Number(seller.rating ?? 0),
+        salesCount: seller.sales_count ?? 0,
+        balance: Number(seller.balance ?? 0),
+        pendingBalance: Number(seller.pending_balance ?? 0),
+        verificationStatus: seller.verified ? "verified" : "new",
+        payoutStatus: seller.payout_status ?? "manual",
+        responseTimeMinutes: seller.response_time_minutes ?? 5,
+        fulfillmentRate: Number(seller.fulfillment_rate ?? 100),
+        disputeRate: Number(seller.dispute_rate ?? 0),
+        createdAt: seller.created_at,
+        totalGrossSales: grossSales,
+        totalNetEarnings: netEarnings,
+        totalCommissionPaid: totalCommission,
       },
     });
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    console.error("Seller me error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

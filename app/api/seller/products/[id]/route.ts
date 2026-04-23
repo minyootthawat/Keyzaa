@@ -1,39 +1,238 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ObjectId } from "mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
+import type { Product } from "@/app/types";
 
-type RouteContext = {
-  params: Promise<{ id: string }>;
-};
+interface DbProduct {
+  id: string;
+  seller_id: string;
+  name: string;
+  description: string | null;
+  category: string;
+  price: number;
+  stock: number;
+  image_url: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
-export async function DELETE(req: NextRequest, context: RouteContext) {
+function mapDbToProduct(row: DbProduct): Product {
+  return {
+    id: row.id,
+    sellerId: row.seller_id,
+    name: row.name,
+    description: row.description || "",
+    category: row.category,
+    platform: "",
+    price: Number(row.price),
+    stock: row.stock,
+    image: row.image_url || "",
+    isActive: row.is_active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function getSellerIdFromUserId(userId: string): Promise<string | null> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("sellers")
+    .select("id")
+    .eq("user_id", userId)
+    .single();
+
+  if (error || !data) return null;
+  return data.id;
+}
+
+async function getProductById(productId: string): Promise<DbProduct | null> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .eq("id", productId)
+    .single();
+
+  if (error || !data) return null;
+  return data as DbProduct;
+}
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params;
     const payload = await getBearerPayload(req);
-    const userId = typeof payload?.userId === "string" ? payload.userId : null;
+    const userId = payload?.userId as string | undefined;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await context.params;
-    const { db } = await connectDB();
-    const users = db.collection("users");
-    const products = db.collection("products");
-    const user = await users.findOne({ _id: new ObjectId(userId) });
-    const sellerId = typeof user?.sellerId === "string" ? user.sellerId : null;
-
+    const sellerId = await getSellerIdFromUserId(userId);
     if (!sellerId) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const result = await products.deleteOne({ productId: id, sellerId });
-
-    if (result.deletedCount === 0) {
+    const product = await getProductById(id);
+    if (!product) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true });
+    if (product.seller_id !== sellerId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    return NextResponse.json({ product: mapDbToProduct(product) });
+  } catch (error) {
+    console.error("Seller product get error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const payload = await getBearerPayload(req);
+    const userId = payload?.userId as string | undefined;
+
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const sellerId = await getSellerIdFromUserId(userId);
+    if (!sellerId) {
+      return NextResponse.json({ error: "Seller not found" }, { status: 404 });
+    }
+
+    const product = await getProductById(id);
+    if (!product) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    }
+
+    if (product.seller_id !== sellerId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const body = await req.json();
+    const updates: Partial<{
+      name: string;
+      description: string | null;
+      category: string;
+      price: number;
+      stock: number;
+      image_url: string | null;
+      is_active: boolean;
+    }> = {};
+
+    if (body.name !== undefined) {
+      if (typeof body.name !== "string" || body.name.trim() === "") {
+        return NextResponse.json({ error: "Name cannot be empty" }, { status: 400 });
+      }
+      updates.name = body.name.trim();
+    }
+
+    if (body.description !== undefined) {
+      updates.description = body.description === "" ? null : body.description;
+    }
+
+    if (body.category !== undefined) {
+      if (typeof body.category !== "string" || body.category.trim() === "") {
+        return NextResponse.json({ error: "Category cannot be empty" }, { status: 400 });
+      }
+      updates.category = body.category.trim();
+    }
+
+    if (body.price !== undefined) {
+      if (typeof body.price !== "number" || body.price <= 0) {
+        return NextResponse.json({ error: "Price must be a number greater than 0" }, { status: 400 });
+      }
+      updates.price = body.price;
+    }
+
+    if (body.stock !== undefined) {
+      if (typeof body.stock !== "number" || body.stock < 0) {
+        return NextResponse.json({ error: "Stock must be a number of 0 or greater" }, { status: 400 });
+      }
+      updates.stock = body.stock;
+    }
+
+    if (body.image !== undefined) {
+      updates.image_url = body.image === "" ? null : body.image;
+    }
+
+    if (body.isActive !== undefined) {
+      updates.is_active = Boolean(body.isActive);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+    }
+
+    const supabase = createServiceRoleClient();
+    const { data, error } = await supabase
+      .from("products")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Supabase update error:", error);
+      return NextResponse.json({ error: "Failed to update product" }, { status: 500 });
+    }
+
+    return NextResponse.json({ product: mapDbToProduct(data as DbProduct) });
+  } catch (error) {
+    console.error("Seller product update error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const payload = await getBearerPayload(req);
+    const userId = payload?.userId as string | undefined;
+
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const sellerId = await getSellerIdFromUserId(userId);
+    if (!sellerId) {
+      return NextResponse.json({ error: "Seller not found" }, { status: 404 });
+    }
+
+    const product = await getProductById(id);
+    if (!product) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    }
+
+    if (product.seller_id !== sellerId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const supabase = createServiceRoleClient();
+    const { error } = await supabase
+      .from("products")
+      .update({ is_active: false })
+      .eq("id", id);
+
+    if (error) {
+      console.error("Supabase soft delete error:", error);
+      return NextResponse.json({ error: "Failed to delete product" }, { status: 500 });
+    }
+
+    return new NextResponse(null, { status: 204 });
   } catch (error) {
     console.error("Seller product delete error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

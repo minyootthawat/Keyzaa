@@ -3,12 +3,34 @@ import Google from "next-auth/providers/google";
 import Facebook from "next-auth/providers/facebook";
 import LineProvider from "next-auth/providers/line";
 import Credentials from "next-auth/providers/credentials";
+import { SupabaseAdapter } from "@auth/supabase-adapter";
 import bcrypt from "bcryptjs";
-import { connectDB } from "@/lib/db/mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import {
+  findUserByEmail,
+  createUser,
+  updateUser,
+  updateUserLastLogin,
+} from "@/lib/db/supabase";
+import type { Adapter } from "next-auth/adapters";
 
 type UserRole = "buyer" | "seller" | "both";
 
+// Lazy adapter — only created when env vars are available (not at module load)
+function getAdapter(): Adapter | undefined {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    return undefined;
+  }
+  return SupabaseAdapter({
+    url: supabaseUrl,
+    secret: serviceRoleKey,
+  }) as Adapter;
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  adapter: getAdapter(),
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -31,57 +53,80 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const { db } = await connectDB();
-        const users = db.collection("users");
+        const user = await findUserByEmail(credentials.email as string);
+        if (!user) return null;
 
-        const user = await users.findOne({ email: (credentials.email as string).toLowerCase() });
-        if (!user || !user.passwordHash) return null;
+        // Check if user has a password set (social users may not)
+        const passwordHash = (user as unknown as { passwordHash?: string }).passwordHash;
+        if (!passwordHash) return null;
 
-        const validPassword = await bcrypt.compare(credentials.password as string, user.passwordHash);
+        const validPassword = await bcrypt.compare(
+          credentials.password as string,
+          passwordHash
+        );
         if (!validPassword) return null;
 
+        // Update last login
+        await updateUserLastLogin(user.id);
+
         return {
-          id: user._id.toString(),
+          id: user.id,
           name: user.name,
           email: user.email,
           role: user.role,
-          sellerId: user.sellerId,
+          sellerId: user.sellerId || undefined,
         };
       },
     }),
   ],
   callbacks: {
-    async signIn({ user: socialUser, account }) {
+    async signIn({ user: socialUser, account, profile }) {
       if (!socialUser?.email) return false;
-      if (account?.provider !== "google" && account?.provider !== "facebook" && account?.provider !== "line") return true;
+      if (
+        account?.provider !== "google" &&
+        account?.provider !== "facebook" &&
+        account?.provider !== "line"
+      )
+        return true;
 
-      const { db } = await connectDB();
-      const users = db.collection("users");
-
+      const supabaseAdmin = createServiceRoleClient();
       const email = socialUser.email.toLowerCase();
-      const existingUser = await users.findOne({ email });
 
+      // Upsert user into auth.users via Admin API
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const adminApi = supabaseAdmin.auth.admin as any;
+      const { data: authUser, error: authError } = await adminApi.createUser({
+        id: socialUser.id || undefined,
+        email,
+        name: socialUser.name || "User",
+        email_confirm: true,
+        user_metadata: {
+          provider: account.provider,
+          provider_id: account.providerAccountId,
+        },
+      });
+
+      if (authError) {
+        console.error("Supabase auth upsert error:", authError);
+        return false;
+      }
+
+      // Upsert user into public.users table
+      const existingUser = await findUserByEmail(email);
       if (existingUser) {
-        await users.updateOne(
-          { _id: existingUser._id },
-          { $set: { provider: account.provider, providerId: account.providerAccountId } }
-        );
-        socialUser.id = existingUser._id.toString();
-        const extUser = socialUser as { role?: UserRole; sellerId?: string; id: string };
-        extUser.role = existingUser.role;
-        extUser.sellerId = existingUser.sellerId;
-      } else {
-        const now = new Date().toISOString();
-        const newUser = {
-          name: socialUser.name || "User",
-          email,
-          role: "buyer" as UserRole,
+        await updateUser(existingUser.id, {
           provider: account.provider,
           providerId: account.providerAccountId,
-          createdAt: now,
-        };
-        const result = await users.insertOne(newUser);
-        socialUser.id = result.insertedId.toString();
+          lastLoginAt: new Date().toISOString(),
+        });
+      } else {
+        await createUser({
+          email,
+          name: socialUser.name || "User",
+          provider: account.provider,
+          providerId: account.providerAccountId,
+          role: "buyer",
+        });
       }
 
       return true;

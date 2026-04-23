@@ -1,97 +1,93 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ObjectId } from "mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
-import { getStaticProductsBySellerId } from "@/lib/marketplace-server";
-import type { Product, ProductListingStatus } from "@/app/types";
+import type { Product } from "@/app/types";
 
-function mapProduct(document: {
-  _id?: { toString: () => string };
-  productId?: string;
-  title: string;
-  nameTh: string;
-  nameEn: string;
-  image: string;
-  price: number;
-  originalPrice: number;
-  discount: number;
-  badge?: string;
+interface DbProduct {
+  id: string;
+  seller_id: string;
+  name: string;
+  description: string | null;
   category: string;
-  platform: string;
-  sellerId: string;
+  price: number;
   stock: number;
-  soldCount: number;
-  isActive: boolean;
-  listingStatus?: ProductListingStatus;
-  currency?: string;
-  marketplaceType?: "seller_owned";
-  regionCode?: string;
-  regionLabelTh?: string;
-  regionLabelEn?: string;
-  deliverySlaMinutes?: number;
-  deliveryLabelTh?: string;
-  deliveryLabelEn?: string;
-  activationMethodTh?: string;
-  activationMethodEn?: string;
-}): Product {
+  image_url: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapDbToProduct(row: DbProduct): Product {
   return {
-    id: document.productId || document._id?.toString() || "",
-    title: document.title,
-    nameTh: document.nameTh,
-    nameEn: document.nameEn,
-    image: document.image,
-    price: document.price,
-    originalPrice: document.originalPrice,
-    discount: document.discount,
-    badge: document.badge,
-    category: document.category,
-    platform: document.platform,
-    sellerId: document.sellerId,
-    stock: document.stock,
-    soldCount: document.soldCount,
-    isActive: document.isActive,
-    listingStatus: document.listingStatus || "active",
-    currency: document.currency || "THB",
-    marketplaceType: document.marketplaceType || "seller_owned",
-    regionCode: document.regionCode,
-    regionLabelTh: document.regionLabelTh,
-    regionLabelEn: document.regionLabelEn,
-    deliverySlaMinutes: document.deliverySlaMinutes,
-    deliveryLabelTh: document.deliveryLabelTh,
-    deliveryLabelEn: document.deliveryLabelEn,
-    activationMethodTh: document.activationMethodTh,
-    activationMethodEn: document.activationMethodEn,
+    id: row.id,
+    sellerId: row.seller_id,
+    name: row.name,
+    description: row.description || "",
+    category: row.category,
+    platform: "", // Not in schema
+    price: Number(row.price),
+    stock: row.stock,
+    image: row.image_url || "",
+    isActive: row.is_active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
+}
+
+async function getSellerIdFromUserId(userId: string): Promise<string | null> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("sellers")
+    .select("id, verified")
+    .eq("user_id", userId)
+    .single();
+
+  if (error || !data) return null;
+  return data.id;
+}
+
+async function getSellerVerificationStatus(sellerId: string): Promise<boolean> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("sellers")
+    .select("verified")
+    .eq("id", sellerId)
+    .single();
+
+  if (error || !data) return false;
+  return data.verified === true;
 }
 
 export async function GET(req: NextRequest) {
   try {
     const payload = await getBearerPayload(req);
-    const userId = typeof payload?.userId === "string" ? payload.userId : null;
+    const userId = payload?.userId as string | undefined;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { db } = await connectDB();
-    const users = db.collection("users");
-    const products = db.collection("products");
-    const user = await users.findOne({ _id: new ObjectId(userId) });
-    const sellerId = typeof user?.sellerId === "string" ? user.sellerId : null;
-
+    const sellerId = await getSellerIdFromUserId(userId);
     if (!sellerId) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const documents = await products.find({ sellerId }).sort({ createdAt: -1 }).toArray();
-    const databaseProducts = documents.map((document) => mapProduct(document as never));
-    const staticProducts = getStaticProductsBySellerId(sellerId);
+    const supabase = createServiceRoleClient();
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("seller_id", sellerId)
+      .order("created_at", { ascending: false });
 
-    return NextResponse.json({
-      products: [...databaseProducts, ...staticProducts],
-    });
+    if (error) {
+      console.error("Supabase error:", error);
+      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    }
+
+    const products = (data as DbProduct[]).map(mapDbToProduct);
+    return NextResponse.json({ products });
   } catch (error) {
-    console.error("Seller products error:", error);
+    console.error("Seller products list error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -99,65 +95,61 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const payload = await getBearerPayload(req);
-    const userId = typeof payload?.userId === "string" ? payload.userId : null;
+    const userId = payload?.userId as string | undefined;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { db } = await connectDB();
-    const users = db.collection("users");
-    const products = db.collection("products");
-    const user = await users.findOne({ _id: new ObjectId(userId) });
-    const sellerId = typeof user?.sellerId === "string" ? user.sellerId : null;
-
+    const sellerId = await getSellerIdFromUserId(userId);
     if (!sellerId) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const body = (await req.json()) as Product;
-    const now = new Date().toISOString();
-    const productId = `prd_${Date.now()}`;
+    const isVerified = await getSellerVerificationStatus(sellerId);
+    if (!isVerified) {
+      return NextResponse.json({ error: "Seller not verified" }, { status: 403 });
+    }
 
-    const productDocument = {
-      productId,
-      title: body.title,
-      nameTh: body.nameTh || body.title,
-      nameEn: body.nameEn || body.title,
-      image: body.image || "/products/rov.png",
-      price: body.price,
-      originalPrice: body.originalPrice,
-      discount: body.discount,
-      badge: body.badge,
-      category: body.category,
-      platform: body.platform,
-      sellerId,
-      stock: body.stock,
-      soldCount: body.soldCount || 0,
-      isActive: true,
-      listingStatus: body.listingStatus || "active",
-      currency: body.currency || "THB",
-      marketplaceType: "seller_owned" as const,
-      regionCode: body.regionCode,
-      regionLabelTh: body.regionLabelTh,
-      regionLabelEn: body.regionLabelEn,
-      deliverySlaMinutes: body.deliverySlaMinutes,
-      deliveryLabelTh: body.deliveryLabelTh,
-      deliveryLabelEn: body.deliveryLabelEn,
-      activationMethodTh: body.activationMethodTh,
-      activationMethodEn: body.activationMethodEn,
-      createdAt: now,
-      updatedAt: now,
-    };
+    const body = await req.json();
 
-    const result = await products.insertOne(productDocument);
+    // Validate required fields
+    const { name, category, price, stock } = body;
+    if (!name || typeof name !== "string" || name.trim() === "") {
+      return NextResponse.json({ error: "Name is required" }, { status: 400 });
+    }
+    if (!category || typeof category !== "string" || category.trim() === "") {
+      return NextResponse.json({ error: "Category is required" }, { status: 400 });
+    }
+    if (price === undefined || typeof price !== "number" || price <= 0) {
+      return NextResponse.json({ error: "Price must be a number greater than 0" }, { status: 400 });
+    }
+    if (stock === undefined || typeof stock !== "number" || stock < 0) {
+      return NextResponse.json({ error: "Stock must be a number of 0 or greater" }, { status: 400 });
+    }
 
-    return NextResponse.json({
-      product: mapProduct({
-        _id: result.insertedId as never,
-        ...productDocument,
-      }),
-    });
+    const supabase = createServiceRoleClient();
+    const { data, error } = await supabase
+      .from("products")
+      .insert({
+        seller_id: sellerId,
+        name: name.trim(),
+        description: body.description || null,
+        category: category.trim(),
+        price: price,
+        stock: stock,
+        image_url: body.image || null,
+        is_active: true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Supabase insert error:", error);
+      return NextResponse.json({ error: "Failed to create product" }, { status: 500 });
+    }
+
+    return NextResponse.json({ product: mapDbToProduct(data as DbProduct) }, { status: 201 });
   } catch (error) {
     console.error("Seller product create error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
