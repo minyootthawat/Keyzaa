@@ -30,7 +30,9 @@ vi.mock("@/lib/supabase/supabase", () => ({
   }),
 }));
 
-// Supabase chainable builder (same pattern used across test files)
+// Tracks call count to return different values per invocation
+let callCount = 0;
+
 function buildChain(data: unknown = null, error: unknown = null): Record<string, unknown> {
   const obj: Record<string, unknown> = {
     then: (res: (v: { data: unknown; error: unknown }) => void) => {
@@ -51,6 +53,8 @@ function makeGetReq() {
 describe("GET /api/seller/orders", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    callCount = 0;
+
     mockFind.mockReturnValue({
       sort: vi.fn().mockReturnThis(),
       toArray: vi.fn().mockResolvedValue([
@@ -73,8 +77,22 @@ describe("GET /api/seller/orders", () => {
         },
       ]),
     });
-    // Default: seller found
-    mockFrom.mockReturnValue(buildChain({ id: "seller-001" }));
+
+    // Return values per supabase.from() call:
+    // 1. sellers lookup → returns seller record
+    // 2. users (buyers) → returns buyer rows
+    // 3. order_items → returns empty
+    const responses = [
+      [{ id: "seller-001" }],   // sellers query
+      [{ id: "buyer-001", name: "Test Buyer" }],  // users query
+      [],                        // order_items query
+    ];
+
+    mockFrom.mockImplementation(() => {
+      const data = responses[callCount] ?? [];
+      callCount++;
+      return buildChain(data);
+    });
   });
 
   it("returns 200 with seller orders array", async () => {
@@ -94,7 +112,9 @@ describe("GET /api/seller/orders", () => {
   });
 
   it("returns 404 when seller not found in Supabase", async () => {
-    mockFrom.mockReturnValueOnce(buildChain(null, "not found"));
+    // Override first call to return empty (seller not found)
+    callCount = 0;
+    mockFrom.mockImplementation(() => buildChain(null));
     const res = await GET(makeGetReq());
     expect(res.status).toBe(404);
     const json = await res.json();

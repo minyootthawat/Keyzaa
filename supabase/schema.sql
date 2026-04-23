@@ -127,7 +127,8 @@ create trigger set_orders_updated_at before update on public.orders for each row
 alter table public.users enable row level security;
 alter table public.sellers enable row level security;
 alter table public.products enable row level security;
-alter table public.orders enable row level security;
+-- Orders table migrated to MongoDB. Disable RLS here; all order auth is enforced in API routes.
+alter table public.orders disable row level security;
 alter table public.seller_ledger_entries enable row level security;
 
 -- USERS POLICIES
@@ -173,30 +174,6 @@ drop policy if exists "Admins can read all products" on public.products;
 create policy "Admins can read all products" on public.products for select using (
     exists (select 1 from public.users where id = auth.uid() and role = 'both')
 );
-
--- ORDERS POLICIES
--- NOTE: Orders have been migrated to MongoDB. The Supabase orders table is deprecated.
--- All order access is now enforced via NextAuth JWT + MongoDB queries (see lib/db/mongodb.ts).
--- These RLS policies are kept as no-ops because Supabase client calls in the app use
--- the service role key (bypassing RLS). Order-level security is enforced in the API routes.
-
-drop policy if exists "Buyers can read own orders" on public.orders;
-create policy "Buyers can read own orders" on public.orders for select using (true);
-
-drop policy if exists "Sellers can read own orders" on public.orders;
-create policy "Sellers can read own orders" on public.orders for select using (true);
-
-drop policy if exists "Buyers can create orders" on public.orders;
-create policy "Buyers can create orders" on public.orders for insert with check (true);
-
-drop policy if exists "Buyers can update own orders" on public.orders;
-create policy "Buyers can update own orders" on public.orders for update using (true);
-
-drop policy if exists "Sellers can update order status" on public.orders;
-create policy "Sellers can update order status" on public.orders for update using (true);
-
-drop policy if exists "Admins can read all orders" on public.orders;
-create policy "Admins can read all orders" on public.orders for select using (true);
 
 -- LEDGER POLICIES
 drop policy if exists "Sellers can read own ledger" on public.seller_ledger_entries;

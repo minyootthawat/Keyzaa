@@ -34,8 +34,6 @@ interface SellerWithUser {
   };
 }
 
-async function verifyAdmin(req: NextRequest): Promise<{ authorized: boolean; error?: string; status?: number }> {
-
 function mapDbToSellerWithUser(row: DbSeller, user: DbUser): SellerWithUser {
   return {
     id: row.id,
@@ -55,9 +53,9 @@ function mapDbToSellerWithUser(row: DbSeller, user: DbUser): SellerWithUser {
 
 export async function GET(req: NextRequest) {
   try {
-    const check = await verifyAdmin(req);
-    if (!check.authorized) {
-      return NextResponse.json({ error: check.error }, { status: check.status });
+    const access = await getAdminAccessFromRequest(req);
+    if (access.status !== 200) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
     const { searchParams } = new URL(req.url);

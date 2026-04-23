@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import { getBearerPayload } from "@/lib/auth/jwt";
+import { getAdminAccessFromRequest } from "@/lib/auth/admin";
 
 interface DbSeller {
   id: string;
@@ -35,32 +35,6 @@ interface SellerWithUser {
   };
 }
 
-async function verifyAdmin(req: NextRequest): Promise<{ authorized: boolean; error?: string; status?: number }> {
-  const payload = await getBearerPayload(req);
-  const userId = payload?.userId as string | undefined;
-
-  if (!userId) {
-    return { authorized: false, error: "Unauthorized", status: 401 };
-  }
-
-  const supabase = createServiceRoleClient();
-  const { data: user, error } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", userId)
-    .single();
-
-  if (error || !user) {
-    return { authorized: false, error: "User not found", status: 404 };
-  }
-
-  if (user.role !== "both") {
-    return { authorized: false, error: "Forbidden", status: 403 };
-  }
-
-  return { authorized: true };
-}
-
 function mapDbToSellerWithUser(row: DbSeller, user: DbUser): SellerWithUser {
   return {
     id: row.id,
@@ -80,9 +54,9 @@ function mapDbToSellerWithUser(row: DbSeller, user: DbUser): SellerWithUser {
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const check = await verifyAdmin(req);
-    if (!check.authorized) {
-      return NextResponse.json({ error: check.error }, { status: check.status });
+    const access = await getAdminAccessFromRequest(req);
+    if (access.status !== 200) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
     const { id } = await params;
