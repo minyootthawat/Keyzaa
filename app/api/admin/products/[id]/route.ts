@@ -19,7 +19,7 @@ interface DbProduct {
 interface ProductResponse {
   id: string;
   sellerId: string;
-  name: string;
+  title: string;
   description: string;
   category: string;
   price: number;
@@ -60,7 +60,7 @@ function mapDbToProduct(row: DbProduct): ProductResponse {
   return {
     id: row.id,
     sellerId: row.seller_id,
-    name: row.name,
+    title: row.name,
     description: row.description || "",
     category: row.category,
     price: Number(row.price),

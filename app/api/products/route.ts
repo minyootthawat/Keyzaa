@@ -38,7 +38,7 @@ function mapDbToProduct(row: DbProduct): Omit<ProductWithSeller, "seller"> {
   return {
     id: row.id,
     sellerId: row.seller_id,
-    name: row.name,
+    title: row.name,
     description: row.description || "",
     category: row.category,
     price: Number(row.price),
