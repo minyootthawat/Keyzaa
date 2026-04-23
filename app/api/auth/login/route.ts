@@ -4,7 +4,9 @@ import { SignJWT } from "jose";
 import { findUserByEmail } from "@/lib/db/supabase";
 import { getAdminAccessForEmail } from "@/lib/auth/admin";
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
+const JWT_SECRET = new TextEncoder().encode(
+  (process.env.JWT_SECRET || '').replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim() || 'fallback-dev-secret'
+);
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,6 +20,7 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await findUserByEmail(email);
+    console.log("[LOGIN] findUserByEmail result:", user ? `id=${user.id}` : 'null');
     if (!user) {
       return NextResponse.json(
         { error: "Invalid email or password" },

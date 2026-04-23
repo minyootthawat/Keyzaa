@@ -30,7 +30,9 @@ export function createServerClientSupabase(): SupabaseClient {
 }
 
 export function createServiceRoleClient(): SupabaseClient {
-  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  const raw = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  // Remove all non-printable characters (newlines, carriage returns, etc.)
+  const serviceRoleKey = raw.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim();
   if (!serviceRoleKey) {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set or empty");
   }
