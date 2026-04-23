@@ -54,8 +54,10 @@ const sampleOrderDoc = {
 };
 
 describe("GET /api/orders/[id]", () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { _mocks } = await import("@/lib/db/mongodb");
+    const { mockFindOne, mockFind } = _mocks;
     mockFindOne.mockResolvedValue({ ...sampleOrderDoc });
     mockFind.mockResolvedValue(null);
   });

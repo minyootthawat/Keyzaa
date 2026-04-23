@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET } from "./route";
 import { NextRequest } from "next/server";
 
+// ─── Shared mock refs ───────────────────────────────────────────────────────────
+const mockFrom = vi.hoisted(() => vi.fn());
+const mockFind = vi.hoisted(() => vi.fn());
+const mockCountDocuments = vi.hoisted(() => vi.fn());
+
 // ─── Auth mocks ────────────────────────────────────────────────────────────────
 vi.mock("@/lib/auth/jwt", () => ({
   getBearerPayload: vi.fn().mockResolvedValue({ userId: "admin-user-123" }),
@@ -24,35 +29,38 @@ vi.mock("@/lib/auth/admin", () => ({
 // ─── Supabase mock ─────────────────────────────────────────────────────────────
 vi.mock("@/lib/supabase/supabase", () => ({
   createServiceRoleClient: vi.fn().mockReturnValue({
-    from: vi.fn().mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: { id: "admin-user-123", role: "both" }, error: null }),
-        }),
-      }),
-      in: vi.fn().mockReturnValue({ data: [], error: null }),
-    }),
+    from: mockFrom,
   }),
 }));
 
 // ─── MongoDB mock ─────────────────────────────────────────────────────────────
-vi.mock("@/lib/db/mongodb", () => {
-  const mockFind = vi.fn();
-  const mockCountDocuments = vi.fn();
+vi.mock("@/lib/db/mongodb", () => ({
+  connectDB: vi.fn().mockResolvedValue({
+    db: {
+      collection: vi.fn().mockReturnValue({
+        find: mockFind,
+        countDocuments: mockCountDocuments,
+      }),
+    },
+  }),
+  getDb: vi.fn(),
+}));
 
-  return {
-    connectDB: vi.fn().mockResolvedValue({
-      db: {
-        collection: vi.fn().mockReturnValue({
-          find: mockFind,
-          countDocuments: mockCountDocuments,
-        }),
-      },
-    }),
-    getDb: vi.fn(),
-    _mocks: { mockFind, mockCountDocuments },
+// Per-call chainable builder
+let callCount = 0;
+
+function buildChain(data: unknown = null, error: unknown = null): Record<string, unknown> {
+  const obj: Record<string, unknown> = {
+    then: (res: (v: { data: unknown; error: unknown }) => void) => {
+      setTimeout(() => res({ data, error }), 0);
+      return obj;
+    },
   };
-});
+  for (const method of ["select", "eq", "neq", "order", "limit", "in", "single", "maybeSingle"]) {
+    obj[method] = () => buildChain(data, error);
+  }
+  return obj;
+}
 
 function makeGetReq(searchParams?: Record<string, string>) {
   const url = new URL("http://localhost/api/admin/orders");
@@ -63,10 +71,9 @@ function makeGetReq(searchParams?: Record<string, string>) {
 }
 
 describe("GET /api/admin/orders", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
-    const { _mocks } = await import("@/lib/db/mongodb");
-    const { mockFind, mockCountDocuments } = _mocks;
+    callCount = 0;
 
     mockCountDocuments.mockResolvedValue(1);
     mockFind.mockReturnValue({
@@ -95,6 +102,19 @@ describe("GET /api/admin/orders", () => {
           updated_at: "2024-01-01T00:00:00.000Z",
         },
       ]),
+    });
+
+    // Per-call responses for supabase.from() chain:
+    // 1. users (buyers) lookup → data: [{id, name, email}]
+    // 2. sellers lookup → data: [{id, store_name}]
+    const responses = [
+      [{ id: "buyer-001", name: "Test Buyer", email: "buyer@test.com" }],
+      [{ id: "seller-001", store_name: "Test Store" }],
+    ];
+    mockFrom.mockImplementation(() => {
+      const data = responses[callCount] ?? [];
+      callCount++;
+      return buildChain(data);
     });
   });
 

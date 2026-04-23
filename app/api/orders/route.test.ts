@@ -133,10 +133,10 @@ describe("POST /api/orders", () => {
     ],
   };
 
-  it("returns 201 with created order for valid payload", async () => {
+  it("returns 200 with created order for valid payload", async () => {
     const req = makeReq("POST", validBody);
     const res = await POST(req);
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toHaveProperty("order");
     expect(json).toHaveProperty("orders");

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { connectDB } from "@/lib/db/mongodb";
-import { updateOrderFields } from "@/lib/db/mongodb";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-04-30.basil",
