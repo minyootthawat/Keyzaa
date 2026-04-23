@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ObjectId } from "mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
-import { calculateWalletSummary } from "@/lib/marketplace-server";
-import type { SellerLedgerEntry } from "@/app/types";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,31 +11,78 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { db } = await connectDB();
-    const users = db.collection("users");
-    const ledgerEntries = db.collection("seller_ledger_entries");
-    const user = await users.findOne({ _id: new ObjectId(userId) });
-    const sellerId = typeof user?.sellerId === "string" ? user.sellerId : null;
+    const supabase = createServiceRoleClient();
 
-    if (!sellerId) {
+    // Get seller id from user_id
+    const { data: seller, error: sellerError } = await supabase
+      .from("sellers")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (sellerError || !seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const entries = await ledgerEntries.find({ sellerId }).sort({ createdAt: -1 }).toArray();
-    const mappedEntries: SellerLedgerEntry[] = entries.map((entry) => ({
-      id: entry._id.toString(),
-      sellerId: entry.sellerId as string,
-      orderId: entry.orderId as string | undefined,
-      type: entry.type as SellerLedgerEntry["type"],
-      amount: entry.amount as number,
-      currency: entry.currency as string,
-      createdAt: entry.createdAt as string,
-      description: entry.description as string,
-      metadata: entry.metadata as SellerLedgerEntry["metadata"],
+    const sellerId = seller.id;
+
+    // Fetch ledger entries
+    const { data: entries, error: ledgerError } = await supabase
+      .from("seller_ledger_entries")
+      .select("*")
+      .eq("seller_id", sellerId)
+      .order("created_at", { ascending: false });
+
+    if (ledgerError) {
+      console.error("Supabase ledger error:", ledgerError);
+      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    }
+
+    // Map to API type
+    const mappedEntries = (entries ?? []).map((entry: Record<string, unknown>) => ({
+      id: entry.id,
+      sellerId: entry.seller_id as string,
+      orderId: entry.order_id as string | undefined,
+      type: entry.type === "sale"
+        ? "sale_credit"
+        : entry.type === "commission_fee"
+        ? "commission_fee"
+        : entry.type === "withdrawal"
+        ? "withdrawal"
+        : "manual_adjustment",
+      amount: Number(entry.amount),
+      currency: "THB",
+      createdAt: entry.created_at as string,
+      description: (entry.description as string) ?? "",
+      metadata: {},
     }));
 
+    // Calculate summary
+    let grossSales = 0;
+    let totalCommission = 0;
+    let netEarnings = 0;
+
+    for (const entry of mappedEntries) {
+      if (entry.type === "sale_credit") {
+        grossSales += entry.amount;
+        netEarnings += entry.amount;
+      } else if (entry.type === "commission_fee") {
+        totalCommission += entry.amount;
+        netEarnings -= entry.amount;
+      } else if (entry.type === "withdrawal") {
+        netEarnings -= entry.amount;
+      }
+    }
+
     return NextResponse.json({
-      summary: calculateWalletSummary(mappedEntries),
+      summary: {
+        availableBalance: Math.max(0, netEarnings),
+        pendingBalance: 0,
+        grossSales,
+        totalCommission,
+        netEarnings,
+        entryCount: mappedEntries.length,
+      },
       entries: mappedEntries,
     });
   } catch (error) {

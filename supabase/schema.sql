@@ -24,6 +24,14 @@ create table if not exists public.sellers (
     phone text,
     id_card_url text,
     verified boolean not null default false,
+    rating numeric(3, 2) default 0,
+    sales_count integer default 0,
+    balance numeric(10, 2) default 0,
+    pending_balance numeric(10, 2) default 0,
+    payout_status text default 'manual' check (payout_status in ('manual', 'enabled')),
+    response_time_minutes integer default 5,
+    fulfillment_rate numeric(5, 2) default 100,
+    dispute_rate numeric(5, 2) default 0,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
@@ -52,10 +60,34 @@ create table if not exists public.orders (
     product_id uuid not null references public.products(id) on delete restrict,
     quantity integer not null check (quantity > 0),
     total_price numeric(10, 2) not null,
+    gross_amount numeric(10, 2) default 0,
+    commission_amount numeric(10, 2) default 0,
+    seller_net_amount numeric(10, 2) default 0,
+    platform_fee_rate numeric(5, 4) default 0.05,
+    currency text default 'THB',
     status text not null default 'pending' check (status in ('pending', 'paid', 'shipped', 'completed', 'cancelled')),
+    payment_status text default 'pending' check (payment_status in ('pending', 'paid', 'failed', 'refunded')),
+    fulfillment_status text default 'pending' check (fulfillment_status in ('pending', 'processing', 'delivered', 'failed', 'cancelled')),
     payment_method text,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
+);
+
+-- ORDER ITEMS TABLE (supports multiple items per order)
+create table if not exists public.order_items (
+    id uuid primary key default uuid_generate_v4(),
+    order_id uuid not null references public.orders(id) on delete cascade,
+    product_id uuid not null references public.products(id) on delete restrict,
+    title text not null,
+    title_th text,
+    title_en text,
+    image text,
+    price numeric(10, 2) not null,
+    quantity integer not null check (quantity > 0),
+    platform text,
+    region_code text,
+    activation_method_th text,
+    activation_method_en text
 );
 create index if not exists idx_orders_seller_id on public.orders (seller_id);
 create index if not exists idx_orders_buyer_id on public.orders (buyer_id);

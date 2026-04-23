@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ObjectId } from "mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
-import { calculateWalletSummary } from "@/lib/marketplace-server";
-import type { OrderItem, OrderStatus, PaymentStatus, FulfillmentStatus, SellerLedgerEntry } from "@/app/types";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,69 +11,135 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { db } = await connectDB();
-    const users = db.collection("users");
-    const orders = db.collection("orders");
-    const products = db.collection("products");
-    const ledgerEntries = db.collection("seller_ledger_entries");
-    const user = await users.findOne({ _id: new ObjectId(userId) });
-    const sellerId = typeof user?.sellerId === "string" ? user.sellerId : null;
+    const supabase = createServiceRoleClient();
 
-    if (!sellerId) {
+    // Get seller
+    const { data: seller, error: sellerError } = await supabase
+      .from("sellers")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (sellerError || !seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const [orderDocuments, productDocuments, entryDocuments] = await Promise.all([
-      orders.find({ sellerId }).sort({ date: -1 }).toArray(),
-      products.find({ sellerId }).sort({ createdAt: -1 }).limit(5).toArray(),
-      ledgerEntries.find({ sellerId }).sort({ createdAt: -1 }).toArray(),
+    const sellerId = seller.id;
+
+    // Run all queries in parallel
+    const [ordersResult, productsResult, ledgerResult] = await Promise.all([
+      supabase
+        .from("orders")
+        .select("id, total_price, status, created_at")
+        .eq("seller_id", sellerId)
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabase
+        .from("products")
+        .select("id, name, stock, price")
+        .eq("seller_id", sellerId)
+        .order("created_at", { ascending: false })
+        .limit(5),
+      supabase
+        .from("seller_ledger_entries")
+        .select("type, amount")
+        .eq("seller_id", sellerId)
+        .order("created_at", { ascending: false }),
     ]);
 
-    const wallet = calculateWalletSummary(
-      entryDocuments.map((entry) => ({
-        id: entry._id.toString(),
-        sellerId: entry.sellerId as string,
-        orderId: entry.orderId as string | undefined,
-        type: entry.type as SellerLedgerEntry["type"],
-        amount: entry.amount as number,
-        currency: entry.currency as string,
-        createdAt: entry.createdAt as string,
-        description: entry.description as string,
-        metadata: entry.metadata as SellerLedgerEntry["metadata"],
-      }))
-    );
+    if (ordersResult.error) {
+      console.error("Supabase orders error:", ordersResult.error);
+      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    }
+
+    if (productsResult.error) {
+      console.error("Supabase products error:", productsResult.error);
+      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    }
+
+    if (ledgerResult.error) {
+      console.error("Supabase ledger error:", ledgerResult.error);
+      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    }
+
+    // Calculate wallet summary
+    let grossSales = 0;
+    let totalCommission = 0;
+    let netEarnings = 0;
+
+    for (const entry of ledgerResult.data ?? []) {
+      const amount = Number(entry.amount);
+      if (entry.type === "sale") {
+        grossSales += amount;
+        netEarnings += amount;
+      } else if (entry.type === "commission_fee") {
+        totalCommission += amount;
+        netEarnings -= amount;
+      } else if (entry.type === "withdrawal") {
+        netEarnings -= amount;
+      }
+    }
+
+    // Count orders by status
+    const orderDocuments = ordersResult.data ?? [];
+    const orderCount = orderDocuments.length;
+
+    // Recent orders with items
+    const orderIds = orderDocuments.map((o: Record<string, unknown>) => o.id as string);
+    const { data: allOrderItems } = await supabase
+      .from("order_items")
+      .select("*")
+      .in("order_id", orderIds);
+
+    const itemsByOrder: Record<string, Record<string, unknown>[]> = {};
+    for (const item of allOrderItems ?? []) {
+      if (!itemsByOrder[item.order_id]) itemsByOrder[item.order_id] = [];
+      itemsByOrder[item.order_id].push(item);
+    }
+
+    const orders = orderDocuments.map((order: Record<string, unknown>) => ({
+      id: order.id,
+      orderId: order.id,
+      buyerId: "",
+      date: order.created_at,
+      status: order.status,
+      paymentStatus: "pending",
+      fulfillmentStatus: "pending",
+      totalPrice: Number(order.total_price),
+      grossAmount: 0,
+      commissionAmount: 0,
+      sellerNetAmount: 0,
+      platformFeeRate: 0.05,
+      currency: "THB",
+      paymentMethod: "",
+      items: (itemsByOrder[order.id as string] ?? []).map((item: Record<string, unknown>) => ({
+        id: item.id,
+        orderId: order.id,
+        productId: item.product_id,
+        title: item.title ?? "",
+        price: Number(item.price),
+        quantity: Number(item.quantity),
+        sellerId: sellerId,
+        keys: [],
+        platform: item.platform ?? "",
+      })),
+    }));
 
     return NextResponse.json({
       kpis: {
-        grossSales: wallet.grossSales,
-        platformFees: wallet.totalCommission,
-        netEarnings: wallet.netEarnings,
-        availableForPayout: wallet.availableBalance,
-        orderCount: orderDocuments.length,
+        grossSales,
+        platformFees: totalCommission,
+        netEarnings,
+        availableForPayout: Math.max(0, netEarnings),
+        orderCount,
       },
-      orders: orderDocuments.map((document) => ({
-        id: document.orderId as string,
-        buyerId: document.buyerId as string,
-        sellerId: document.sellerId as string,
-        date: document.date as string,
-        status: document.status as OrderStatus,
-        paymentStatus: document.paymentStatus as PaymentStatus,
-        fulfillmentStatus: document.fulfillmentStatus as FulfillmentStatus,
-        totalPrice: document.totalPrice as number,
-        grossAmount: document.grossAmount as number,
-        commissionAmount: document.commissionAmount as number,
-        sellerNetAmount: document.sellerNetAmount as number,
-        platformFeeRate: document.platformFeeRate as number,
-        currency: document.currency as string,
-        paymentMethod: document.paymentMethod as string,
-        items: document.items as OrderItem[],
-      })),
-      products: productDocuments.map((document) => ({
-        id: document.productId as string,
-        title: document.title as string,
-        stock: document.stock as number,
-        soldCount: document.soldCount as number,
-        price: document.price as number,
+      orders,
+      products: (productsResult.data ?? []).map((p: Record<string, unknown>) => ({
+        id: p.id,
+        title: p.name,
+        stock: p.stock,
+        soldCount: 0,
+        price: Number(p.price),
       })),
     });
   } catch (error) {

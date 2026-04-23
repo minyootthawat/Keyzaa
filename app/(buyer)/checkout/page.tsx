@@ -29,6 +29,8 @@ export default function CheckoutPage() {
   const [paymentState, setPaymentState] = useState<PaymentState>("idle");
   const [countdown, setCountdown] = useState(PROMPTPAY_EXPIRY_SECONDS);
   const [orderIds, setOrderIds] = useState<string[]>([]);
+  const [qrData, setQrData] = useState<string | null>(null);
+  const [qrExpiresAt, setQrExpiresAt] = useState<string | null>(null);
 
   const itemsRef = useRef(items);
   const totalPriceRef = useRef(totalPrice);
@@ -56,6 +58,20 @@ export default function CheckoutPage() {
     setPaymentState("awaiting_scan");
     setCountdown(PROMPTPAY_EXPIRY_SECONDS);
     setStep("payment");
+
+    // Fetch real PromptPay QR from the API
+    const satangAmount = Math.round(totalPrice * 100);
+    fetch(`/api/payments/promptpay-qr?amount=${satangAmount}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.qrData) {
+          setQrData(data.qrData);
+          setQrExpiresAt(data.expiresAt);
+        }
+      })
+      .catch(() => {
+        // Silently fail — will show placeholder QR
+      });
   };
 
   useEffect(() => {
@@ -267,12 +283,23 @@ export default function CheckoutPage() {
                 <div className="surface-card p-5 text-center">
                   <p className="text-base text-text-subtle">{t("checkout_totalAmount")}</p>
                   <p className="type-num text-5xl font-extrabold text-gradient-brand">฿{formatThaiBaht(totalPrice)}</p>
-                  <div className="elevation-2 mx-auto mt-5 grid h-56 w-56 place-items-center rounded-3xl border border-white/8 bg-[radial-gradient(circle_at_top,rgba(99,91,255,0.16),transparent_60%),linear-gradient(180deg,rgba(26,35,68,1),rgba(12,17,32,1))] text-text-main">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-text-muted">{t("checkout_mockPaymentBadge")}</p>
-                      <p className="mt-3 text-5xl">▣</p>
-                      <p className="mt-3 text-sm text-text-subtle">{t("checkout_mockQrCaption")}</p>
-                    </div>
+                  <div className="elevation-2 mx-auto mt-5 grid h-56 w-56 place-items-center rounded-3xl border border-white/8 bg-[radial-gradient(circle_at_top,rgba(99,91,255,0.16),transparent_60%),linear-gradient(180deg,rgba(26,35,68,1),rgba(12,17,32,1))] overflow-hidden text-text-main">
+                    {qrData ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={qrData}
+                        alt="PromptPay QR"
+                        width={224}
+                        height={224}
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-text-muted">{t("checkout_mockPaymentBadge")}</p>
+                        <p className="mt-3 text-5xl">▣</p>
+                        <p className="mt-3 text-sm text-text-subtle">{t("checkout_mockQrCaption")}</p>
+                      </div>
+                    )}
                   </div>
                   <p className="mt-4 text-base font-semibold text-accent">{paymentLabel}</p>
                   <p className="mt-2 text-sm text-text-muted">
