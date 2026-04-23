@@ -33,7 +33,7 @@ async function main() {
   const users = [
     { email: 'buyer@demo.keyzaa.local', role: 'buyer', name: 'Demo Buyer' },
     { email: 'seller@demo.keyzaa.local', role: 'seller', name: 'Demo Seller' },
-    // Admin: role='buyer' satisfies DB constraint; isAdmin comes from getAdminAccessForEmail
+    // Admin: role='buyer' satisfies DB constraint; isAdmin comes from getAdminAccessForEmail (admins table)
     { email: 'admin@demo.keyzaa.local', role: 'buyer', name: 'Demo Admin' },
   ];
 
@@ -88,6 +88,10 @@ async function main() {
       else console.log(u.role + ': created ' + userId);
     }
   }
+
+  // Admin access is determined by ADMIN_EMAILS env var, not a database table.
+  // getAdminAccessForEmail checks process.env.ADMIN_EMAILS for admin emails.
+  // Set ADMIN_EMAILS=admin@demo.keyzaa.local:super_admin in Vercel for admin access.
 
   console.log('\nDone. Test credentials: buyer@seller@admin@demo.keyzaa.local / demo123');
 }

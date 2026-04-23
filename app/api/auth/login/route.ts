@@ -20,7 +20,6 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await findUserByEmail(email);
-    console.log("[LOGIN] findUserByEmail result:", user ? `id=${user.id}` : 'null');
     if (!user) {
       return NextResponse.json(
         { error: "Invalid email or password" },
@@ -30,7 +29,6 @@ export async function POST(req: NextRequest) {
 
     // Check if user has a password (social users may not)
     const passwordHash = (user as unknown as { password_hash?: string }).password_hash;
-    console.log("[LOGIN] passwordHash:", passwordHash ? "present" : "missing");
     if (!passwordHash) {
       return NextResponse.json(
         { error: "This account uses social login. Please sign in with Google, Facebook, or LINE." },
