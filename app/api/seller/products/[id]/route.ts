@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
+import { connectDB } from "@/lib/db/mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import type { Product } from "@/app/types";
+import { ObjectId } from "mongodb";
 
 interface DbProduct {
-  id: string;
+  _id: ObjectId;
   seller_id: string;
   name: string;
   description: string | null;
@@ -19,18 +21,24 @@ interface DbProduct {
 
 function mapDbToProduct(row: DbProduct): Product {
   return {
-    id: row.id,
+    id: row._id.toString(),
     sellerId: row.seller_id,
     title: row.name,
-    description: row.description || "",
+    nameTh: row.name,
+    nameEn: row.name,
+    descriptionTh: row.description || "",
+    descriptionEn: row.description || "",
+    shortDescriptionTh: row.description || "",
+    shortDescriptionEn: row.description || "",
     category: row.category,
     platform: "",
     price: Number(row.price),
+    originalPrice: Number(row.price),
+    discount: 0,
     stock: row.stock,
+    soldCount: 0,
     image: row.image_url || "",
     isActive: row.is_active,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
   };
 }
 
@@ -46,16 +54,10 @@ async function getSellerIdFromUserId(userId: string): Promise<string | null> {
   return data.id;
 }
 
-async function getProductById(productId: string): Promise<DbProduct | null> {
-  const supabase = createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .eq("id", productId)
-    .single();
-
-  if (error || !data) return null;
-  return data as DbProduct;
+async function getProductById(productId: string): Promise<(DbProduct & { _id: ObjectId }) | null> {
+  const { db } = await connectDB();
+  const product = await db.collection("products").findOne({ _id: new ObjectId(productId) });
+  return product as (DbProduct & { _id: ObjectId }) | null;
 }
 
 export async function GET(
@@ -120,15 +122,7 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const updates: Partial<{
-      name: string;
-      description: string | null;
-      category: string;
-      price: number;
-      stock: number;
-      image_url: string | null;
-      is_active: boolean;
-    }> = {};
+    const updates: Record<string, unknown> = {};
 
     if (body.name !== undefined) {
       if (typeof body.name !== "string" || body.name.trim() === "") {
@@ -174,20 +168,18 @@ export async function PATCH(
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
-    const supabase = createServiceRoleClient();
-    const { data, error } = await supabase
-      .from("products")
-      .update(updates)
-      .eq("id", id)
-      .select()
-      .single();
+    updates.updated_at = new Date().toISOString();
 
-    if (error) {
-      console.error("Supabase update error:", error);
+    const { db } = await connectDB();
+    const result = await db
+      .collection("products")
+      .findOneAndUpdate({ _id: new ObjectId(id) }, { $set: updates }, { returnDocument: "after" });
+
+    if (!result) {
       return NextResponse.json({ error: "Failed to update product" }, { status: 500 });
     }
 
-    return NextResponse.json({ product: mapDbToProduct(data as DbProduct) });
+    return NextResponse.json({ product: mapDbToProduct(result as unknown as DbProduct) });
   } catch (error) {
     console.error("Seller product update error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -221,16 +213,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const supabase = createServiceRoleClient();
-    const { error } = await supabase
-      .from("products")
-      .update({ is_active: false })
-      .eq("id", id);
-
-    if (error) {
-      console.error("Supabase soft delete error:", error);
-      return NextResponse.json({ error: "Failed to delete product" }, { status: 500 });
-    }
+    const { db } = await connectDB();
+    await db
+      .collection("products")
+      .updateOne({ _id: new ObjectId(id) }, { $set: { is_active: false, updated_at: new Date().toISOString() } });
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {

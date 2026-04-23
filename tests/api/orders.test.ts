@@ -1,5 +1,5 @@
 import { MongoClient } from "mongodb";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { SignJWT } from "jose";
 
 const JWT_SECRET = new TextEncoder().encode(
@@ -29,7 +29,7 @@ async function connectMongo(): Promise<MongoClient> {
   return client;
 }
 
-async function cleanupTestData(mongoClient: MongoClient, supabase: any) {
+async function cleanupTestData(mongoClient: MongoClient, supabase: SupabaseClient) {
   const db = mongoClient.db(DB_NAME);
   
   // Clean up MongoDB orders for test user

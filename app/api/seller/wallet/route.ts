@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
+import { connectDB } from "@/lib/db/mongodb";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
 
     const supabase = createServiceRoleClient();
 
-    // Get seller id from user_id
+    // Get seller id from Supabase (seller table still in Supabase)
     const { data: seller, error: sellerError } = await supabase
       .from("sellers")
       .select("id")
@@ -26,21 +27,17 @@ export async function GET(req: NextRequest) {
 
     const sellerId = seller.id;
 
-    // Fetch ledger entries
-    const { data: entries, error: ledgerError } = await supabase
-      .from("seller_ledger_entries")
-      .select("*")
-      .eq("seller_id", sellerId)
-      .order("created_at", { ascending: false });
-
-    if (ledgerError) {
-      console.error("Supabase ledger error:", ledgerError);
-      return NextResponse.json({ error: "Database error" }, { status: 500 });
-    }
+    // Fetch ledger entries from MongoDB
+    const { db } = await connectDB();
+    const entries = await db
+      .collection("seller_ledger_entries")
+      .find({ seller_id: sellerId })
+      .sort({ created_at: -1 })
+      .toArray();
 
     // Map to API type
     const mappedEntries = (entries ?? []).map((entry: Record<string, unknown>) => ({
-      id: entry.id,
+      id: (entry._id as { toString(): string }).toString(),
       sellerId: entry.seller_id as string,
       orderId: entry.order_id as string | undefined,
       type: entry.type === "sale"

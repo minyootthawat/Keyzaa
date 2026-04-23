@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClientSupabase } from "@/lib/supabase/supabase";
+import { connectDB } from "@/lib/db/mongodb";
 
 interface DbProduct {
-  id: string;
+  _id: string;
   seller_id: string;
   name: string;
   description: string | null;
@@ -18,7 +18,7 @@ interface DbProduct {
 interface ProductWithSeller {
   id: string;
   sellerId: string;
-  name: string;
+  title: string;
   description: string;
   category: string;
   price: number;
@@ -34,9 +34,9 @@ interface ProductWithSeller {
   };
 }
 
-function mapDbToProduct(row: DbProduct): Omit<ProductWithSeller, "seller"> {
+function mapDbToProduct(row: DbProduct & { seller_store_name?: string; seller_verified?: boolean }): Omit<ProductWithSeller, "seller"> {
   return {
-    id: row.id,
+    id: row._id.toString(),
     sellerId: row.seller_id,
     title: row.name,
     description: row.description || "",
@@ -72,48 +72,60 @@ export async function GET(req: NextRequest) {
     const actualSortBy = validSortColumns.includes(sortBy) ? sortBy : "created_at";
     const actualSortOrder = validSortOrders.includes(sortOrder) ? sortOrder : "desc";
 
-    const supabase = createServerClientSupabase();
+    const { db } = await connectDB();
 
-    let query = supabase
-      .from("products")
-      .select("*, sellers(store_name, verified)", { count: "exact" })
-      .eq("is_active", true)
-      .order(actualSortBy as "created_at" | "price" | "name", { ascending: actualSortOrder === "asc" })
-      .range((page - 1) * limit, page * limit - 1);
-
+    // Build filter
+    const filter: Record<string, unknown> = { is_active: true };
     if (category) {
-      query = query.eq("category", category);
+      filter.category = category;
     }
-
     if (sellerId) {
-      query = query.eq("seller_id", sellerId);
+      filter.seller_id = sellerId;
     }
 
-    const { data: rows, error, count } = await query;
+    // Sort direction
+    const sortDir = actualSortOrder === "asc" ? 1 : -1;
 
-    if (error) {
-      console.error("Supabase error:", error);
-      return NextResponse.json({ error: "Database error" }, { status: 500 });
-    }
+    // Run count and find in parallel
+    const [countResult, products] = await Promise.all([
+      db.collection("products").countDocuments(filter),
+      db
+        .collection("products")
+        .aggregate([
+          { $match: filter },
+          {
+            $lookup: {
+              from: "sellers",
+              localField: "seller_id",
+              foreignField: "_id",
+              as: "seller_data",
+            },
+          },
+          { $unwind: { path: "$seller_data", preserveNullAndEmptyArrays: true } },
+          { $sort: { [actualSortBy]: sortDir } },
+          { $skip: (page - 1) * limit },
+          { $limit: limit },
+        ])
+        .toArray(),
+    ]);
 
-    const products: ProductWithSeller[] = (
-      rows as (DbProduct & { sellers: { store_name: string; verified: boolean } })[]
-    ).map((row) => ({
-      ...mapDbToProduct(row),
-      seller: {
-        id: row.seller_id,
-        storeName:
-          (row as unknown as { sellers: { store_name: string; verified: boolean } }).sellers
-            ?.store_name || "",
-        verified:
-          (row as unknown as { sellers: { store_name: string; verified: boolean } }).sellers
-            ?.verified || false,
-      },
-    }));
+    const total = countResult;
+
+    const result: ProductWithSeller[] = products.map((row: Record<string, unknown>) => {
+      const product = row as unknown as DbProduct & { seller_data?: { _id: string; store_name: string; verified: boolean } };
+      return {
+        ...mapDbToProduct(product as DbProduct & { seller_store_name?: string; seller_verified?: boolean }),
+        seller: {
+          id: product.seller_id,
+          storeName: product.seller_data?.store_name || "",
+          verified: product.seller_data?.verified || false,
+        },
+      };
+    });
 
     return NextResponse.json({
-      products,
-      total: count ?? 0,
+      products: result,
+      total,
       page,
       limit,
     });

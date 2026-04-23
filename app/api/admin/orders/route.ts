@@ -1,35 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import { getBearerPayload } from "@/lib/auth/jwt";
-
-interface DbOrder {
-  id: string;
-  buyer_id: string;
-  seller_id: string;
-  product_id: string;
-  quantity: number;
-  total_price: number;
-  status: string;
-  payment_method: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface DbUser {
-  id: string;
-  name: string;
-  email: string;
-}
-
-interface DbProduct {
-  id: string;
-  name: string;
-}
-
-interface DbSeller {
-  id: string;
-  store_name: string;
-}
+import { getAdminAccessFromRequest } from "@/lib/auth/admin";
+import { connectDB } from "@/lib/db/mongodb";
 
 interface OrderWithDetails {
   id: string;
@@ -48,37 +20,11 @@ interface OrderWithDetails {
   updatedAt: string;
 }
 
-async function verifyAdmin(req: NextRequest): Promise<{ authorized: boolean; error?: string; status?: number }> {
-  const payload = await getBearerPayload(req);
-  const userId = payload?.userId as string | undefined;
-
-  if (!userId) {
-    return { authorized: false, error: "Unauthorized", status: 401 };
-  }
-
-  const supabase = createServiceRoleClient();
-  const { data: user, error } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", userId)
-    .single();
-
-  if (error || !user) {
-    return { authorized: false, error: "User not found", status: 404 };
-  }
-
-  if (user.role !== "both") {
-    return { authorized: false, error: "Forbidden", status: 403 };
-  }
-
-  return { authorized: true };
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const check = await verifyAdmin(req);
-    if (!check.authorized) {
-      return NextResponse.json({ error: check.error }, { status: check.status });
+    const access = await getAdminAccessFromRequest(req);
+    if (access.status !== 200) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
     const { searchParams } = new URL(req.url);
@@ -89,62 +35,69 @@ export async function GET(req: NextRequest) {
     const buyerId = searchParams.get("buyerId");
 
     const supabase = createServiceRoleClient();
+    const { db } = await connectDB();
+    const ordersCol = db.collection("orders");
 
-    let query = supabase
-      .from("orders")
-      .select(
-        "*, buyers:buyer_id(id, name, email), sellers:seller_id(id, store_name), products:product_id(id, name)",
-        { count: "exact" }
-      )
-      .order("created_at", { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
+    // Build MongoDB filter
+    const filter: Record<string, unknown> = {};
+    if (status) filter.status = status;
+    if (sellerId) filter.seller_id = sellerId;
+    if (buyerId) filter.buyer_id = buyerId;
 
-    if (status) {
-      query = query.eq("status", status);
+    // Get total count
+    const total = await ordersCol.countDocuments(filter);
+
+    // Get paginated orders
+    const documents = await ordersCol
+      .find(filter)
+      .sort({ created_at: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .toArray();
+
+    // Collect unique buyer/seller ids for name lookups
+    const buyerIds = [...new Set(documents.map((d) => d.buyer_id as string))];
+    const sellerIds = [...new Set(documents.map((d) => d.seller_id as string))];
+
+    // Batch fetch buyer names from Supabase
+    const { data: buyerRows } = await supabase
+      .from("users")
+      .select("id, name, email")
+      .in("id", buyerIds);
+
+    const { data: sellerRows } = await supabase
+      .from("sellers")
+      .select("id, store_name")
+      .in("id", sellerIds);
+
+    const buyerMap: Record<string, { name: string; email: string }> = {};
+    for (const u of buyerRows ?? []) {
+      buyerMap[u.id] = { name: u.name, email: u.email };
     }
-    if (sellerId) {
-      query = query.eq("seller_id", sellerId);
-    }
-    if (buyerId) {
-      query = query.eq("buyer_id", buyerId);
-    }
 
-    const { data: rows, error, count } = await query;
-
-    if (error) {
-      console.error("Supabase error:", error);
-      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    const sellerMap: Record<string, string> = {};
+    for (const s of sellerRows ?? []) {
+      sellerMap[s.id] = s.store_name;
     }
 
-    const typedRows = rows as (DbOrder & {
-      buyers: DbUser;
-      sellers: DbSeller;
-      products: DbProduct;
-    })[];
-
-    const orders: OrderWithDetails[] = typedRows.map((row) => ({
-      id: row.id,
-      buyerId: row.buyer_id,
-      buyerName: row.buyers?.name || "",
-      buyerEmail: row.buyers?.email || "",
-      sellerId: row.seller_id,
-      sellerStoreName: row.sellers?.store_name || "",
-      productId: row.product_id,
-      productName: row.products?.name || "",
-      quantity: row.quantity,
-      totalPrice: Number(row.total_price),
-      status: row.status,
-      paymentMethod: row.payment_method || "",
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+    const orders: OrderWithDetails[] = documents.map((row) => ({
+      id: row._id.toString(),
+      buyerId: row.buyer_id as string,
+      buyerName: buyerMap[row.buyer_id as string]?.name ?? "",
+      buyerEmail: buyerMap[row.buyer_id as string]?.email ?? "",
+      sellerId: row.seller_id as string,
+      sellerStoreName: sellerMap[row.seller_id as string] ?? "",
+      productId: (row.product_id as string) ?? "",
+      productName: "",
+      quantity: Number(row.quantity ?? 1),
+      totalPrice: Number(row.total_price ?? 0),
+      status: row.status as string,
+      paymentMethod: (row.payment_method as string) ?? "",
+      createdAt: row.created_at as string,
+      updatedAt: row.updated_at as string,
     }));
 
-    return NextResponse.json({
-      orders,
-      total: count ?? 0,
-      page,
-      limit,
-    });
+    return NextResponse.json({ orders, total, page, limit });
   } catch (error) {
     console.error("Admin orders list error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

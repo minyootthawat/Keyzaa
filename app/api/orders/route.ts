@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { getBearerPayload } from "@/lib/auth/jwt";
 import { connectDB } from "@/lib/db/mongodb";
 import { buildLedgerEntries, calculateMarketplaceAmounts, deriveOrderState, mapOrderDocument } from "@/lib/marketplace-server";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import type { Order, OrderItem, OrderStatus, PaymentStatus, FulfillmentStatus } from "@/app/types";
 
 interface CreateOrderBody {
@@ -11,6 +10,7 @@ interface CreateOrderBody {
   paymentMethod: string;
   items: OrderItem[];
   status?: OrderStatus;
+  stripeSessionId?: string;
 }
 
 function groupItemsBySeller(items: OrderItem[]) {
@@ -37,26 +37,30 @@ export async function GET(req: NextRequest) {
     const { db } = await connectDB();
     const orders = db.collection("orders");
 
-    const documents = await orders.find({ buyerId: userId }).sort({ date: -1 }).toArray();
+    // Security: only return orders where buyer_id matches the authenticated user
+    const documents = await orders
+      .find({ buyer_id: userId })
+      .sort({ created_at: -1 })
+      .toArray();
 
     return NextResponse.json({
       orders: documents.map((document) =>
         mapOrderDocument({
-          orderId: document.orderId as string,
-          buyerId: document.buyerId as string,
-          sellerId: document.sellerId as string,
-          date: document.date as string,
-          status: document.status as OrderStatus,
-          paymentStatus: document.paymentStatus as PaymentStatus,
-          fulfillmentStatus: document.fulfillmentStatus as FulfillmentStatus,
-          totalPrice: document.totalPrice as number,
-          grossAmount: document.grossAmount as number,
-          commissionAmount: document.commissionAmount as number,
-          sellerNetAmount: document.sellerNetAmount as number,
-          platformFeeRate: document.platformFeeRate as number,
-          currency: document.currency as string,
-          paymentMethod: document.paymentMethod as string,
-          items: document.items as OrderItem[],
+          orderId: document.order_id as string,
+          buyerId: document.buyer_id as string,
+          sellerId: document.seller_id as string,
+          date: document.created_at as string,
+          status: (document.status as OrderStatus) || "pending",
+          paymentStatus: (document.payment_status as PaymentStatus) || "pending",
+          fulfillmentStatus: (document.fulfillment_status as FulfillmentStatus) || "pending",
+          totalPrice: Number(document.total_price ?? 0),
+          grossAmount: Number(document.gross_amount ?? 0),
+          commissionAmount: Number(document.commission_amount ?? 0),
+          sellerNetAmount: Number(document.seller_net_amount ?? 0),
+          platformFeeRate: Number(document.platform_fee_rate ?? 0.12),
+          currency: (document.currency as string) || "THB",
+          paymentMethod: (document.payment_method as string) || "",
+          items: (document.items as OrderItem[]) || [],
         })
       ),
     });
@@ -111,46 +115,30 @@ export async function POST(req: NextRequest) {
       const state = deriveOrderState(status);
 
       const orderDocument = {
-        orderId,
-        buyerId: userId,
-        sellerId,
-        date: createdAt,
-        status,
-        paymentStatus: state.paymentStatus,
-        fulfillmentStatus: state.fulfillmentStatus,
-        totalPrice: grossAmount,
-        grossAmount: financials.grossAmount,
-        commissionAmount: financials.commissionAmount,
-        sellerNetAmount: financials.sellerNetAmount,
-        platformFeeRate: financials.platformFeeRate,
+        order_id: orderId,
+        buyer_id: userId,
+        seller_id: sellerId,
+        product_id: mappedItems[0]?.productId ?? null,
+        quantity: mappedItems.reduce((s, i) => s + i.quantity, 0),
+        total_price: grossAmount,
+        gross_amount: financials.grossAmount,
+        commission_amount: financials.commissionAmount,
+        seller_net_amount: financials.sellerNetAmount,
+        platform_fee_rate: financials.platformFeeRate,
         currency: financials.currency,
-        paymentMethod: body.paymentMethod,
+        status,
+        payment_status: state.paymentStatus,
+        fulfillment_status: state.fulfillmentStatus,
+        payment_method: body.paymentMethod,
+        stripe_session_id: body.stripeSessionId ?? null,
+        stripe_payment_intent: null,
+        paid_at: null,
         items: mappedItems,
-        createdAt,
-        updatedAt: createdAt,
+        created_at: createdAt,
+        updated_at: createdAt,
       };
 
       await orders.insertOne(orderDocument);
-
-      // Insert into Supabase orders table
-      const supabase = createServiceRoleClient();
-      for (const item of mappedItems) {
-        const { error: supabaseError } = await supabase.from("orders").insert({
-          id: randomUUID(),
-          buyer_id: userId,
-          seller_id: sellerId,
-          product_id: item.productId,
-          quantity: item.quantity,
-          total_price: item.price * item.quantity,
-          status: status,
-          payment_method: body.paymentMethod,
-          created_at: createdAt,
-          updated_at: createdAt,
-        });
-        if (supabaseError) {
-          console.error("Supabase order insert error:", supabaseError);
-        }
-      }
 
       const entries = buildLedgerEntries({
         sellerId,
@@ -194,7 +182,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       order: createdOrders[0],
       orders: createdOrders,
-    });
+    }, { status: 201 });
   } catch (error) {
     console.error("Order create error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
+import { connectDB } from "@/lib/db/mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import type { OrderItem, OrderStatus, PaymentStatus, FulfillmentStatus } from "@/app/types";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,9 +13,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Get seller id from Supabase (seller table still in Supabase)
     const supabase = createServiceRoleClient();
-
-    // Get seller id from user_id
     const { data: seller, error: sellerError } = await supabase
       .from("sellers")
       .select("id")
@@ -26,44 +27,17 @@ export async function GET(req: NextRequest) {
 
     const sellerId = seller.id;
 
-    // Fetch orders for this seller with buyer info
-    const { data: orderRows, error: ordersError } = await supabase
-      .from("orders")
-      .select(`
-        id,
-        buyer_id,
-        total_price,
-        status,
-        payment_status,
-        fulfillment_status,
-        currency,
-        payment_method,
-        created_at,
-        order_items (
-          id,
-          product_id,
-          title,
-          title_th,
-          title_en,
-          image,
-          price,
-          quantity,
-          platform,
-          region_code,
-          activation_method_th,
-          activation_method_en
-        )
-      `)
-      .eq("seller_id", sellerId)
-      .order("created_at", { ascending: false });
+    // Fetch orders from MongoDB
+    const { db } = await connectDB();
+    const orders = db.collection("orders");
 
-    if (ordersError) {
-      console.error("Supabase orders error:", ordersError);
-      return NextResponse.json({ error: "Database error" }, { status: 500 });
-    }
+    const documents = await orders
+      .find({ seller_id: sellerId })
+      .sort({ created_at: -1 })
+      .toArray();
 
-    // Fetch buyer names
-    const buyerIds = [...new Set((orderRows ?? []).map((o: Record<string, unknown>) => o.buyer_id as string))];
+    // Fetch buyer names from Supabase
+    const buyerIds = [...new Set(documents.map((d) => d.buyer_id as string))];
     const { data: buyerRows } = await supabase
       .from("users")
       .select("id, name")
@@ -74,46 +48,46 @@ export async function GET(req: NextRequest) {
       buyerMap[u.id] = u.name;
     }
 
-    const orders = (orderRows ?? []).map((order: Record<string, unknown>) => {
-      const items = (order.order_items as Record<string, unknown>[] ?? []).map((item: Record<string, unknown>) => ({
-        id: item.id,
-        orderId: order.id,
-        productId: item.product_id,
+    const result = documents.map((doc) => {
+      const items = (doc.items ?? []).map((item: Record<string, unknown>) => ({
+        id: (item._id as { toString(): string })?.toString() ?? "",
+        orderId: doc.order_id as string,
+        productId: item.product_id as string,
         title: item.title ?? "",
         titleTh: item.title_th ?? undefined,
         titleEn: item.title_en ?? undefined,
         image: item.image ?? "",
         price: Number(item.price),
         quantity: Number(item.quantity),
-        sellerId: sellerId,
+        sellerId,
         keys: [],
-        platform: item.platform ?? "",
-        regionCode: item.region_code ?? undefined,
-        activationMethodTh: item.activation_method_th ?? undefined,
-        activationMethodEn: item.activation_method_en ?? undefined,
+        platform: (item.platform as string) ?? "",
+        regionCode: item.region_code as string | undefined,
+        activationMethodTh: item.activation_method_th as string | undefined,
+        activationMethodEn: item.activation_method_en as string | undefined,
       }));
 
       return {
-        id: order.id,
-        orderId: order.id,
-        buyerId: order.buyer_id,
-        buyerName: buyerMap[order.buyer_id as string] ?? "Unknown",
-        date: order.created_at,
-        status: order.status,
-        paymentStatus: order.payment_status,
-        fulfillmentStatus: order.fulfillment_status,
-        totalPrice: Number(order.total_price),
-        grossAmount: 0,
-        commissionAmount: 0,
-        sellerNetAmount: 0,
-        platformFeeRate: 0.05,
-        currency: order.currency ?? "THB",
-        paymentMethod: order.payment_method ?? "",
+        id: doc.order_id as string,
+        orderId: doc.order_id as string,
+        buyerId: doc.buyer_id as string,
+        buyerName: buyerMap[doc.buyer_id as string] ?? "Unknown",
+        date: doc.created_at as string,
+        status: doc.status as OrderStatus,
+        paymentStatus: doc.payment_status as PaymentStatus,
+        fulfillmentStatus: doc.fulfillment_status as FulfillmentStatus,
+        totalPrice: Number(doc.total_price),
+        grossAmount: Number(doc.gross_amount),
+        commissionAmount: Number(doc.commission_amount),
+        sellerNetAmount: Number(doc.seller_net_amount),
+        platformFeeRate: Number(doc.platform_fee_rate),
+        currency: (doc.currency as string) ?? "THB",
+        paymentMethod: (doc.payment_method as string) ?? "",
         items,
       };
     });
 
-    return NextResponse.json({ orders });
+    return NextResponse.json({ orders: result });
   } catch (error) {
     console.error("Seller orders error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

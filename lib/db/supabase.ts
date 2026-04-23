@@ -1,5 +1,11 @@
 import { createBrowserClientSupabase, createServiceRoleClient } from "@/lib/supabase/supabase";
-import type { User, Seller, Product, Order, SellerLedgerEntry } from "@/types/database";
+import type {
+  User,
+  Seller,
+  Product,
+  Order,
+  SellerLedgerEntry,
+} from "@/types/database";
 
 type UserRow = User;
 type SellerRow = Seller;
@@ -15,7 +21,8 @@ export function connectAdminDB() {
   return createServiceRoleClient();
 }
 
-// User helpers
+// ─── User helpers ──────────────────────────────────────────────────────────
+
 export async function findUserByEmail(email: string): Promise<UserRow | null> {
   const supabase = connectDB();
   const { data, error } = await supabase
@@ -42,27 +49,25 @@ export async function findUserById(id: string): Promise<UserRow | null> {
 
 export async function createUser(userData: {
   email: string;
-  name?: string;
+  name: string;
   passwordHash?: string;
   provider?: string;
   providerId?: string;
   role?: "buyer" | "seller" | "both";
 }): Promise<UserRow | null> {
   const supabase = connectAdminDB();
-  const now = new Date().toISOString();
 
   const { data, error } = await supabase
     .from("users")
     .insert({
       email: userData.email.toLowerCase(),
-      name: userData.name || null,
+      name: userData.name,
+      password_hash: userData.passwordHash || null,
       role: userData.role || "buyer",
       provider: userData.provider || null,
-      providerId: userData.providerId || null,
-      sellerId: null,
-      lastLoginAt: now,
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any)
+      provider_id: userData.providerId || null,
+      last_login_at: new Date().toISOString(),
+    })
     .select()
     .single();
 
@@ -73,11 +78,14 @@ export async function createUser(userData: {
   return data as UserRow;
 }
 
-export async function updateUser(id: string, updates: Partial<UserRow>): Promise<UserRow | null> {
+export async function updateUser(
+  id: string,
+  updates: Partial<UserRow>
+): Promise<UserRow | null> {
   const supabase = connectAdminDB();
   const { data, error } = await supabase
     .from("users")
-    .update({ ...updates, updatedAt: new Date().toISOString() })
+    .update({ ...updates, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select()
     .single();
@@ -90,17 +98,18 @@ export async function updateUserLastLogin(id: string): Promise<void> {
   const supabase = connectAdminDB();
   await supabase
     .from("users")
-    .update({ lastLoginAt: new Date().toISOString() })
+    .update({ last_login_at: new Date().toISOString() })
     .eq("id", id);
 }
 
-// Seller helpers
+// ─── Seller helpers ─────────────────────────────────────────────────────────
+
 export async function getSellerByUserId(userId: string): Promise<SellerRow | null> {
   const supabase = connectDB();
   const { data, error } = await supabase
     .from("sellers")
     .select("*")
-    .eq("userId", userId)
+    .eq("user_id", userId)
     .single();
 
   if (error || !data) return null;
@@ -121,22 +130,26 @@ export async function getSellerById(id: string): Promise<SellerRow | null> {
 
 export async function createSeller(sellerData: {
   userId: string;
-  name: string;
-  description?: string;
+  storeName: string;
+  phone?: string;
 }): Promise<SellerRow | null> {
   const supabase = connectAdminDB();
-  const now = new Date().toISOString();
 
   const { data, error } = await supabase
     .from("sellers")
     .insert({
-      userId: sellerData.userId,
-      name: sellerData.name,
-      description: sellerData.description || null,
-      rating: null,
-      totalSales: 0,
-      createdAt: now,
-      updatedAt: now,
+      user_id: sellerData.userId,
+      store_name: sellerData.storeName,
+      phone: sellerData.phone || null,
+      verified: false,
+      rating: 0,
+      sales_count: 0,
+      balance: 0,
+      pending_balance: 0,
+      payout_status: "manual",
+      response_time_minutes: 5,
+      fulfillment_rate: 100,
+      dispute_rate: 0,
     })
     .select()
     .single();
@@ -148,11 +161,14 @@ export async function createSeller(sellerData: {
   return data as SellerRow;
 }
 
-export async function updateSeller(id: string, updates: Partial<SellerRow>): Promise<SellerRow | null> {
+export async function updateSeller(
+  id: string,
+  updates: Partial<SellerRow>
+): Promise<SellerRow | null> {
   const supabase = connectAdminDB();
   const { data, error } = await supabase
     .from("sellers")
-    .update({ ...updates, updatedAt: new Date().toISOString() })
+    .update({ ...updates, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select()
     .single();
@@ -161,15 +177,16 @@ export async function updateSeller(id: string, updates: Partial<SellerRow>): Pro
   return data as SellerRow;
 }
 
-// Product helpers
+// ─── Product helpers ────────────────────────────────────────────────────────
+
 export async function getProductsBySeller(sellerId: string): Promise<ProductRow[]> {
   const supabase = connectDB();
   const { data, error } = await supabase
     .from("products")
     .select("*")
-    .eq("sellerId", sellerId)
-    .eq("isActive", true)
-    .order("createdAt", { ascending: false });
+    .eq("seller_id", sellerId)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false });
 
   if (error || !data) return [];
   return data as ProductRow[];
@@ -196,20 +213,18 @@ export async function createProduct(productData: {
   imageUrl?: string;
 }): Promise<ProductRow | null> {
   const supabase = connectAdminDB();
-  const now = new Date().toISOString();
 
   const { data, error } = await supabase
     .from("products")
     .insert({
-      sellerId: productData.sellerId,
+      seller_id: productData.sellerId,
       name: productData.name,
       description: productData.description || null,
       price: productData.price,
-      category: productData.category || null,
-      imageUrl: productData.imageUrl || null,
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
+      category: productData.category || "general",
+      image_url: productData.imageUrl || null,
+      is_active: true,
+      stock: 0,
     })
     .select()
     .single();
@@ -221,11 +236,14 @@ export async function createProduct(productData: {
   return data as ProductRow;
 }
 
-export async function updateProduct(id: string, updates: Partial<ProductRow>): Promise<ProductRow | null> {
+export async function updateProduct(
+  id: string,
+  updates: Partial<ProductRow>
+): Promise<ProductRow | null> {
   const supabase = connectAdminDB();
   const { data, error } = await supabase
     .from("products")
-    .update({ ...updates, updatedAt: new Date().toISOString() })
+    .update({ ...updates, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select()
     .single();
@@ -234,14 +252,18 @@ export async function updateProduct(id: string, updates: Partial<ProductRow>): P
   return data as ProductRow;
 }
 
-// Order helpers
+// ─── Order helpers ──────────────────────────────────────────────────────────
+// DEPRECATED: Orders have been migrated to MongoDB.
+// These Supabase helpers are kept for backward compatibility only.
+// Use lib/db/mongodb.ts order functions instead.
+
 export async function getOrdersByBuyer(buyerId: string): Promise<OrderRow[]> {
   const supabase = connectDB();
   const { data, error } = await supabase
     .from("orders")
     .select("*")
-    .eq("buyerId", buyerId)
-    .order("createdAt", { ascending: false });
+    .eq("buyer_id", buyerId)
+    .order("created_at", { ascending: false });
 
   if (error || !data) return [];
   return data as OrderRow[];
@@ -252,8 +274,8 @@ export async function getOrdersBySeller(sellerId: string): Promise<OrderRow[]> {
   const { data, error } = await supabase
     .from("orders")
     .select("*")
-    .eq("sellerId", sellerId)
-    .order("createdAt", { ascending: false });
+    .eq("seller_id", sellerId)
+    .order("created_at", { ascending: false });
 
   if (error || !data) return [];
   return data as OrderRow[];
@@ -277,22 +299,26 @@ export async function createOrder(orderData: {
   productId: string;
   quantity: number;
   totalPrice: number;
-  status?: "pending" | "completed" | "failed" | "refunded";
+  status?: Order["status"];
 }): Promise<OrderRow | null> {
   const supabase = connectAdminDB();
-  const now = new Date().toISOString();
 
   const { data, error } = await supabase
     .from("orders")
     .insert({
-      buyerId: orderData.buyerId,
-      sellerId: orderData.sellerId,
-      productId: orderData.productId,
+      buyer_id: orderData.buyerId,
+      seller_id: orderData.sellerId,
+      product_id: orderData.productId,
       quantity: orderData.quantity,
-      totalPrice: orderData.totalPrice,
+      total_price: orderData.totalPrice,
+      gross_amount: orderData.totalPrice,
+      commission_amount: 0,
+      seller_net_amount: orderData.totalPrice,
+      platform_fee_rate: 0.05,
+      currency: "THB",
       status: orderData.status || "pending",
-      createdAt: now,
-      updatedAt: now,
+      payment_status: "pending",
+      fulfillment_status: "pending",
     })
     .select()
     .single();
@@ -301,14 +327,17 @@ export async function createOrder(orderData: {
     console.error("createOrder error:", error);
     return null;
   }
-  return data as Order;
+  return data as OrderRow;
 }
 
-export async function updateOrderStatus(id: string, status: OrderRow["status"]): Promise<OrderRow | null> {
+export async function updateOrderStatus(
+  id: string,
+  status: Order["status"]
+): Promise<OrderRow | null> {
   const supabase = connectAdminDB();
   const { data, error } = await supabase
     .from("orders")
-    .update({ status, updatedAt: new Date().toISOString() })
+    .update({ status, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select()
     .single();
@@ -317,14 +346,17 @@ export async function updateOrderStatus(id: string, status: OrderRow["status"]):
   return data as OrderRow;
 }
 
-// Seller ledger helpers
-export async function getLedgerEntriesBySeller(sellerId: string): Promise<LedgerRow[]> {
+// ─── Seller ledger helpers ───────────────────────────────────────────────────
+
+export async function getLedgerEntriesBySeller(
+  sellerId: string
+): Promise<LedgerRow[]> {
   const supabase = connectDB();
   const { data, error } = await supabase
     .from("seller_ledger_entries")
     .select("*")
-    .eq("sellerId", sellerId)
-    .order("createdAt", { ascending: false });
+    .eq("seller_id", sellerId)
+    .order("created_at", { ascending: false });
 
   if (error || !data) return [];
   return data as LedgerRow[];
@@ -334,21 +366,19 @@ export async function createLedgerEntry(entryData: {
   sellerId: string;
   orderId?: string;
   amount: number;
-  type: "credit" | "debit";
+  type: "sale" | "commission_fee" | "withdrawal";
   description?: string;
 }): Promise<LedgerRow | null> {
   const supabase = connectAdminDB();
-  const now = new Date().toISOString();
 
   const { data, error } = await supabase
     .from("seller_ledger_entries")
     .insert({
-      sellerId: entryData.sellerId,
-      orderId: entryData.orderId || null,
+      seller_id: entryData.sellerId,
+      order_id: entryData.orderId || null,
       amount: entryData.amount,
       type: entryData.type,
       description: entryData.description || null,
-      createdAt: now,
     })
     .select()
     .single();

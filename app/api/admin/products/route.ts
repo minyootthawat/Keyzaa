@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import { getBearerPayload } from "@/lib/auth/jwt";
+import { getAdminAccessFromRequest } from "@/lib/auth/admin";
 
 interface DbProduct {
   id: string;
@@ -19,7 +19,7 @@ interface DbProduct {
 interface ProductWithSeller {
   id: string;
   sellerId: string;
-  name: string;
+  title: string;
   description: string;
   category: string;
   price: number;
@@ -33,32 +33,6 @@ interface ProductWithSeller {
     storeName: string;
     verified: boolean;
   };
-}
-
-async function verifyAdmin(req: NextRequest): Promise<{ authorized: boolean; error?: string; status?: number }> {
-  const payload = await getBearerPayload(req);
-  const userId = payload?.userId as string | undefined;
-
-  if (!userId) {
-    return { authorized: false, error: "Unauthorized", status: 401 };
-  }
-
-  const supabase = createServiceRoleClient();
-  const { data: user, error } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", userId)
-    .single();
-
-  if (error || !user) {
-    return { authorized: false, error: "User not found", status: 404 };
-  }
-
-  if (user.role !== "both") {
-    return { authorized: false, error: "Forbidden", status: 403 };
-  }
-
-  return { authorized: true };
 }
 
 function mapDbToProduct(row: DbProduct): Omit<ProductWithSeller, "seller"> {
@@ -79,9 +53,9 @@ function mapDbToProduct(row: DbProduct): Omit<ProductWithSeller, "seller"> {
 
 export async function GET(req: NextRequest) {
   try {
-    const check = await verifyAdmin(req);
-    if (!check.authorized) {
-      return NextResponse.json({ error: check.error }, { status: check.status });
+    const access = await getAdminAccessFromRequest(req);
+    if (access.status !== 200) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
     const { searchParams } = new URL(req.url);

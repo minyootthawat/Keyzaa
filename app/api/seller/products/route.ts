@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
+import { connectDB } from "@/lib/db/mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import type { Product } from "@/app/types";
+import { ObjectId } from "mongodb";
 
 interface DbProduct {
-  id: string;
+  _id: ObjectId;
   seller_id: string;
   name: string;
   description: string | null;
@@ -19,12 +21,12 @@ interface DbProduct {
 
 function mapDbToProduct(row: DbProduct): Product {
   return {
-    id: row.id,
+    id: row._id.toString(),
     sellerId: row.seller_id,
     title: row.name,
     description: row.description || "",
     category: row.category,
-    platform: "", // Not in schema
+    platform: "",
     price: Number(row.price),
     stock: row.stock,
     image: row.image_url || "",
@@ -72,20 +74,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const supabase = createServiceRoleClient();
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("seller_id", sellerId)
-      .order("created_at", { ascending: false });
+    const { db } = await connectDB();
+    const products = await db
+      .collection("products")
+      .find({ seller_id: sellerId })
+      .sort({ created_at: -1 })
+      .toArray();
 
-    if (error) {
-      console.error("Supabase error:", error);
-      return NextResponse.json({ error: "Database error" }, { status: 500 });
-    }
-
-    const products = (data as DbProduct[]).map(mapDbToProduct);
-    return NextResponse.json({ products });
+    const mapped = (products as unknown as DbProduct[]).map(mapDbToProduct);
+    return NextResponse.json({ products: mapped });
   } catch (error) {
     console.error("Seller products list error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -113,7 +110,6 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
 
-    // Validate required fields
     const { name, category, price, stock } = body;
     if (!name || typeof name !== "string" || name.trim() === "") {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -128,28 +124,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Stock must be a number of 0 or greater" }, { status: 400 });
     }
 
-    const supabase = createServiceRoleClient();
-    const { data, error } = await supabase
-      .from("products")
-      .insert({
-        seller_id: sellerId,
-        name: name.trim(),
-        description: body.description || null,
-        category: category.trim(),
-        price: price,
-        stock: stock,
-        image_url: body.image || null,
-        is_active: true,
-      })
-      .select()
-      .single();
+    const { db } = await connectDB();
+    const now = new Date().toISOString();
+    const result = await db.collection("products").insertOne({
+      seller_id: sellerId,
+      name: name.trim(),
+      description: body.description || null,
+      category: category.trim(),
+      price: price,
+      stock: stock,
+      image_url: body.image || null,
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    });
 
-    if (error) {
-      console.error("Supabase insert error:", error);
-      return NextResponse.json({ error: "Failed to create product" }, { status: 500 });
-    }
-
-    return NextResponse.json({ product: mapDbToProduct(data as DbProduct) }, { status: 201 });
+    const inserted = await db.collection("products").findOne({ _id: result.insertedId });
+    return NextResponse.json({ product: mapDbToProduct(inserted as unknown as DbProduct) }, { status: 201 });
   } catch (error) {
     console.error("Seller product create error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
