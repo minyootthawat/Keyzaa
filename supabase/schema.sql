@@ -129,7 +129,9 @@ alter table public.sellers enable row level security;
 alter table public.products enable row level security;
 -- Orders table migrated to MongoDB. Disable RLS here; all order auth is enforced in API routes.
 alter table public.orders disable row level security;
-alter table public.seller_ledger_entries enable row level security;
+-- Ledger migrated to MongoDB-style access pattern; disable RLS until migrated.
+-- Auth for ledger entries is enforced in application code (API routes use service role).
+alter table public.seller_ledger_entries disable row level security;
 
 -- USERS POLICIES
 drop policy if exists "Users can read own data" on public.users;
@@ -175,21 +177,21 @@ create policy "Admins can read all products" on public.products for select using
     exists (select 1 from public.users where id = auth.uid() and role = 'both')
 );
 
--- LEDGER POLICIES
-drop policy if exists "Sellers can read own ledger" on public.seller_ledger_entries;
-create policy "Sellers can read own ledger" on public.seller_ledger_entries for select using (
-    seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
-);
+-- LEDGER POLICIES (disabled — ledger RLS uses auth.uid() which breaks with NextAuth JWT strategy)
+-- drop policy if exists "Sellers can read own ledger" on public.seller_ledger_entries;
+-- create policy "Sellers can read own ledger" on public.seller_ledger_entries for select using (
+--     seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
+-- );
 
-drop policy if exists "System can insert ledger entries" on public.seller_ledger_entries;
-create policy "System can insert ledger entries" on public.seller_ledger_entries for insert with check (
-    seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
-);
+-- drop policy if exists "System can insert ledger entries" on public.seller_ledger_entries;
+-- create policy "System can insert ledger entries" on public.seller_ledger_entries for insert with check (
+--     seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
+-- );
 
-drop policy if exists "Admins can read all ledger entries" on public.seller_ledger_entries;
-create policy "Admins can read all ledger entries" on public.seller_ledger_entries for select using (
-    exists (select 1 from public.users where id = auth.uid() and role = 'both')
-);
+-- drop policy if exists "Admins can read all ledger entries" on public.seller_ledger_entries;
+-- create policy "Admins can read all ledger entries" on public.seller_ledger_entries for select using (
+--     exists (select 1 from public.users where id = auth.uid() and role = 'both')
+-- );
 
 -- UTILITY FUNCTIONS
 create or replace function public.get_seller_balance(seller_uuid uuid)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
+import { connectDB } from "@/lib/db/mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,7 +14,6 @@ export async function GET(req: NextRequest) {
 
     const supabase = createServiceRoleClient();
 
-    // Get seller by user_id
     const { data: seller, error: sellerError } = await supabase
       .from("sellers")
       .select("*")
@@ -29,30 +29,28 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    // Get ledger entries for balance calculation
-    const { data: ledgerRows } = await supabase
-      .from("seller_ledger_entries")
-      .select("type, amount")
-      .eq("seller_id", seller.id)
-      .order("created_at", { ascending: false });
+    const { db } = await connectDB();
+    const ledgerRows = await db
+      .collection("seller_ledger_entries")
+      .find({ seller_id: seller.id })
+      .sort({ created_at: -1 })
+      .toArray();
 
     let grossSales = 0;
     let totalCommission = 0;
     let netEarnings = 0;
     const pendingBalance = Number(seller.pending_balance ?? 0);
 
-    if (ledgerRows) {
-      for (const entry of ledgerRows) {
-        const amount = Number(entry.amount);
-        if (entry.type === "sale") {
-          grossSales += amount;
-          netEarnings += amount;
-        } else if (entry.type === "commission_fee") {
-          totalCommission += amount;
-          netEarnings -= amount;
-        } else if (entry.type === "withdrawal") {
-          netEarnings -= amount;
-        }
+    for (const entry of ledgerRows) {
+      const amount = Number(entry.amount);
+      if (entry.type === "sale") {
+        grossSales += amount;
+        netEarnings += amount;
+      } else if (entry.type === "commission_fee") {
+        totalCommission += amount;
+        netEarnings -= amount;
+      } else if (entry.type === "withdrawal") {
+        netEarnings -= amount;
       }
     }
 

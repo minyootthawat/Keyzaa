@@ -30,7 +30,6 @@ export async function GET(req: NextRequest) {
     // Fetch orders from MongoDB
     const { db } = await connectDB();
     const orders = db.collection("orders");
-    const orderItems = db.collection("order_items");
 
     const documents = await orders
       .find({ seller_id: sellerId })
@@ -49,19 +48,9 @@ export async function GET(req: NextRequest) {
       buyerMap[u.id] = u.name;
     }
 
-    // Fetch order items for each order
-    const orderIds = documents.map((d) => d._id);
-    const itemsCursor = await orderItems.find({ order_id: { $in: orderIds.map(String) } }).toArray();
-    const itemsByOrderId: Record<string, Record<string, unknown>[]> = {};
-    for (const item of itemsCursor) {
-      const oid = item.order_id as string;
-      if (!itemsByOrderId[oid]) itemsByOrderId[oid] = [];
-      itemsByOrderId[oid].push(item);
-    }
-
     const result = documents.map((doc) => {
-      const items = (itemsByOrderId[doc._id.toString()] ?? []).map((item) => ({
-        id: item._id.toString(),
+      const items = (doc.items ?? []).map((item: Record<string, unknown>) => ({
+        id: (item._id as { toString(): string })?.toString() ?? "",
         orderId: doc.order_id as string,
         productId: item.product_id as string,
         title: item.title ?? "",
@@ -79,7 +68,7 @@ export async function GET(req: NextRequest) {
       }));
 
       return {
-        id: doc._id.toString(),
+        id: doc.order_id as string,
         orderId: doc.order_id as string,
         buyerId: doc.buyer_id as string,
         buyerName: buyerMap[doc.buyer_id as string] ?? "Unknown",

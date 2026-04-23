@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
+import { connectDB } from "@/lib/db/mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import type { OrderStatus, PaymentStatus, FulfillmentStatus } from "@/app/types";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,7 +15,6 @@ export async function GET(req: NextRequest) {
 
     const supabase = createServiceRoleClient();
 
-    // Get seller
     const { data: seller, error: sellerError } = await supabase
       .from("sellers")
       .select("id")
@@ -26,48 +27,33 @@ export async function GET(req: NextRequest) {
 
     const sellerId = seller.id;
 
-    // Run all queries in parallel
+    const { db } = await connectDB();
+
     const [ordersResult, productsResult, ledgerResult] = await Promise.all([
-      supabase
-        .from("orders")
-        .select("id, total_price, status, created_at")
-        .eq("seller_id", sellerId)
-        .order("created_at", { ascending: false })
-        .limit(20),
-      supabase
-        .from("products")
-        .select("id, name, stock, price")
-        .eq("seller_id", sellerId)
-        .order("created_at", { ascending: false })
-        .limit(5),
-      supabase
-        .from("seller_ledger_entries")
-        .select("type, amount")
-        .eq("seller_id", sellerId)
-        .order("created_at", { ascending: false }),
+      db
+        .collection("orders")
+        .find({ seller_id: sellerId })
+        .sort({ created_at: -1 })
+        .limit(20)
+        .toArray(),
+      db
+        .collection("products")
+        .find({ seller_id: sellerId })
+        .sort({ created_at: -1 })
+        .limit(5)
+        .toArray(),
+      db
+        .collection("seller_ledger_entries")
+        .find({ seller_id: sellerId })
+        .sort({ created_at: -1 })
+        .toArray(),
     ]);
 
-    if (ordersResult.error) {
-      console.error("Supabase orders error:", ordersResult.error);
-      return NextResponse.json({ error: "Database error" }, { status: 500 });
-    }
-
-    if (productsResult.error) {
-      console.error("Supabase products error:", productsResult.error);
-      return NextResponse.json({ error: "Database error" }, { status: 500 });
-    }
-
-    if (ledgerResult.error) {
-      console.error("Supabase ledger error:", ledgerResult.error);
-      return NextResponse.json({ error: "Database error" }, { status: 500 });
-    }
-
-    // Calculate wallet summary
     let grossSales = 0;
     let totalCommission = 0;
     let netEarnings = 0;
 
-    for (const entry of ledgerResult.data ?? []) {
+    for (const entry of ledgerResult ?? []) {
       const amount = Number(entry.amount);
       if (entry.type === "sale") {
         grossSales += amount;
@@ -80,48 +66,47 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Count orders by status
-    const orderDocuments = ordersResult.data ?? [];
+    const orderDocuments = ordersResult ?? [];
     const orderCount = orderDocuments.length;
 
-    // Recent orders with items
-    const orderIds = orderDocuments.map((o: Record<string, unknown>) => o.id as string);
-    const { data: allOrderItems } = await supabase
-      .from("order_items")
-      .select("*")
-      .in("order_id", orderIds);
+    const orderIds = orderDocuments.map((o) => o._id.toString());
+    const itemsCursor = await db
+      .collection("order_items")
+      .find({ order_id: { $in: orderIds } })
+      .toArray();
 
     const itemsByOrder: Record<string, Record<string, unknown>[]> = {};
-    for (const item of allOrderItems ?? []) {
-      if (!itemsByOrder[item.order_id]) itemsByOrder[item.order_id] = [];
-      itemsByOrder[item.order_id].push(item);
+    for (const item of itemsCursor) {
+      const oid = item.order_id as string;
+      if (!itemsByOrder[oid]) itemsByOrder[oid] = [];
+      itemsByOrder[oid].push(item);
     }
 
-    const orders = orderDocuments.map((order: Record<string, unknown>) => ({
-      id: order.id,
-      orderId: order.id,
-      buyerId: "",
-      date: order.created_at,
-      status: order.status,
-      paymentStatus: "pending",
-      fulfillmentStatus: "pending",
+    const orders = orderDocuments.map((order) => ({
+      id: order._id.toString(),
+      orderId: order._id.toString(),
+      buyerId: order.buyer_id as string,
+      date: order.created_at as string,
+      status: order.status as OrderStatus,
+      paymentStatus: (order.payment_status as PaymentStatus) || "pending",
+      fulfillmentStatus: (order.fulfillment_status as FulfillmentStatus) || "pending",
       totalPrice: Number(order.total_price),
       grossAmount: 0,
       commissionAmount: 0,
       sellerNetAmount: 0,
       platformFeeRate: 0.05,
       currency: "THB",
-      paymentMethod: "",
-      items: (itemsByOrder[order.id as string] ?? []).map((item: Record<string, unknown>) => ({
-        id: item.id,
-        orderId: order.id,
-        productId: item.product_id,
+      paymentMethod: (order.payment_method as string) || "",
+      items: (itemsByOrder[order._id.toString()] ?? []).map((item) => ({
+        id: item._id?.toString() ?? "",
+        orderId: order._id.toString(),
+        productId: item.product_id as string,
         title: item.title ?? "",
         price: Number(item.price),
         quantity: Number(item.quantity),
-        sellerId: sellerId,
+        sellerId,
         keys: [],
-        platform: item.platform ?? "",
+        platform: (item.platform as string) ?? "",
       })),
     }));
 
@@ -134,8 +119,8 @@ export async function GET(req: NextRequest) {
         orderCount,
       },
       orders,
-      products: (productsResult.data ?? []).map((p: Record<string, unknown>) => ({
-        id: p.id,
+      products: (productsResult ?? []).map((p) => ({
+        id: p._id.toString(),
         title: p.name,
         stock: p.stock,
         soldCount: 0,

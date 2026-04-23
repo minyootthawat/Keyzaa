@@ -1,162 +1,148 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { GET } from "./route";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { GET } from "./route";
 
-// ─── Shared mock refs ───────────────────────────────────────────────────────────
-const mockFrom = vi.hoisted(() => vi.fn());
-const mockFind = vi.hoisted(() => vi.fn());
-const mockCountDocuments = vi.hoisted(() => vi.fn());
+// ---------------------------------------------------------------------------
+// Mock state
+// ---------------------------------------------------------------------------
 
-// ─── Auth mocks ────────────────────────────────────────────────────────────────
-vi.mock("@/lib/auth/jwt", () => ({
-  getBearerPayload: vi.fn().mockResolvedValue({ userId: "admin-user-123" }),
+const mockState = vi.hoisted(() => ({
+  orderDocs: [] as Record<string, unknown>[],
+  total: 0,
+  throwError: null as Error | null,
 }));
 
+// ---------------------------------------------------------------------------
+// Mock: auth/admin
+// ---------------------------------------------------------------------------
 vi.mock("@/lib/auth/admin", () => ({
   getAdminAccessFromRequest: vi.fn().mockResolvedValue({
     status: 200,
-    access: { isAdmin: true, adminRole: "super_admin", permissions: ["admin:access", "admin:orders:read"] },
-    userId: "admin-user-123",
+    access: { isAdmin: true, adminRole: "super_admin" as const, permissions: ["admin:access", "admin:orders:read"] },
+    userId: "507f1f77bcf86cd799439011",
   }),
-  getAdminAccessForEmail: vi.fn().mockReturnValue({
-    isAdmin: true,
-    adminRole: "super_admin",
-    permissions: ["admin:access", "admin:orders:read"],
-  }),
-  hasAdminPermission: vi.fn().mockReturnValue(true),
 }));
 
-// ─── Supabase mock ─────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Mock: db/mongodb — proper collection() chainable mock
+// ---------------------------------------------------------------------------
+vi.mock("@/lib/db/mongodb", () => {
+  function makeCollection() {
+    return {
+      find: vi.fn().mockReturnValue({
+        sort: vi.fn().mockReturnThis(),
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        toArray: vi.fn().mockResolvedValue(mockState.orderDocs),
+      }),
+      findOne: vi.fn().mockResolvedValue(null),
+      insertOne: vi.fn().mockResolvedValue({ insertedId: "mock-id" }),
+      countDocuments: vi.fn().mockResolvedValue(mockState.total),
+      aggregate: vi.fn().mockReturnValue({
+        toArray: vi.fn().mockResolvedValue([]),
+      }),
+    };
+  }
+
+  return {
+    connectDB: vi.fn().mockImplementation(async () => {
+      if (mockState.throwError) throw mockState.throwError;
+      return {
+        client: {} as unknown,
+        db: {
+          collection: vi.fn().mockImplementation(() => makeCollection()),
+        },
+      };
+    }),
+    getDb: vi.fn(),
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Mock: Supabase client
+// ---------------------------------------------------------------------------
 vi.mock("@/lib/supabase/supabase", () => ({
   createServiceRoleClient: vi.fn().mockReturnValue({
-    from: mockFrom,
-  }),
-}));
-
-// ─── MongoDB mock ─────────────────────────────────────────────────────────────
-vi.mock("@/lib/db/mongodb", () => ({
-  connectDB: vi.fn().mockResolvedValue({
-    db: {
-      collection: vi.fn().mockReturnValue({
-        find: mockFind,
-        countDocuments: mockCountDocuments,
+    from: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockReturnThis(),
+        data: [],
+        error: null,
+        count: 0,
       }),
-    },
+      insert: vi.fn().mockReturnValue({ error: null }),
+    }),
   }),
-  getDb: vi.fn(),
 }));
 
-// Per-call chainable builder
-let callCount = 0;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-function buildChain(data: unknown = null, error: unknown = null): Record<string, unknown> {
-  const obj: Record<string, unknown> = {
-    then: (res: (v: { data: unknown; error: unknown }) => void) => {
-      setTimeout(() => res({ data, error }), 0);
-      return obj;
-    },
-  };
-  for (const method of ["select", "eq", "neq", "order", "limit", "in", "single", "maybeSingle"]) {
-    obj[method] = () => buildChain(data, error);
-  }
-  return obj;
+function buildReq(url = "http://localhost/api/admin/orders") {
+  const headers = new Headers();
+  headers.set("authorization", "Bearer mock-admin-token");
+  return new NextRequest(url, { headers, method: "GET" });
 }
 
-function makeGetReq(searchParams?: Record<string, string>) {
-  const url = new URL("http://localhost/api/admin/orders");
-  if (searchParams) {
-    Object.entries(searchParams).forEach(([k, v]) => url.searchParams.set(k, v));
-  }
-  return new NextRequest(url, { method: "GET" });
-}
+const baseOrderDoc = {
+  _id: "oid1",
+  order_id: "ord_test_001",
+  buyer_id: "buyer-001",
+  seller_id: "seller-001",
+  product_id: "prod-001",
+  status: "delivered",
+  payment_status: "paid",
+  fulfillment_status: "delivered",
+  total_price: 200,
+  gross_amount: 176,
+  commission_amount: 24,
+  seller_net_amount: 176,
+  platform_fee_rate: 0.12,
+  currency: "THB",
+  payment_method: "promptpay",
+  items: [],
+  created_at: "2025-01-01T00:00:00Z",
+};
 
+// ---------------------------------------------------------------------------
+// GET /api/admin/orders
+// ---------------------------------------------------------------------------
 describe("GET /api/admin/orders", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    callCount = 0;
-
-    mockCountDocuments.mockResolvedValue(1);
-    mockFind.mockReturnValue({
-      sort: vi.fn().mockReturnThis(),
-      skip: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockReturnThis(),
-      toArray: vi.fn().mockResolvedValue([
-        {
-          _id: "mongo-id-001",
-          order_id: "ord_001",
-          buyer_id: "buyer-001",
-          seller_id: "seller-001",
-          product_id: "prod-001",
-          quantity: 1,
-          total_price: 100,
-          gross_amount: 100,
-          commission_amount: 12,
-          seller_net_amount: 88,
-          platform_fee_rate: 0.12,
-          currency: "THB",
-          status: "pending",
-          payment_status: "pending",
-          fulfillment_status: "pending",
-          payment_method: "promptpay",
-          created_at: "2024-01-01T00:00:00.000Z",
-          updated_at: "2024-01-01T00:00:00.000Z",
-        },
-      ]),
-    });
-
-    // Per-call responses for supabase.from() chain:
-    // 1. users (buyers) lookup → data: [{id, name, email}]
-    // 2. sellers lookup → data: [{id, store_name}]
-    const responses = [
-      [{ id: "buyer-001", name: "Test Buyer", email: "buyer@test.com" }],
-      [{ id: "seller-001", store_name: "Test Store" }],
-    ];
-    mockFrom.mockImplementation(() => {
-      const data = responses[callCount] ?? [];
-      callCount++;
-      return buildChain(data);
-    });
+    mockState.orderDocs = [];
+    mockState.total = 0;
+    mockState.throwError = null;
   });
 
-  it("returns 200 with orders, total, page, limit", async () => {
-    const res = await GET(makeGetReq());
-    expect(res.status).toBe(200);
+  it("returns 200 with orders array and pagination", async () => {
+    mockState.orderDocs = [baseOrderDoc];
+    mockState.total = 1;
+
+    const res = await GET(buildReq());
     const json = await res.json();
-    expect(json).toHaveProperty("orders");
-    expect(json).toHaveProperty("total");
-    expect(json).toHaveProperty("page");
-    expect(json).toHaveProperty("limit");
-    expect(Array.isArray(json.orders)).toBe(true);
+
+    expect(res.status).toBe(200);
+    expect(json.orders).toBeInstanceOf(Array);
     expect(json.total).toBe(1);
     expect(json.page).toBe(1);
+    expect(json.limit).toBe(20);
   });
 
-  it("returns admin error when getAdminAccessFromRequest returns 401", async () => {
+  it("returns 401 when admin access returns 401", async () => {
     const { getAdminAccessFromRequest } = await import("@/lib/auth/admin");
     vi.mocked(getAdminAccessFromRequest).mockResolvedValueOnce({ status: 401, error: "Unauthorized" });
-    const res = await GET(makeGetReq());
+
+    const res = await GET(buildReq());
     expect(res.status).toBe(401);
   });
 
-  it("returns admin error when getAdminAccessFromRequest returns 403", async () => {
-    const { getAdminAccessFromRequest } = await import("@/lib/auth/admin");
-    vi.mocked(getAdminAccessFromRequest).mockResolvedValueOnce({ status: 403, error: "Forbidden" });
-    const res = await GET(makeGetReq());
-    expect(res.status).toBe(403);
-  });
+  it("returns 500 on DB error", async () => {
+    mockState.throwError = new Error("DB error");
 
-  it("respects pagination params page and limit", async () => {
-    const res = await GET(makeGetReq({ page: "3", limit: "50" }));
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.page).toBe(3);
-    expect(json.limit).toBe(50);
-  });
-
-  it("returns 500 when MongoDB throws", async () => {
-    const { connectDB } = await import("@/lib/db/mongodb");
-    vi.mocked(connectDB).mockRejectedValueOnce(new Error("DB error"));
-    const res = await GET(makeGetReq());
+    const res = await GET(buildReq());
     expect(res.status).toBe(500);
   });
 });

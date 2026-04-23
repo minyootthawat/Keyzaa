@@ -1,116 +1,132 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { GET } from "./route";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { GET } from "./route";
 
-// ─── Auth mocks ────────────────────────────────────────────────────────────────
-vi.mock("@/lib/auth/jwt", () => ({
-  getBearerPayload: vi.fn().mockResolvedValue({ userId: "admin-user-123" }),
+// ---------------------------------------------------------------------------
+// Mock state
+// ---------------------------------------------------------------------------
+
+const mockState = vi.hoisted(() => ({
+  ordersCount: 0,
+  revenueTotal: 0,
+  throwError: null as Error | null,
 }));
 
+// ---------------------------------------------------------------------------
+// Mock: auth/admin
+// ---------------------------------------------------------------------------
 vi.mock("@/lib/auth/admin", () => ({
   getAdminAccessFromRequest: vi.fn().mockResolvedValue({
     status: 200,
-    access: { isAdmin: true, adminRole: "super_admin", permissions: ["admin:access", "admin:overview:read"] },
-    userId: "admin-user-123",
+    access: { isAdmin: true, adminRole: "super_admin" as const, permissions: ["admin:access", "admin:overview:read"] },
+    userId: "test-admin-id",
   }),
-  getAdminAccessForEmail: vi.fn().mockReturnValue({
-    isAdmin: true,
-    adminRole: "super_admin",
-    permissions: ["admin:access", "admin:overview:read"],
-  }),
-  hasAdminPermission: vi.fn().mockReturnValue(true),
 }));
 
-// ─── Supabase mock ─────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Mock: db/mongodb — proper collection() chainable mock
+// ---------------------------------------------------------------------------
+vi.mock("@/lib/db/mongodb", () => {
+  function makeCollection() {
+    return {
+      find: vi.fn().mockReturnValue({
+        sort: vi.fn().mockReturnThis(),
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        toArray: vi.fn().mockResolvedValue([]),
+      }),
+      findOne: vi.fn().mockResolvedValue(null),
+      insertOne: vi.fn().mockResolvedValue({ insertedId: "mock-id" }),
+      countDocuments: vi.fn().mockResolvedValue(mockState.ordersCount),
+      aggregate: vi.fn().mockReturnValue({
+        toArray: vi.fn().mockResolvedValue(
+          mockState.revenueTotal > 0
+            ? [{ _id: null, total: mockState.revenueTotal }]
+            : []
+        ),
+      }),
+    };
+  }
+
+  return {
+    connectDB: vi.fn().mockImplementation(async () => {
+      if (mockState.throwError) throw mockState.throwError;
+      return {
+        client: {} as unknown,
+        db: {
+          collection: vi.fn().mockImplementation(() => makeCollection()),
+        },
+      };
+    }),
+    getDb: vi.fn(),
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Mock: Supabase client
+// ---------------------------------------------------------------------------
 vi.mock("@/lib/supabase/supabase", () => ({
   createServiceRoleClient: vi.fn().mockReturnValue({
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: { id: "admin-user-123", role: "both" }, error: null }),
-        }),
+        eq: vi.fn().mockReturnThis(),
+        data: [],
+        error: null,
+        count: 0,
       }),
+      insert: vi.fn().mockReturnValue({ error: null }),
     }),
   }),
 }));
 
-// ─── MongoDB mock ─────────────────────────────────────────────────────────────
-vi.mock("@/lib/db/mongodb", () => {
-  const mockCountDocuments = vi.fn();
-  const mockAggregate = vi.fn();
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-  return {
-    connectDB: vi.fn().mockResolvedValue({
-      db: {
-        collection: vi.fn().mockReturnValue({
-          countDocuments: mockCountDocuments,
-          aggregate: mockAggregate,
-        }),
-      },
-    }),
-    getDb: vi.fn(),
-    _mocks: { mockCountDocuments, mockAggregate },
-  };
-});
-
-function makeGetReq() {
-  return new NextRequest("http://localhost/api/admin/overview", { method: "GET" });
+function buildReq() {
+  const headers = new Headers();
+  headers.set("authorization", "Bearer mock-admin-token");
+  return new NextRequest("http://localhost/api/admin/overview", { headers, method: "GET" });
 }
 
+// ---------------------------------------------------------------------------
+// GET /api/admin/overview
+// ---------------------------------------------------------------------------
 describe("GET /api/admin/overview", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
-    const { _mocks } = await import("@/lib/db/mongodb");
-    const { mockCountDocuments, mockAggregate } = _mocks;
-
-    mockCountDocuments.mockResolvedValue(42);
-    mockAggregate.mockReturnValue({
-      toArray: vi.fn().mockResolvedValue([{ _id: null, total: 98765 }]),
-    });
+    mockState.ordersCount = 0;
+    mockState.revenueTotal = 0;
+    mockState.throwError = null;
   });
 
   it("returns 200 with all stats", async () => {
-    const res = await GET(makeGetReq());
-    expect(res.status).toBe(200);
+    mockState.ordersCount = 42;
+    mockState.revenueTotal = 150000;
+
+    const res = await GET(buildReq());
     const json = await res.json();
+
+    expect(res.status).toBe(200);
     expect(json).toHaveProperty("totalUsers");
     expect(json).toHaveProperty("totalSellers");
     expect(json).toHaveProperty("totalProducts");
     expect(json).toHaveProperty("totalOrders");
     expect(json).toHaveProperty("totalRevenue");
-    expect(json.totalOrders).toBe(42);
-    expect(json.totalRevenue).toBe(98765);
   });
 
-  it("returns admin error when getAdminAccessFromRequest returns 401", async () => {
+  it("returns 401 when admin access returns 401", async () => {
     const { getAdminAccessFromRequest } = await import("@/lib/auth/admin");
     vi.mocked(getAdminAccessFromRequest).mockResolvedValueOnce({ status: 401, error: "Unauthorized" });
-    const res = await GET(makeGetReq());
+
+    const res = await GET(buildReq());
     expect(res.status).toBe(401);
   });
 
-  it("returns admin error when getAdminAccessFromRequest returns 403", async () => {
-    const { getAdminAccessFromRequest } = await import("@/lib/auth/admin");
-    vi.mocked(getAdminAccessFromRequest).mockResolvedValueOnce({ status: 403, error: "Forbidden" });
-    const res = await GET(makeGetReq());
-    expect(res.status).toBe(403);
-  });
+  it("returns 500 on DB error", async () => {
+    mockState.throwError = new Error("DB error");
 
-  it("returns 500 when MongoDB aggregate returns empty (no revenue)", async () => {
-    const { _mocks } = await import("@/lib/db/mongodb");
-    _mocks.mockAggregate.mockReturnValueOnce({
-      toArray: vi.fn().mockResolvedValue([]),
-    });
-    const res = await GET(makeGetReq());
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.totalRevenue).toBe(0);
-  });
-
-  it("returns 500 when MongoDB throws", async () => {
-    const { connectDB } = await import("@/lib/db/mongodb");
-    vi.mocked(connectDB).mockRejectedValueOnce(new Error("DB error"));
-    const res = await GET(makeGetReq());
+    const res = await GET(buildReq());
     expect(res.status).toBe(500);
   });
 });

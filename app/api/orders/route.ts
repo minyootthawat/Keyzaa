@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       order: createdOrders[0],
       orders: createdOrders,
-    });
+    }, { status: 201 });
   } catch (error) {
     console.error("Order create error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
