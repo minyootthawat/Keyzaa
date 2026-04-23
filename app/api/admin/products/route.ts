@@ -20,14 +20,11 @@ interface ProductWithSeller {
   id: string;
   sellerId: string;
   title: string;
-  description: string;
   category: string;
   price: number;
   stock: number;
   image: string;
   isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
   seller: {
     id: string;
     storeName: string;
@@ -40,14 +37,11 @@ function mapDbToProduct(row: DbProduct): Omit<ProductWithSeller, "seller"> {
     id: row.id,
     sellerId: row.seller_id,
     title: row.name,
-    description: row.description || "",
     category: row.category,
     price: Number(row.price),
     stock: row.stock,
     image: row.image_url || "",
     isActive: row.is_active,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
   };
 }
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { getSellerByUserId, getLedgerEntriesBySeller } from "@/lib/db/mongodb";
+import type { Seller } from "@/types/database";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,29 +12,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = createServiceRoleClient();
-
-    const { data: seller, error: sellerError } = await supabase
-      .from("sellers")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (sellerError) {
-      console.error("Supabase seller lookup error:", sellerError);
-      return NextResponse.json({ error: "Database error" }, { status: 500 });
-    }
-
+    const seller = await getSellerByUserId(userId) as (Seller & { _id: { toString(): string } }) | null;
     if (!seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const { db } = await connectDB();
-    const ledgerRows = await db
-      .collection("seller_ledger_entries")
-      .find({ seller_id: seller.id })
-      .sort({ created_at: -1 })
-      .toArray();
+    const sellerId = seller._id.toString();
+
+    const ledgerRows = await getLedgerEntriesBySeller(sellerId);
 
     let grossSales = 0;
     let totalCommission = 0;
@@ -56,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       seller: {
-        id: seller.id,
+        id: sellerId,
         userId: seller.user_id,
         shopName: seller.store_name,
         phone: seller.phone ?? "",

@@ -308,6 +308,85 @@ export async function getSellerByUserId(userId: string): Promise<Record<string, 
   return seller as Record<string, unknown> | null;
 }
 
+export async function createSeller(data: {
+  user_id: string;
+  store_name: string;
+  phone: string;
+  verified?: boolean;
+}): Promise<string> {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  const result = await db.collection("sellers").insertOne({
+    user_id: data.user_id,
+    store_name: data.store_name,
+    phone: data.phone,
+    verified: data.verified ?? false,
+    balance: 0,
+    pending_balance: 0,
+    rating: 0,
+    sales_count: 0,
+    response_time_minutes: 5,
+    fulfillment_rate: 100,
+    dispute_rate: 0,
+    payout_status: "manual",
+    created_at: now,
+    updated_at: now,
+  });
+
+  return result.insertedId.toString();
+}
+
+export async function updateSeller(
+  sellerId: string,
+  fields: Record<string, unknown>
+): Promise<Record<string, unknown> | null> {
+  const db = getDb();
+  const result = await db.collection("sellers").findOneAndUpdate(
+    { _id: toObjectId(sellerId) },
+    { $set: { ...fields, updated_at: new Date().toISOString() } },
+    { returnDocument: "after" }
+  );
+  return result as Record<string, unknown> | null;
+}
+
+export async function countSellers(verifiedFilter?: boolean): Promise<number> {
+  const db = getDb();
+  const filter: Record<string, unknown> = {};
+  if (verifiedFilter !== undefined) filter.verified = verifiedFilter;
+  return db.collection("sellers").countDocuments(filter);
+}
+
+export async function getSellers(
+  filters: { verified?: boolean } = {},
+  pagination: { page?: number; limit?: number } = {}
+): Promise<Record<string, unknown>[]> {
+  const db = getDb();
+  const { page = 1, limit = 20 } = pagination;
+  const query: Record<string, unknown> = {};
+  if (filters.verified !== undefined) query.verified = filters.verified;
+
+  const skip = (page - 1) * limit;
+  const sellers = await db
+    .collection("sellers")
+    .find(query)
+    .sort({ created_at: -1 })
+    .skip(skip)
+    .limit(limit)
+    .toArray();
+  return sellers as Record<string, unknown>[];
+}
+
+export async function getSellersByIds(sellerIds: string[]): Promise<Record<string, unknown>[]> {
+  const db = getDb();
+  const objectIds = sellerIds.map((id) => toObjectId(id));
+  const sellers = await db
+    .collection("sellers")
+    .find({ _id: { $in: objectIds } })
+    .toArray();
+  return sellers as Record<string, unknown>[];
+}
+
 // ─── Seller ledger helpers ─────────────────────────────────────────────────────
 
 export async function getLedgerEntriesBySeller(
@@ -362,14 +441,14 @@ export async function getSellerWalletSummary(
   let totalSales = 0;
   let totalWithdrawals = 0;
 
-  for (const entry of ledgerEntries as Array<{ type: string; amount: number }>) {
+  for (const entry of ledgerEntries as unknown as Array<{ type: string; amount: number }>) {
     if (entry.type === "sale") totalSales += entry.amount;
     if (entry.type === "withdrawal") totalWithdrawals += entry.amount;
   }
 
   return {
-    balance: (seller as { balance: number })?.balance ?? 0,
-    pending_balance: (seller as { pending_balance: number })?.pending_balance ?? 0,
+    balance: (seller as unknown as { balance: number })?.balance ?? 0,
+    pending_balance: (seller as unknown as { pending_balance: number })?.pending_balance ?? 0,
     total_sales: totalSales,
     total_withdrawals: totalWithdrawals,
   };

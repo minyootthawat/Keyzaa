@@ -19,20 +19,22 @@ interface DbProduct {
   updated_at: string;
 }
 
-function mapDbToProduct(row: DbProduct): Product {
+function mapDbToProduct(row: DbProduct): Partial<Product> {
   return {
     id: row._id.toString(),
     sellerId: row.seller_id,
     title: row.name,
-    description: row.description || "",
+    nameTh: row.name,
+    nameEn: row.name,
     category: row.category,
     platform: "",
     price: Number(row.price),
+    originalPrice: Number(row.price),
+    discount: 0,
     stock: row.stock,
+    soldCount: 0,
     image: row.image_url || "",
     isActive: row.is_active,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
   };
 }
 

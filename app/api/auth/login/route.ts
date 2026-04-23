@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
-import { connectDB } from "@/lib/db/mongodb";
+import { findUserByEmail } from "@/lib/db/supabase";
+import { getAdminAccessForEmail } from "@/lib/auth/admin";
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
 
@@ -16,10 +17,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { db } = await connectDB();
-    const users = db.collection("users");
-
-    const user = await users.findOne({ email: email.toLowerCase() });
+    const user = await findUserByEmail(email);
     if (!user) {
       return NextResponse.json(
         { error: "Invalid email or password" },
@@ -27,7 +25,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    // Check if user has a password (social users may not)
+    const passwordHash = (user as unknown as { password_hash?: string }).password_hash;
+    console.log("[LOGIN] passwordHash:", passwordHash ? "present" : "missing");
+    if (!passwordHash) {
+      return NextResponse.json(
+        { error: "This account uses social login. Please sign in with Google, Facebook, or LINE." },
+        { status: 401 }
+      );
+    }
+
+    const validPassword = await bcrypt.compare(password, passwordHash);
     if (!validPassword) {
       return NextResponse.json(
         { error: "Invalid email or password" },
@@ -35,7 +43,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const token = await new SignJWT({ userId: user._id.toString(), email: user.email })
+    const userId = user.id;
+    const adminAccess = getAdminAccessForEmail(user.email);
+
+    const token = await new SignJWT({
+      userId,
+      email: user.email,
+    })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
       .setExpirationTime("7d")
@@ -44,12 +58,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       token,
       user: {
-        id: user._id.toString(),
+        id: userId,
         name: user.name,
         email: user.email,
-        role: user.role,
-        sellerId: user.sellerId,
-        createdAt: user.createdAt,
+        role: (user as unknown as { role?: string }).role ?? "buyer",
+        sellerId: (user as unknown as { seller_id?: string }).seller_id ?? null,
+        isAdmin: adminAccess.isAdmin,
+        adminRole: adminAccess.adminRole,
+        adminPermissions: adminAccess.permissions,
+        createdAt: user.created_at,
       },
     });
   } catch (error) {

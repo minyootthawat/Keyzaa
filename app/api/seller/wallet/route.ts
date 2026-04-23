@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
+import { getSellerByUserId, getLedgerEntriesBySeller } from "@/lib/db/mongodb";
+import type { Seller } from "@/types/database";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,30 +12,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = createServiceRoleClient();
-
-    // Get seller id from Supabase (seller table still in Supabase)
-    const { data: seller, error: sellerError } = await supabase
-      .from("sellers")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (sellerError || !seller) {
+    const seller = await getSellerByUserId(userId) as (Seller & { _id: { toString(): string } }) | null;
+    if (!seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller.id;
+    const sellerId = seller._id.toString();
 
-    // Fetch ledger entries from MongoDB
-    const { db } = await connectDB();
-    const entries = await db
-      .collection("seller_ledger_entries")
-      .find({ seller_id: sellerId })
-      .sort({ created_at: -1 })
-      .toArray();
+    const entries = await getLedgerEntriesBySeller(sellerId);
 
-    // Map to API type
     const mappedEntries = (entries ?? []).map((entry: Record<string, unknown>) => ({
       id: (entry._id as { toString(): string }).toString(),
       sellerId: entry.seller_id as string,
@@ -54,7 +39,6 @@ export async function GET(req: NextRequest) {
       metadata: {},
     }));
 
-    // Calculate summary
     let grossSales = 0;
     let totalCommission = 0;
     let netEarnings = 0;

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getAdminAccessFromRequest } from "@/lib/auth/admin";
 import { connectDB } from "@/lib/db/mongodb";
+import { getSellersByIds } from "@/lib/db/mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
 interface OrderWithDetails {
   id: string;
@@ -65,19 +66,15 @@ export async function GET(req: NextRequest) {
       .select("id, name, email")
       .in("id", buyerIds);
 
-    const { data: sellerRows } = await supabase
-      .from("sellers")
-      .select("id, store_name")
-      .in("id", sellerIds);
-
     const buyerMap: Record<string, { name: string; email: string }> = {};
     for (const u of buyerRows ?? []) {
       buyerMap[u.id] = { name: u.name, email: u.email };
     }
 
+    const sellersFromMongo = await getSellersByIds(sellerIds) as { _id: { toString(): string }; store_name: string }[];
     const sellerMap: Record<string, string> = {};
-    for (const s of sellerRows ?? []) {
-      sellerMap[s.id] = s.store_name;
+    for (const s of sellersFromMongo) {
+      sellerMap[s._id.toString()] = s.store_name;
     }
 
     const orders: OrderWithDetails[] = documents.map((row) => ({

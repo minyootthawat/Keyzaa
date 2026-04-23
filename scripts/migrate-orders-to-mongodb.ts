@@ -97,7 +97,7 @@ async function main() {
     }));
 
     try {
-      const result = await db.collection("orders").insertMany(mongoOrders, {
+      const result = await db.collection("orders").insertMany(mongoOrders as unknown as Document[], {
         ordered: false, // Continue even if some fail (e.g., duplicate _id)
       });
       migrated += Object.keys(result.insertedIds).length;

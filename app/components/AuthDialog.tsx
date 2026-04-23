@@ -35,6 +35,13 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
       email: process.env.NEXT_PUBLIC_DEMO_SELLER_EMAIL || "seller@demo.keyzaa.local",
       password: process.env.NEXT_PUBLIC_DEMO_SELLER_PASSWORD || "demo123",
     },
+    {
+      id: "admin",
+      label: lang === "th" ? "บัญชีเดโมแอดมิน" : "Demo admin",
+      description: lang === "th" ? "ใช้เข้าหน้า admin dashboard" : "Use for admin dashboard testing",
+      email: process.env.NEXT_PUBLIC_DEMO_ADMIN_EMAIL || "admin@demo.keyzaa.local",
+      password: process.env.NEXT_PUBLIC_DEMO_ADMIN_PASSWORD || "demo123",
+    },
   ] as const;
 
   const applyDemoCredentials = (demoEmail: string, demoPassword: string) => {

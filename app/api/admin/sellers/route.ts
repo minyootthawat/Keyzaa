@@ -1,23 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getAdminAccessFromRequest } from "@/lib/auth/admin";
-
-interface DbSeller {
-  id: string;
-  user_id: string;
-  store_name: string;
-  phone: string | null;
-  verified: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-interface DbUser {
-  id: string;
-  email: string;
-  name: string;
-  created_at: string;
-}
+import { connectDB, getSellers, countSellers } from "@/lib/db/mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
 interface SellerWithUser {
   id: string;
@@ -34,14 +18,14 @@ interface SellerWithUser {
   };
 }
 
-function mapDbToSellerWithUser(row: DbSeller, user: DbUser): SellerWithUser {
+function mapMongoToSellerWithUser(row: { _id: { toString(): string }; [key: string]: unknown }, user: { id: string; email: string; name: string; created_at: string }): SellerWithUser {
   return {
-    id: row.id,
-    storeName: row.store_name,
-    phone: row.phone || "",
-    verified: row.verified,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    id: row._id.toString(),
+    storeName: row.store_name as string,
+    phone: (row.phone as string) || "",
+    verified: Boolean(row.verified),
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
     user: {
       id: user.id,
       email: user.email,
@@ -63,34 +47,39 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20", 10)));
     const verifiedParam = searchParams.get("verified");
 
-    const supabase = createServiceRoleClient();
-
-    let query = supabase
-      .from("sellers")
-      .select("*, users(id, email, name, created_at)", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
-
+    const filters: { verified?: boolean } = {};
     if (verifiedParam === "true") {
-      query = query.eq("verified", true);
+      filters.verified = true;
     } else if (verifiedParam === "false") {
-      query = query.eq("verified", false);
+      filters.verified = false;
     }
 
-    const { data: rows, error, count } = await query;
+    const [sellersRows, total] = await Promise.all([
+      getSellers(filters, { page, limit }),
+      countSellers(filters.verified),
+    ]);
 
-    if (error) {
-      console.error("Supabase error:", error);
-      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    // Fetch user info from Supabase for each seller
+    const supabase = createServiceRoleClient();
+    const userIds = sellersRows.map((s) => s.user_id as string);
+    const { data: userRows } = await supabase
+      .from("users")
+      .select("id, email, name, created_at")
+      .in("id", userIds);
+
+    const userMap: Record<string, { id: string; email: string; name: string; created_at: string }> = {};
+    for (const u of userRows ?? []) {
+      userMap[u.id] = { id: u.id, email: u.email, name: u.name, created_at: u.created_at };
     }
 
-    const sellers: SellerWithUser[] = (rows as (DbSeller & { users: DbUser })[]).map((row) =>
-      mapDbToSellerWithUser(row, row.users)
-    );
+    const sellers: SellerWithUser[] = sellersRows.map((row) => {
+      const userData = userMap[row.user_id as string] ?? { id: row.user_id as string, email: "", name: "", created_at: "" };
+      return mapMongoToSellerWithUser(row as { _id: { toString(): string }; [key: string]: unknown }, userData);
+    });
 
     return NextResponse.json({
       sellers,
-      total: count ?? 0,
+      total,
       page,
       limit,
     });

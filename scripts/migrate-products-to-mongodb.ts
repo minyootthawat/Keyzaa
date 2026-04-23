@@ -90,7 +90,7 @@ async function main() {
     }));
 
     try {
-      const result = await db.collection("products").insertMany(mongoProducts, {
+      const result = await db.collection("products").insertMany(mongoProducts as unknown as Document[], {
         ordered: false,
       });
       migrated += Object.keys(result.insertedIds).length;

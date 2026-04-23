@@ -1,24 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getAdminAccessFromRequest } from "@/lib/auth/admin";
-
-interface DbSeller {
-  id: string;
-  user_id: string;
-  store_name: string;
-  phone: string | null;
-  id_card_url: string | null;
-  verified: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-interface DbUser {
-  id: string;
-  email: string;
-  name: string;
-  created_at: string;
-}
+import { connectDB, getSellerById, updateSeller } from "@/lib/db/mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
 interface SellerWithUser {
   id: string;
@@ -35,14 +18,14 @@ interface SellerWithUser {
   };
 }
 
-function mapDbToSellerWithUser(row: DbSeller, user: DbUser): SellerWithUser {
+function mapMongoToSellerWithUser(row: { _id: { toString(): string }; [key: string]: unknown }, user: { id: string; email: string; name: string; created_at: string }): SellerWithUser {
   return {
-    id: row.id,
-    storeName: row.store_name,
-    phone: row.phone || "",
-    verified: row.verified,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    id: row._id.toString(),
+    storeName: row.store_name as string,
+    phone: (row.phone as string) || "",
+    verified: Boolean(row.verified),
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
     user: {
       id: user.id,
       email: user.email,
@@ -82,33 +65,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "verified or action is required" }, { status: 400 });
     }
 
-    const supabase = createServiceRoleClient();
-    const { data, error } = await supabase
-      .from("sellers")
-      .update({ verified: verifiedUpdate })
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Supabase error:", error);
-      return NextResponse.json({ error: "Failed to update seller" }, { status: 500 });
-    }
-
-    if (!data) {
+    const updated = await updateSeller(id, { verified: verifiedUpdate });
+    if (!updated) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
+    // Fetch user info from Supabase
+    const supabase = createServiceRoleClient();
     const { data: userData } = await supabase
       .from("users")
       .select("id, email, name, created_at")
-      .eq("id", (data as DbSeller).user_id)
+      .eq("id", updated.user_id as string)
       .single();
 
-    const seller: SellerWithUser = mapDbToSellerWithUser(
-      data as DbSeller,
-      userData as DbUser
-    );
+    const user = userData ?? { id: updated.user_id as string, email: "", name: "", created_at: "" };
+    const seller: SellerWithUser = mapMongoToSellerWithUser(updated as { _id: { toString(): string }; [key: string]: unknown }, user);
 
     return NextResponse.json({ seller });
   } catch (error) {

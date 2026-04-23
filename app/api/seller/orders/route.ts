@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import type { OrderItem, OrderStatus, PaymentStatus, FulfillmentStatus } from "@/app/types";
+import { getSellerByUserId } from "@/lib/db/mongodb";
+import { getOrdersBySeller } from "@/lib/db/mongodb";
+import type { Seller } from "@/types/database";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,43 +13,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get seller id from Supabase (seller table still in Supabase)
-    const supabase = createServiceRoleClient();
-    const { data: seller, error: sellerError } = await supabase
-      .from("sellers")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (sellerError || !seller) {
+    const seller = await getSellerByUserId(userId) as (Seller & { _id: { toString(): string } }) | null;
+    if (!seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller.id;
+    const sellerId = seller._id.toString();
 
-    // Fetch orders from MongoDB
-    const { db } = await connectDB();
-    const orders = db.collection("orders");
+    const documents = await getOrdersBySeller(sellerId);
 
-    const documents = await orders
-      .find({ seller_id: sellerId })
-      .sort({ created_at: -1 })
-      .toArray();
-
-    // Fetch buyer names from Supabase
-    const buyerIds = [...new Set(documents.map((d) => d.buyer_id as string))];
-    const { data: buyerRows } = await supabase
-      .from("users")
-      .select("id, name")
-      .in("id", buyerIds);
-
-    const buyerMap: Record<string, string> = {};
-    for (const u of buyerRows ?? []) {
-      buyerMap[u.id] = u.name;
-    }
-
-    const result = documents.map((doc) => {
-      const items = (doc.items ?? []).map((item: Record<string, unknown>) => ({
+    const result = documents.map((doc: Record<string, unknown>) => {
+      const items = ((doc.items as Record<string, unknown>[]) ?? []).map((item: Record<string, unknown>) => ({
         id: (item._id as { toString(): string })?.toString() ?? "",
         orderId: doc.order_id as string,
         productId: item.product_id as string,
@@ -71,11 +45,11 @@ export async function GET(req: NextRequest) {
         id: doc.order_id as string,
         orderId: doc.order_id as string,
         buyerId: doc.buyer_id as string,
-        buyerName: buyerMap[doc.buyer_id as string] ?? "Unknown",
+        buyerName: "Buyer",
         date: doc.created_at as string,
-        status: doc.status as OrderStatus,
-        paymentStatus: doc.payment_status as PaymentStatus,
-        fulfillmentStatus: doc.fulfillment_status as FulfillmentStatus,
+        status: doc.status as string,
+        paymentStatus: doc.payment_status as string,
+        fulfillmentStatus: doc.fulfillment_status as string,
         totalPrice: Number(doc.total_price),
         grossAmount: Number(doc.gross_amount),
         commissionAmount: Number(doc.commission_amount),

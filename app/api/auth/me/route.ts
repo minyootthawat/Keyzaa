@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ObjectId } from "mongodb";
-import { getAdminAccessForEmail } from "@/lib/auth/admin";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
+import { findUserById } from "@/lib/db/supabase";
+import { getAdminAccessForEmail } from "@/lib/auth/admin";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,31 +12,24 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { db } = await connectDB();
-    const users = db.collection("users");
-
-    const user = await users.findOne(
-      { _id: new ObjectId(userId) },
-      { projection: { passwordHash: 0 } }
-    );
-
+    const user = await findUserById(userId);
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const adminAccess = getAdminAccessForEmail(typeof user.email === "string" ? user.email : null);
+    const adminAccess = getAdminAccessForEmail(user.email);
 
     return NextResponse.json({
       user: {
-        id: user._id.toString(),
+        id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
-        sellerId: user.sellerId,
+        role: (user as unknown as { role?: string }).role ?? "buyer",
+        sellerId: (user as unknown as { seller_id?: string }).seller_id ?? null,
         isAdmin: adminAccess.isAdmin,
         adminRole: adminAccess.adminRole,
         adminPermissions: adminAccess.permissions,
-        createdAt: user.createdAt,
+        createdAt: user.created_at,
       },
     });
   } catch {

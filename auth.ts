@@ -73,8 +73,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           id: user.id,
           name: user.name,
           email: user.email,
-          role: user.role,
-          sellerId: user.sellerId || undefined,
+          role: (user as { role?: UserRole }).role,
+          sellerId: (user as { sellerId?: string }).sellerId || undefined,
         };
       },
     }),
