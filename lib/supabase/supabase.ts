@@ -1,7 +1,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '').trim();
 
 export function createBrowserClientSupabase(): SupabaseClient {
   if (!supabaseUrl || !supabaseAnonKey) {
@@ -30,9 +30,9 @@ export function createServerClientSupabase(): SupabaseClient {
 }
 
 export function createServiceRoleClient(): SupabaseClient {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
   if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set");
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set or empty");
   }
   if (!supabaseUrl) {
     throw new Error("NEXT_PUBLIC_SUPABASE_URL must be set");
