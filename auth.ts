@@ -57,7 +57,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!user) return null;
 
         // Check if user has a password set (social users may not)
-        const passwordHash = (user as unknown as { passwordHash?: string }).passwordHash;
+        const passwordHash = (user as unknown as { password_hash?: string }).password_hash;
         if (!passwordHash) return null;
 
         const validPassword = await bcrypt.compare(
@@ -111,13 +111,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return false;
       }
 
-      // Upsert user into public.users table
+        // Upsert user into public.users table
       const existingUser = await findUserByEmail(email);
       if (existingUser) {
         await updateUser(existingUser.id, {
           provider: account.provider,
-          providerId: account.providerAccountId,
-          lastLoginAt: new Date().toISOString(),
+          provider_id: account.providerAccountId,
+          last_login_at: new Date().toISOString(),
         });
       } else {
         await createUser({

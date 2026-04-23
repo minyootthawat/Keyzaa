@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import Badge from "@/app/components/Badge";
 import CTAButton from "@/app/components/CTAButton";
@@ -212,28 +213,42 @@ export default function Home() {
               className="surface-card group flex h-full flex-col overflow-hidden"
               style={{ animation: `fade-up 520ms ${index * 70}ms cubic-bezier(0.22,1,0.36,1) both` }}
             >
-              <div className="flex items-start justify-between gap-3 border-b border-white/5 px-5 py-4">
-                <div>
-                  <p className="type-meta text-text-muted">{product.category}</p>
-                  <p className="mt-1 line-clamp-2 text-base font-semibold leading-snug text-text-main">{product.title}</p>
+              <div className="relative aspect-[4/3] w-full overflow-hidden bg-bg-subtle/60">
+                <Image
+                  src={product.image}
+                  alt={product.title}
+                  fill
+                  className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
+                  sizes="(max-width: 640px) 50vw, (max-width: 1280px) 25vw, 20vw"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-bg-base/80 via-transparent to-transparent" />
+                <div className="absolute left-3 top-3">
+                  <Badge label={`-${product.discount}%`} tone="promo" />
                 </div>
-                <Badge label={`-${product.discount}%`} tone="promo" />
               </div>
-              <div className="flex flex-1 flex-col justify-between gap-5 p-5">
-                <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/[0.025] px-4 py-3">
+              <div className="flex flex-1 flex-col gap-3 p-4">
+                <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">{t("common_verifiedSellers")}</p>
-                    <p className="mt-1 text-sm font-semibold text-text-subtle">{product.sellerCount} {t("common_sellers")}</p>
-                  </div>
-                  <div className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs font-bold text-accent">
-                    {t("common_instantDelivery")}
+                    <p className="type-meta text-text-muted">{product.category}</p>
+                    <p className="mt-1 line-clamp-2 text-base font-semibold leading-snug text-text-main">{product.title}</p>
                   </div>
                 </div>
-                <div className="flex items-end justify-between gap-3">
-                  <PriceTag price={product.price} originalPrice={product.originalPrice} />
-                  <div className="text-right">
-                    <p className="type-num text-lg font-bold text-text-main">4.9</p>
-                    <p className="text-xs text-text-muted">{t("common_reviewsLabel")}</p>
+                <div className="flex flex-1 flex-col justify-between gap-3">
+                  <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/[0.025] px-3 py-2.5">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">{t("common_verifiedSellers")}</p>
+                      <p className="mt-1 text-sm font-semibold text-text-subtle">{product.sellerCount} {t("common_sellers")}</p>
+                    </div>
+                    <div className="rounded-full border border-accent/20 bg-accent/10 px-2.5 py-1 text-xs font-bold text-accent">
+                      {t("common_instantDelivery")}
+                    </div>
+                  </div>
+                  <div className="flex items-end justify-between gap-3">
+                    <PriceTag price={product.price} originalPrice={product.originalPrice} />
+                    <div className="text-right">
+                      <p className="type-num text-lg font-bold text-text-main">4.9</p>
+                      <p className="text-xs text-text-muted">{t("common_reviewsLabel")}</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -254,15 +269,27 @@ export default function Home() {
             <Link
               key={product.id}
               href={`/products/${product.id}`}
-              className="group rounded-[1.75rem] border border-border-subtle bg-[linear-gradient(180deg,rgba(19,33,54,0.92)_0%,rgba(10,19,33,0.96)_100%)] p-5 shadow-[0_12px_28px_rgba(4,11,23,0.18)] transition-all duration-200 hover:-translate-y-1 hover:border-border-main"
+              className="surface-card group flex h-full flex-col overflow-hidden"
               style={{ animation: `fade-up 520ms ${index * 70}ms cubic-bezier(0.22,1,0.36,1) both` }}
             >
-              <div className="flex h-full flex-col gap-4">
-                <div className="flex items-center justify-between">
-                  <p className="type-meta text-text-muted">{product.category}</p>
+              <div className="relative aspect-[4/3] w-full overflow-hidden bg-bg-subtle/60">
+                <Image
+                  src={product.image}
+                  alt={product.title}
+                  fill
+                  className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
+                  sizes="(max-width: 640px) 50vw, (max-width: 1280px) 25vw, 20vw"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-bg-base/80 via-transparent to-transparent" />
+                <div className="absolute left-3 top-3">
                   <span className="rounded-full border border-brand-tertiary/16 bg-brand-primary/10 px-2.5 py-1 text-xs font-semibold text-brand-tertiary">
                     {t("common_verifiedSellers")}
                   </span>
+                </div>
+              </div>
+              <div className="flex flex-1 flex-col gap-3 p-4">
+                <div className="flex items-center justify-between">
+                  <p className="type-meta text-text-muted">{product.category}</p>
                 </div>
                 <p className="line-clamp-2 text-base font-semibold leading-snug text-text-main">{product.title}</p>
                 <div className="mt-auto flex items-end justify-between gap-3">

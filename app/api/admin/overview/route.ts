@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import { getBearerPayload } from "@/lib/auth/jwt";
+import { getAdminAccessFromRequest } from "@/lib/auth/admin";
+import { connectDB } from "@/lib/db/mongodb";
 
 interface OverviewStats {
   totalUsers: number;
@@ -10,61 +11,40 @@ interface OverviewStats {
   totalRevenue: number;
 }
 
-async function verifyAdmin(req: NextRequest): Promise<{ authorized: boolean; error?: string; status?: number }> {
-  const payload = await getBearerPayload(req);
-  const userId = payload?.userId as string | undefined;
-
-  if (!userId) {
-    return { authorized: false, error: "Unauthorized", status: 401 };
-  }
-
-  const supabase = createServiceRoleClient();
-  const { data: user, error } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", userId)
-    .single();
-
-  if (error || !user) {
-    return { authorized: false, error: "User not found", status: 404 };
-  }
-
-  if (user.role !== "both") {
-    return { authorized: false, error: "Forbidden", status: 403 };
-  }
-
-  return { authorized: true };
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const check = await verifyAdmin(req);
-    if (!check.authorized) {
-      return NextResponse.json({ error: check.error }, { status: check.status });
+    const access = await getAdminAccessFromRequest(req);
+    if (access.status !== 200) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
     const supabase = createServiceRoleClient();
+    const { db } = await connectDB();
+    const ordersCol = db.collection("orders");
 
-    const [usersResult, sellersResult, productsResult, ordersResult] = await Promise.all([
+    const [usersResult, sellersResult, productsResult, ordersCount, revenueResult] = await Promise.all([
       supabase.from("users").select("id", { count: "exact", head: true }),
       supabase.from("sellers").select("id", { count: "exact", head: true }),
       supabase.from("products").select("id", { count: "exact", head: true }).eq("is_active", true),
-      supabase.from("orders").select("id", { count: "exact", head: true }),
+      // MongoDB: count all orders
+      ordersCol.countDocuments(),
+      // MongoDB: sum gross_amount for paid orders
+      ordersCol
+        .aggregate([
+          { $match: { status: "paid", payment_status: "paid" } },
+          { $group: { _id: null, total: { $sum: "$gross_amount" } } },
+        ])
+        .toArray(),
     ]);
 
-    // Use .select with sum() aggregate
-    const { data: revenueData } = await supabase
-      .from("orders")
-      .select("total_price")
-      .single();
+    const totalRevenue = revenueResult.length > 0 ? Number(revenueResult[0].total) : 0;
 
     const stats: OverviewStats = {
       totalUsers: usersResult.count ?? 0,
       totalSellers: sellersResult.count ?? 0,
       totalProducts: productsResult.count ?? 0,
-      totalOrders: ordersResult.count ?? 0,
-      // total_price stored as string — convert safely
-      totalRevenue: revenueData ? Number(revenueData?.total_price ?? 0) : 0,
+      totalOrders: ordersCount,
+      totalRevenue,
     };
 
     return NextResponse.json(stats);

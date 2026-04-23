@@ -34,7 +34,7 @@ function nextResponse() {
 // Supabase thenable chain — reads callCount at resolution time (not enqueue)
 // ---------------------------------------------------------------------------
 function buildChain(): Record<string, unknown> {
-  let pending: Array<{ res: (v: { data: unknown; error: unknown }) => void }> = [];
+  const pending: Array<{ res: (v: { data: unknown; error: unknown }) => void }> = [];
   const chain: Record<string, unknown> = {
     then(res: (v: { data: unknown; error: unknown }) => void) {
       pending.push({ res });

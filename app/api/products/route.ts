@@ -18,7 +18,7 @@ interface DbProduct {
 interface ProductWithSeller {
   id: string;
   sellerId: string;
-  name: string;
+  title: string;
   description: string;
   category: string;
   price: number;

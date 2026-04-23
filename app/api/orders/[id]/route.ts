@@ -22,42 +22,42 @@ export async function GET(req: NextRequest, context: RouteContext) {
     const orders = db.collection("orders");
     const sellers = db.collection("sellers");
 
-    const document = await orders.findOne({ orderId: id, buyerId: userId });
+    const document = await orders.findOne({ order_id: id, buyer_id: userId });
 
     if (!document) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    const sellerId = document.sellerId as string;
-    const sellerDocument = await sellers.findOne({ sellerId });
+    const sellerId = document.seller_id as string;
+    const sellerDocument = await sellers.findOne({ seller_id: sellerId });
     const staticSeller = getStaticSellerSeedById(sellerId);
 
     return NextResponse.json({
       order: mapOrderDocument({
-        orderId: document.orderId as string,
-        buyerId: document.buyerId as string,
+        orderId: document.order_id as string,
+        buyerId: document.buyer_id as string,
         sellerId,
-        date: document.date as string,
-        status: document.status as OrderStatus,
-        paymentStatus: document.paymentStatus as PaymentStatus,
-        fulfillmentStatus: document.fulfillmentStatus as FulfillmentStatus,
-        totalPrice: document.totalPrice as number,
-        grossAmount: document.grossAmount as number,
-        commissionAmount: document.commissionAmount as number,
-        sellerNetAmount: document.sellerNetAmount as number,
-        platformFeeRate: document.platformFeeRate as number,
-        currency: document.currency as string,
-        paymentMethod: document.paymentMethod as string,
-        items: document.items as OrderItem[],
+        date: document.created_at as string,
+        status: (document.status as OrderStatus) || "pending",
+        paymentStatus: (document.payment_status as PaymentStatus) || "pending",
+        fulfillmentStatus: (document.fulfillment_status as FulfillmentStatus) || "pending",
+        totalPrice: Number(document.total_price ?? 0),
+        grossAmount: Number(document.gross_amount ?? 0),
+        commissionAmount: Number(document.commission_amount ?? 0),
+        sellerNetAmount: Number(document.seller_net_amount ?? 0),
+        platformFeeRate: Number(document.platform_fee_rate ?? 0.12),
+        currency: (document.currency as string) || "THB",
+        paymentMethod: (document.payment_method as string) || "",
+        items: (document.items as OrderItem[]) || [],
       }),
       seller: {
         id: sellerId,
         shopName:
-          (sellerDocument?.shopName as string | undefined) ||
+          (sellerDocument?.shop_name as string | undefined) ||
           staticSeller?.shopName ||
           sellerId,
         verificationStatus:
-          (sellerDocument?.verificationStatus as string | undefined) ||
+          (sellerDocument?.verification_status as string | undefined) ||
           staticSeller?.verificationStatus ||
           "verified",
         rating:
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
           staticSeller?.rating ||
           0,
         salesCount:
-          (sellerDocument?.salesCount as number | undefined) ||
+          (sellerDocument?.sales_count as number | undefined) ||
           staticSeller?.salesCount ||
           0,
       },
