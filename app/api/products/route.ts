@@ -41,26 +41,21 @@ export async function GET(req: NextRequest) {
 
     const supabase = createServerClientSupabase();
 
-    // Build filter conditions
-    const filters: Record<string, unknown>[] = [];
-
-    // Always filter for active products
-    filters.push({ is_active: true });
+    // Count query (with all filters applied)
+    let countQuery = supabase
+      .from("products")
+      .select("*", { count: "exact", head: true })
+      .eq("is_active", true);
 
     if (category) {
-      filters.push({ category });
+      countQuery = countQuery.eq("category", category);
     }
 
     if (sellerId) {
-      filters.push({ seller_id: sellerId });
+      countQuery = countQuery.eq("seller_id", sellerId);
     }
 
-    // Count query (with all filters applied)
-    const countFilters = [...filters];
-    const { count, error: countError } = await supabase
-      .from("products")
-      .select("*", { count: "exact", head: true })
-      .and(countFilters);
+    const { count, error: countError } = await countQuery;
 
     if (countError) {
       console.error("Products count error:", countError);
@@ -68,13 +63,23 @@ export async function GET(req: NextRequest) {
     }
 
     // Main query with seller join
-    const { data: products, error: productsError } = await supabase
+    let productsQuery = supabase
       .from("products")
       .select(`
         *,
         sellers:id (id, store_name, verified)
       `)
-      .and(filters)
+      .eq("is_active", true);
+
+    if (category) {
+      productsQuery = productsQuery.eq("category", category);
+    }
+
+    if (sellerId) {
+      productsQuery = productsQuery.eq("seller_id", sellerId);
+    }
+
+    const { data: products, error: productsError } = await productsQuery
       .order(actualSortBy as "created_at" | "price" | "name", { ascending: actualSortOrder === "asc" })
       .range((page - 1) * limit, page * limit - 1);
 
