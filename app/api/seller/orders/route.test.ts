@@ -7,39 +7,37 @@ import { GET } from "./route";
 // ---------------------------------------------------------------------------
 
 const mockState = {
-  orderDocs: [] as Record<string, unknown>[],
-  orderItemDocs: [] as Record<string, unknown>[],
-  sellerData: null as { id: string; user_id: string } | null,
-  throwError: null as Error | null,
+  seller: null as { id: string; user_id: string } | null,
+  orders: [] as Record<string, unknown>[],
+  orderItems: [] as Record<string, unknown>[],
+  buyers: [] as { id: string; name: string }[],
   authUserId: "test-user-id",
 };
 
-function makeCollection(name: string) {
-  if (name === "orders") {
-    return {
-      find: vi.fn().mockReturnValue({
-        sort: vi.fn().mockReturnThis(),
-        skip: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockReturnThis(),
-        toArray: vi.fn().mockResolvedValue(mockState.orderDocs),
-      }),
-      findOne: vi.fn().mockResolvedValue(null),
-    };
-  }
-  if (name === "order_items") {
-    return {
-      find: vi.fn().mockReturnValue({
-        toArray: vi.fn().mockResolvedValue(mockState.orderItemDocs),
-      }),
-      findOne: vi.fn().mockResolvedValue(null),
-      insertOne: vi.fn().mockResolvedValue({ insertedId: "mock-item-id" }),
-    };
-  }
-  return {
-    find: vi.fn().mockReturnValue({ sort: vi.fn().mockReturnThis(), toArray: vi.fn().mockResolvedValue([]) }),
-    findOne: vi.fn().mockResolvedValue(null),
-    insertOne: vi.fn().mockResolvedValue({ insertedId: "mock-id" }),
+function buildThenable(data: unknown, error: unknown) {
+  const obj: Record<string, unknown> = {
+    then: (resolve: (val: { data: unknown; error: unknown }) => void) => {
+      setTimeout(() => resolve({ data, error }), 0);
+      return obj;
+    },
   };
+  const methods = [
+    "select",
+    "eq",
+    "neq",
+    "order",
+    "limit",
+    "in",
+    "single",
+    "maybeSingle",
+    "data",
+    "error",
+    "count",
+  ];
+  for (const m of methods) {
+    obj[m] = () => buildThenable(data, error);
+  }
+  return obj;
 }
 
 vi.mock("@/lib/auth/jwt", () => ({
@@ -49,44 +47,55 @@ vi.mock("@/lib/auth/jwt", () => ({
   }),
 }));
 
-vi.mock("@/lib/db/mongodb", () => ({
-  connectDB: vi.fn().mockImplementation(async () => {
-    if (mockState.throwError) throw mockState.throwError;
-    return {
-      client: {} as unknown,
-      db: {
-        collection: vi.fn().mockImplementation((name: string) => makeCollection(name)),
-      },
-    };
-  }),
-  getDb: vi.fn(),
-}));
-
-function buildThenable(data: unknown, error: unknown) {
-  const obj: Record<string, unknown> = {
-    then: (resolve: (val: { data: unknown; error: unknown }) => void) => {
-      setTimeout(() => resolve({ data, error }), 0);
-      return obj;
-    },
-  };
-  const methods = ["select", "eq", "neq", "order", "limit", "in", "single", "maybeSingle", "data", "error", "count"];
-  for (const m of methods) {
-    obj[m] = () => buildThenable(data, error);
-  }
-  return obj;
-}
-
 vi.mock("@/lib/supabase/supabase", () => ({
   createServiceRoleClient: vi.fn().mockReturnValue({
-    from: vi.fn().mockImplementation(() => ({
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      in: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockImplementation(() =>
-        buildThenable(mockState.sellerData, null)
-      ),
-      insert: vi.fn().mockReturnValue({ error: null }),
-    })),
+    from: vi.fn().mockImplementation((table: string) => {
+      if (table === "sellers") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockImplementation(() =>
+                buildThenable(mockState.seller, null)
+              ),
+            }),
+          }),
+        };
+      }
+      if (table === "orders") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            data: mockState.orders,
+            error: null,
+          }),
+        };
+      }
+      if (table === "users") {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockReturnValue({
+              data: mockState.buyers,
+              error: null,
+            }),
+          }),
+        };
+      }
+      if (table === "order_items") {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockReturnValue({
+              data: mockState.orderItems,
+              error: null,
+            }),
+          }),
+        };
+      }
+      return {
+        select: vi.fn().mockReturnValue(buildThenable(null, null)),
+        insert: vi.fn().mockReturnValue(buildThenable(null, null)),
+      };
+    }),
   }),
 }));
 
@@ -100,9 +109,8 @@ function buildReq(url = "http://localhost/api/seller/orders") {
   return new NextRequest(url, { headers, method: "GET" });
 }
 
-const baseOrderDoc = {
-  _id: "oid1",
-  order_id: "ord_test_001",
+const baseOrderRow = {
+  id: "ord_test_001",
   buyer_id: "buyer-001",
   seller_id: "seller-001",
   status: "delivered",
@@ -115,18 +123,28 @@ const baseOrderDoc = {
   platform_fee_rate: 0.12,
   currency: "THB",
   payment_method: "promptpay",
-  items: [],
   created_at: "2025-01-01T00:00:00Z",
 };
 
-const baseOrderItemDoc = {
-  _id: "oi1",
+const baseOrderItemRow = {
+  id: "item-001",
   order_id: "ord_test_001",
   product_id: "prod-001",
   title: "Test Product",
+  title_th: null,
+  title_en: "Test Product",
+  image: null,
   price: 200,
   quantity: 1,
   platform: "mobile",
+  region_code: null,
+  activation_method_th: null,
+  activation_method_en: null,
+};
+
+const baseBuyerRow = {
+  id: "buyer-001",
+  name: "Test Buyer",
 };
 
 // ---------------------------------------------------------------------------
@@ -135,17 +153,17 @@ const baseOrderItemDoc = {
 describe("GET /api/seller/orders", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockState.orderDocs = [];
-    mockState.orderItemDocs = [];
-    mockState.sellerData = { id: "seller-001", user_id: "test-user-id" };
-    mockState.throwError = null;
+    mockState.seller = { id: "seller-001", user_id: "test-user-id" };
+    mockState.orders = [];
+    mockState.orderItems = [];
+    mockState.buyers = [];
     mockState.authUserId = "test-user-id";
   });
 
   it("returns 200 with orders array", async () => {
-    mockState.orderDocs = [baseOrderDoc];
-    mockState.orderItemDocs = [baseOrderItemDoc];
-    mockState.sellerData = { id: "seller-001", user_id: "test-user-id" };
+    mockState.orders = [baseOrderRow];
+    mockState.orderItems = [baseOrderItemRow];
+    mockState.buyers = [baseBuyerRow];
 
     const res = await GET(buildReq());
     const json = await res.json();
@@ -162,14 +180,14 @@ describe("GET /api/seller/orders", () => {
   });
 
   it("returns 404 when seller not found", async () => {
-    mockState.sellerData = null;
+    mockState.seller = null;
 
     const res = await GET(buildReq());
     expect(res.status).toBe(404);
   });
 
   it("returns 500 on DB error", async () => {
-    mockState.throwError = new Error("DB error");
+    mockState.orders = [{ ...baseOrderRow, invalid: true }];
 
     const res = await GET(buildReq());
     expect(res.status).toBe(500);

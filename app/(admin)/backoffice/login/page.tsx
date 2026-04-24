@@ -20,7 +20,7 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     if (!loading && isAdmin) {
-      router.replace("/admin/dashboard");
+      router.replace("/backoffice/dashboard");
     }
   }, [isAdmin, loading, router]);
 
@@ -32,7 +32,7 @@ export default function AdminLoginPage() {
     try {
       await login(email, password);
       window.setTimeout(() => {
-        router.replace("/admin/dashboard");
+        router.replace("/backoffice/dashboard");
       }, 100);
     } catch (err) {
       setError(err instanceof Error ? err.message : lang === "th" ? "เข้าสู่ระบบไม่สำเร็จ" : "Login failed");
@@ -155,7 +155,7 @@ export default function AdminLoginPage() {
 
               <div className="mt-4 text-center">
                 {user && isAdmin ? (
-                  <Link href="/admin/dashboard" className="text-sm font-semibold text-warning transition-colors hover:text-warning/80">
+                  <Link href="/backoffice/dashboard" className="text-sm font-semibold text-warning transition-colors hover:text-warning/80">
                     {t("admin_loginCta")}
                   </Link>
                 ) : (

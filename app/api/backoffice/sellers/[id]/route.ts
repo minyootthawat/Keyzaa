@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAccessFromRequest } from "@/lib/auth/admin";
-import { connectDB, getSellerById, updateSeller } from "@/lib/db/mongodb";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
 interface SellerWithUser {
@@ -15,23 +14,6 @@ interface SellerWithUser {
     email: string;
     name: string;
     createdAt: string;
-  };
-}
-
-function mapMongoToSellerWithUser(row: { _id: { toString(): string }; [key: string]: unknown }, user: { id: string; email: string; name: string; created_at: string }): SellerWithUser {
-  return {
-    id: row._id.toString(),
-    storeName: row.store_name as string,
-    phone: (row.phone as string) || "",
-    verified: Boolean(row.verified),
-    createdAt: row.created_at as string,
-    updatedAt: row.updated_at as string,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      createdAt: user.created_at,
-    },
   };
 }
 
@@ -65,21 +47,36 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "verified or action is required" }, { status: 400 });
     }
 
-    const updated = await updateSeller(id, { verified: verifiedUpdate });
-    if (!updated) {
+    const supabase = createServiceRoleClient();
+
+    // Update seller in Supabase
+    const { data: updated, error } = await supabase
+      .from("sellers")
+      .update({ verified: verifiedUpdate, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select("*, users(id, email, name, created_at)")
+      .single();
+
+    if (error || !updated) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    // Fetch user info from Supabase
-    const supabase = createServiceRoleClient();
-    const { data: userData } = await supabase
-      .from("users")
-      .select("id, email, name, created_at")
-      .eq("id", updated.user_id as string)
-      .single();
-
-    const user = userData ?? { id: updated.user_id as string, email: "", name: "", created_at: "" };
-    const seller: SellerWithUser = mapMongoToSellerWithUser(updated as { _id: { toString(): string }; [key: string]: unknown }, user);
+    const row = updated as Record<string, unknown>;
+    const seller: SellerWithUser = {
+      id: row.id as string,
+      storeName: (row.store_name as string) ?? "",
+      phone: (row.phone as string) ?? "",
+      verified: Boolean(row.verified),
+      createdAt: row.created_at as string,
+      updatedAt: row.updated_at as string,
+      user: {
+        id: (row.users as { id: string } | null)?.id ?? (row.user_id as string),
+        email: (row.users as { email: string } | null)?.email ?? "",
+        name: (row.users as { name: string } | null)?.name ?? "",
+        createdAt:
+          (row.users as { created_at: string } | null)?.created_at ?? (row.created_at as string),
+      },
+    };
 
     return NextResponse.json({ seller });
   } catch (error) {

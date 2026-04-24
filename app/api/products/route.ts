@@ -1,19 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db/mongodb";
-
-interface DbProduct {
-  _id: string;
-  seller_id: string;
-  name: string;
-  description: string | null;
-  category: string;
-  price: number;
-  stock: number;
-  image_url: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
+import { createServerClientSupabase } from "@/lib/supabase/supabase";
 
 interface ProductWithSeller {
   id: string;
@@ -28,19 +14,6 @@ interface ProductWithSeller {
     id: string;
     storeName: string;
     verified: boolean;
-  };
-}
-
-function mapDbToProduct(row: DbProduct & { seller_store_name?: string; seller_verified?: boolean }): Omit<ProductWithSeller, "seller"> {
-  return {
-    id: row._id.toString(),
-    sellerId: row.seller_id,
-    title: row.name,
-    category: row.category,
-    price: Number(row.price),
-    stock: row.stock,
-    image: row.image_url || "",
-    isActive: row.is_active,
   };
 }
 
@@ -66,53 +39,68 @@ export async function GET(req: NextRequest) {
     const actualSortBy = validSortColumns.includes(sortBy) ? sortBy : "created_at";
     const actualSortOrder = validSortOrders.includes(sortOrder) ? sortOrder : "desc";
 
-    const { db } = await connectDB();
+    const supabase = createServerClientSupabase();
 
-    // Build filter
-    const filter: Record<string, unknown> = { is_active: true };
+    // Build filter conditions
+    const filters: Record<string, unknown>[] = [];
+
+    // Always filter for active products
+    filters.push({ is_active: true });
+
     if (category) {
-      filter.category = category;
+      filters.push({ category });
     }
+
     if (sellerId) {
-      filter.seller_id = sellerId;
+      filters.push({ seller_id: sellerId });
     }
 
-    // Sort direction
-    const sortDir = actualSortOrder === "asc" ? 1 : -1;
+    // Count query (with all filters applied)
+    const countFilters = [...filters];
+    const { count, error: countError } = await supabase
+      .from("products")
+      .select("*", { count: "exact", head: true })
+      .and(countFilters);
 
-    // Run count and find in parallel
-    const [countResult, products] = await Promise.all([
-      db.collection("products").countDocuments(filter),
-      db
-        .collection("products")
-        .aggregate([
-          { $match: filter },
-          {
-            $lookup: {
-              from: "sellers",
-              localField: "seller_id",
-              foreignField: "_id",
-              as: "seller_data",
-            },
-          },
-          { $unwind: { path: "$seller_data", preserveNullAndEmptyArrays: true } },
-          { $sort: { [actualSortBy]: sortDir } },
-          { $skip: (page - 1) * limit },
-          { $limit: limit },
-        ])
-        .toArray(),
-    ]);
+    if (countError) {
+      console.error("Products count error:", countError);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
 
-    const total = countResult;
+    // Main query with seller join
+    const { data: products, error: productsError } = await supabase
+      .from("products")
+      .select(`
+        *,
+        sellers:id (id, store_name, verified)
+      `)
+      .and(filters)
+      .order(actualSortBy as "created_at" | "price" | "name", { ascending: actualSortOrder === "asc" })
+      .range((page - 1) * limit, page * limit - 1);
 
-    const result: ProductWithSeller[] = products.map((row: Record<string, unknown>) => {
-      const product = row as unknown as DbProduct & { seller_data?: { _id: string; store_name: string; verified: boolean } };
+    if (productsError) {
+      console.error("Products list error:", productsError);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+
+    const total = count ?? 0;
+
+    // Map to response shape (handle both array result and potential single seller object)
+    const result: ProductWithSeller[] = (products ?? []).map((row) => {
+      const sellerData = row.sellers as unknown as { id: string; store_name: string; verified: boolean } | null;
       return {
-        ...mapDbToProduct(product as DbProduct & { seller_store_name?: string; seller_verified?: boolean }),
+        id: row.id,
+        sellerId: row.seller_id,
+        title: row.name,
+        category: row.category,
+        price: Number(row.price),
+        stock: row.stock,
+        image: row.image_url || "",
+        isActive: row.is_active,
         seller: {
-          id: product.seller_id,
-          storeName: product.seller_data?.store_name || "",
-          verified: product.seller_data?.verified || false,
+          id: sellerData?.id || row.seller_id,
+          storeName: sellerData?.store_name || "",
+          verified: sellerData?.verified || false,
         },
       };
     });

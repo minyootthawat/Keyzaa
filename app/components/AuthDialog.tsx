@@ -166,7 +166,7 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
               ) : null}
               {isAdmin ? (
                 <a
-                  href="/admin/dashboard"
+                  href="/backoffice/dashboard"
                   className="flex h-11 items-center justify-center rounded-xl border border-warning/20 bg-warning/10 text-sm font-semibold text-warning transition-colors hover:bg-warning/15"
                 >
                   {lang === "th" ? "ไปหน้าแอดมิน" : "Open admin dashboard"}

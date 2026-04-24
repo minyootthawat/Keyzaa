@@ -6,7 +6,7 @@ export default function AdminAppLayout({ children }: { children: React.ReactNode
       <header className="border-b border-border-subtle bg-bg-base/72 backdrop-blur-2xl">
         <div className="section-container flex items-center justify-between gap-4 py-4">
           <Link
-            href="/admin/dashboard"
+            href="/backoffice/dashboard"
             className="flex items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/45"
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-warning/20 bg-warning/10 text-warning font-bold text-lg">

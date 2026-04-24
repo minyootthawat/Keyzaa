@@ -1,7 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { getSellerByUserId, getLedgerEntriesBySeller } from "@/lib/db/mongodb";
-import type { Seller } from "@/types/database";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
+
+interface SellerRow {
+  id: string;
+  user_id: string;
+  store_name: string;
+  phone: string | null;
+  id_card_url: string | null;
+  verified: boolean;
+  rating: number;
+  sales_count: number;
+  balance: number;
+  pending_balance: number;
+  payout_status: string;
+  response_time_minutes: number;
+  fulfillment_rate: number;
+  dispute_rate: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface LedgerRow {
+  id: string;
+  seller_id: string;
+  type: string;
+  amount: number;
+  order_id: string | null;
+  description: string | null;
+  created_at: string;
+}
+
+async function getSellerFromUserId(userId: string): Promise<SellerRow | null> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("sellers")
+    .select("*")
+    .eq("user_id", userId)
+    .single();
+
+  if (error || !data) return null;
+  return data as SellerRow;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,19 +52,29 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const seller = await getSellerByUserId(userId) as (Seller & { _id: { toString(): string } }) | null;
+    const seller = await getSellerFromUserId(userId);
     if (!seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller._id.toString();
+    const supabase = createServiceRoleClient();
 
-    const ledgerRows = await getLedgerEntriesBySeller(sellerId);
+    const { data: ledgerData, error: ledgerError } = await supabase
+      .from("seller_ledger_entries")
+      .select("*")
+      .eq("seller_id", seller.id)
+      .order("created_at", { ascending: false });
+
+    if (ledgerError) {
+      console.error("Seller me ledger error:", ledgerError);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+
+    const ledgerRows = (ledgerData ?? []) as LedgerRow[];
 
     let grossSales = 0;
     let totalCommission = 0;
     let netEarnings = 0;
-    const pendingBalance = Number(seller.pending_balance ?? 0);
 
     for (const entry of ledgerRows) {
       const amount = Number(entry.amount);
@@ -41,7 +91,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       seller: {
-        id: sellerId,
+        id: seller.id,
         userId: seller.user_id,
         shopName: seller.store_name,
         phone: seller.phone ?? "",

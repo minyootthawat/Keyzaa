@@ -17,7 +17,7 @@ export default function AdminRouteGuard({ children, requiredPermission = "admin:
 
   useEffect(() => {
     if (!loading && !canAccess) {
-      router.push("/admin/login");
+      router.push("/backoffice/login");
     }
   }, [canAccess, loading, router]);
 

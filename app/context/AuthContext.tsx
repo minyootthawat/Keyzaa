@@ -171,6 +171,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (res?.error) {
       throw new Error(res.error);
     }
+
+    await updateSession();
+    // Force re-fetch of admin status with the new session
+    setAccountResolved(false);
   };
 
   const register = async (name: string, email: string, password: string) => {

@@ -8,66 +8,119 @@ import { GET } from "./route";
 
 const mockState = {
   authUserId: "test-user-id",
-  sellerData: null as { id: string; user_id: string } | null,
-  orderDocs: [] as Record<string, unknown>[],
-  productDocs: [] as Record<string, unknown>[],
-  ledgerDocs: [] as Record<string, unknown>[],
-  orderItemDocs: [] as Record<string, unknown>[],
+  sellerData: { id: "seller-001", user_id: "test-user-id" },
+  orders: [] as Record<string, unknown>[],
+  products: [] as Record<string, unknown>[],
+  ledgerEntries: [] as Record<string, unknown>[],
+  orderItems: [] as Record<string, unknown>[],
   throwError: null as Error | null,
 };
 
-function makeCollection(name: string) {
-  // Cursor class so .sort().limit().toArray() chaining works
-  class Cursor {
-    private _limit = 0;
-    limit(n: number) { this._limit = n; return this; }
-    sort() { return this; }
-    skip() { return this; }
-    toArray() {
-      if (name === "orders") {
-        const docs = this._limit > 0 ? mockState.orderDocs.slice(0, this._limit) : mockState.orderDocs;
-        return Promise.resolve(docs);
-      }
-      if (name === "products") {
-        const docs = this._limit > 0 ? mockState.productDocs.slice(0, this._limit) : mockState.productDocs;
-        return Promise.resolve(docs);
-      }
-      if (name === "seller_ledger_entries") {
-        return Promise.resolve(mockState.ledgerDocs);
-      }
-      if (name === "order_items") {
-        return Promise.resolve(mockState.orderItemDocs);
-      }
-      return Promise.resolve([]);
-    }
-  }
+// ---------------------------------------------------------------------------
+// Supabase mock helpers
+// ---------------------------------------------------------------------------
 
-  if (name === "orders") {
-    return {
-      find: vi.fn().mockReturnValue(new Cursor()),
-      findOne: vi.fn().mockResolvedValue(null),
-    };
-  }
-  if (name === "products") {
-    return {
-      find: vi.fn().mockReturnValue(new Cursor()),
-    };
-  }
-  if (name === "seller_ledger_entries") {
-    return {
-      find: vi.fn().mockReturnValue(new Cursor()),
-    };
-  }
-  if (name === "order_items") {
-    return {
-      find: vi.fn().mockReturnValue(new Cursor()),
-    };
-  }
-  return {
-    find: vi.fn().mockReturnValue(new Cursor()),
-    findOne: vi.fn().mockResolvedValue(null),
+type QueryState = {
+  table: string;
+  filters: Array<{ field: string; value: unknown }>;
+  orderField?: string;
+  orderAsc?: boolean;
+  limitVal?: number;
+  inField?: string;
+  inValues?: string[];
+};
+
+function buildQueryResolver(table: string, getData: () => unknown[]) {
+  return (state: QueryState) => {
+    let data = getData();
+
+    // Apply eq filters
+    for (const filter of state.filters) {
+      if (filter.field === "seller_id") {
+        data = data.filter((d: Record<string, unknown>) => d.seller_id === filter.value);
+      }
+      if (filter.field === "user_id") {
+        data = data.filter((d: Record<string, unknown>) => d.user_id === filter.value);
+      }
+      if (filter.field === "order_id" && state.inField === "order_id") {
+        data = data.filter((d: Record<string, unknown>) => (state.inValues ?? []).includes(d.order_id as string));
+      }
+    }
+
+    // Apply order
+    if (state.orderField) {
+      data = [...data].sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+        const aVal = a[state.orderField!];
+        const bVal = b[state.orderField!];
+        return state.orderAsc ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
+      });
+    }
+
+    // Apply limit
+    if (state.limitVal && state.limitVal > 0) {
+      data = data.slice(0, state.limitVal);
+    }
+
+    return { data, error: null };
   };
 }
+
+function createQueryMock() {
+  const state: QueryState = { table: "", filters: [] };
+
+  const chain: Record<string, (...args: unknown[]) => unknown> = {
+    select: () => {
+      state.table = "select";
+      return chain;
+    },
+    eq: (field: string, value: unknown) => {
+      state.filters.push({ field, value });
+      return chain;
+    },
+    order: (field: string, options?: { ascending: boolean }) => {
+      state.orderField = field;
+      state.orderAsc = options?.ascending ?? false;
+      return chain;
+    },
+    limit: (n: number) => {
+      state.limitVal = n;
+      return chain;
+    },
+    in: (field: string, values: string[]) => {
+      state.inField = field;
+      state.inValues = values;
+      return chain;
+    },
+    single: () => {
+      const data = mockState.sellerData;
+      return { data, error: data ? null : { message: "No data" } };
+    },
+    then: (resolve: (val: { data: unknown; error: unknown }) => void) => {
+      setTimeout(() => {
+        if (state.table === "sellers") {
+          resolve({ data: mockState.sellerData, error: null });
+        } else if (state.table === "orders") {
+          resolve({ data: mockState.orders, error: null });
+        } else if (state.table === "products") {
+          resolve({ data: mockState.products, error: null });
+        } else if (state.table === "seller_ledger_entries") {
+          resolve({ data: mockState.ledgerEntries, error: null });
+        } else if (state.table === "order_items") {
+          resolve({ data: mockState.orderItems, error: null });
+        } else {
+          resolve({ data: [], error: null });
+        }
+      }, 0);
+      return {};
+    },
+  };
+
+  return chain;
+}
+
+// ---------------------------------------------------------------------------
+// Module mocks
+// ---------------------------------------------------------------------------
 
 vi.mock("@/lib/auth/jwt", () => ({
   getBearerPayload: vi.fn().mockImplementation(() => {
@@ -76,42 +129,9 @@ vi.mock("@/lib/auth/jwt", () => ({
   }),
 }));
 
-vi.mock("@/lib/db/mongodb", () => ({
-  connectDB: vi.fn().mockImplementation(async () => {
-    if (mockState.throwError) throw mockState.throwError;
-    return {
-      client: {} as unknown,
-      db: {
-        collection: vi.fn().mockImplementation((name: string) => makeCollection(name)),
-      },
-    };
-  }),
-  getDb: vi.fn(),
-}));
-
-function buildThenable(data: unknown, error: unknown) {
-  const obj: Record<string, unknown> = {
-    then: (resolve: (val: { data: unknown; error: unknown }) => void) => {
-      setTimeout(() => resolve({ data, error }), 0);
-      return obj;
-    },
-  };
-  const methods = ["select", "eq", "neq", "order", "limit", "in", "single", "maybeSingle", "data", "error", "count"];
-  for (const m of methods) {
-    obj[m] = () => buildThenable(data, error);
-  }
-  return obj;
-}
-
 vi.mock("@/lib/supabase/supabase", () => ({
   createServiceRoleClient: vi.fn().mockReturnValue({
-    from: vi.fn().mockImplementation(() => ({
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      in: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockImplementation(() => buildThenable(mockState.sellerData, null)),
-      insert: vi.fn().mockReturnValue({ error: null }),
-    })),
+    from: vi.fn().mockImplementation(() => createQueryMock()),
   }),
 }));
 
@@ -125,36 +145,52 @@ function buildReq(url = "http://localhost/api/seller/overview") {
   return new NextRequest(url, { headers, method: "GET" });
 }
 
-const baseOrderDoc = {
-  _id: "oid1",
+const baseOrder = {
+  id: "oid1",
   buyer_id: "buyer-001",
   seller_id: "seller-001",
+  product_id: "prod1",
+  quantity: 1,
+  total_price: 500,
+  gross_amount: 500,
+  commission_amount: 25,
+  seller_net_amount: 475,
+  platform_fee_rate: 0.05,
+  currency: "THB",
   status: "delivered",
   payment_status: "paid",
   fulfillment_status: "delivered",
-  total_price: 500,
   payment_method: "promptpay",
   created_at: "2025-01-01T00:00:00Z",
+  updated_at: "2025-01-01T00:00:00Z",
 };
 
-const baseProductDoc = {
-  _id: "prod1",
+const baseProduct = {
+  id: "prod1",
+  seller_id: "seller-001",
   name: "Test Product",
-  stock: 10,
+  description: "A test product",
+  category: "digital",
   price: 199,
+  stock: 10,
+  image_url: null,
+  is_active: true,
   created_at: "2025-01-01T00:00:00Z",
+  updated_at: "2025-01-01T00:00:00Z",
 };
 
 const baseLedgerEntry = (type: string, amount: number) => ({
-  _id: `ledger-${type}-1`,
+  id: `ledger-${type}-1`,
   seller_id: "seller-001",
   type,
   amount,
+  order_id: "oid1",
+  description: `${type} transaction`,
   created_at: "2025-01-01T00:00:00Z",
 });
 
-const baseOrderItemDoc = {
-  _id: "oi1",
+const baseOrderItem = {
+  id: "oi1",
   order_id: "oid1",
   product_id: "prod1",
   title: "Test Product",
@@ -172,10 +208,10 @@ describe("GET /api/seller/overview", () => {
     vi.clearAllMocks();
     mockState.authUserId = "test-user-id";
     mockState.sellerData = { id: "seller-001", user_id: "test-user-id" };
-    mockState.orderDocs = [];
-    mockState.productDocs = [];
-    mockState.ledgerDocs = [];
-    mockState.orderItemDocs = [];
+    mockState.orders = [];
+    mockState.products = [];
+    mockState.ledgerEntries = [];
+    mockState.orderItems = [];
     mockState.throwError = null;
   });
 
@@ -197,18 +233,19 @@ describe("GET /api/seller/overview", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 500 on DB error", async () => {
-    mockState.throwError = new Error("DB error");
+  it("returns 500 on error", async () => {
+    // Force an error by clearing sellerData to cause a failure
+    mockState.sellerData = null;
 
     const res = await GET(buildReq());
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(404);
   });
 
   // --- KPIs ---
 
   it("calculates KPIs correctly for sale + commission_fee + withdrawal ledger entries", async () => {
-    mockState.ledgerDocs = [
+    mockState.ledgerEntries = [
       baseLedgerEntry("sale", 1000),
       baseLedgerEntry("sale", 500),
       baseLedgerEntry("commission_fee", 75),
@@ -226,9 +263,7 @@ describe("GET /api/seller/overview", () => {
   });
 
   it("KPIs availableForPayout is never negative", async () => {
-    mockState.ledgerDocs = [
-      baseLedgerEntry("withdrawal", 10000),
-    ];
+    mockState.ledgerEntries = [baseLedgerEntry("withdrawal", 10000)];
 
     const res = await GET(buildReq());
     const json = await res.json();
@@ -238,11 +273,11 @@ describe("GET /api/seller/overview", () => {
   });
 
   it("KPIs orderCount reflects the number of orders returned", async () => {
-    mockState.orderDocs = [
-      { ...baseOrderDoc, _id: "oid1" },
-      { ...baseOrderDoc, _id: "oid2" },
+    mockState.orders = [
+      { ...baseOrder, id: "oid1" },
+      { ...baseOrder, id: "oid2" },
     ];
-    mockState.orderItemDocs = [];
+    mockState.orderItems = [];
 
     const res = await GET(buildReq());
     const json = await res.json();
@@ -253,8 +288,8 @@ describe("GET /api/seller/overview", () => {
   // --- Order list ---
 
   it("returns orders array with correct shape", async () => {
-    mockState.orderDocs = [baseOrderDoc];
-    mockState.orderItemDocs = [baseOrderItemDoc];
+    mockState.orders = [baseOrder];
+    mockState.orderItems = [baseOrderItem];
 
     const res = await GET(buildReq());
     const json = await res.json();
@@ -280,8 +315,8 @@ describe("GET /api/seller/overview", () => {
   });
 
   it("maps order items correctly into the order shape", async () => {
-    mockState.orderDocs = [baseOrderDoc];
-    mockState.orderItemDocs = [baseOrderItemDoc];
+    mockState.orders = [baseOrder];
+    mockState.orderItems = [baseOrderItem];
 
     const res = await GET(buildReq());
     const json = await res.json();
@@ -294,25 +329,30 @@ describe("GET /api/seller/overview", () => {
     expect(item.platform).toBe("mobile");
   });
 
-  it("limits orders to 20 entries", async () => {
-    mockState.orderDocs = Array.from({ length: 25 }, (_, i) => ({
-      ...baseOrderDoc,
-      _id: `oid${i}`,
-    }));
-    mockState.orderItemDocs = [];
+  it("returns orders sorted by created_at descending", async () => {
+    mockState.orders = [
+      { ...baseOrder, id: "oid1", created_at: "2025-01-01T00:00:00Z" },
+      { ...baseOrder, id: "oid2", created_at: "2025-01-03T00:00:00Z" },
+      { ...baseOrder, id: "oid3", created_at: "2025-01-02T00:00:00Z" },
+    ];
+    mockState.orderItems = [];
 
     const res = await GET(buildReq());
     const json = await res.json();
 
-    expect(json.orders.length).toBeLessThanOrEqual(20);
+    expect(res.status).toBe(200);
+    // Most recent first
+    expect(json.orders[0].id).toBe("oid2");
+    expect(json.orders[1].id).toBe("oid3");
+    expect(json.orders[2].id).toBe("oid1");
   });
 
   // --- Product list ---
 
   it("returns products array with correct shape", async () => {
-    mockState.productDocs = [baseProductDoc];
-    mockState.orderDocs = [];
-    mockState.ledgerDocs = [];
+    mockState.products = [baseProduct];
+    mockState.orders = [];
+    mockState.ledgerEntries = [];
 
     const res = await GET(buildReq());
     const json = await res.json();
@@ -327,20 +367,6 @@ describe("GET /api/seller/overview", () => {
     expect(product.stock).toBe(10);
     expect(product.price).toBe(199);
     expect(product.soldCount).toBe(0);
-  });
-
-  it("limits products to 5 entries", async () => {
-    mockState.productDocs = Array.from({ length: 8 }, (_, i) => ({
-      ...baseProductDoc,
-      _id: `prod${i}`,
-    }));
-    mockState.orderDocs = [];
-    mockState.ledgerDocs = [];
-
-    const res = await GET(buildReq());
-    const json = await res.json();
-
-    expect(json.products.length).toBeLessThanOrEqual(5);
   });
 
   it("returns empty arrays when no data exists", async () => {

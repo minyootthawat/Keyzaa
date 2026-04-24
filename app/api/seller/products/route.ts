@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import type { Product } from "@/app/types";
-import { ObjectId } from "mongodb";
 
-interface DbProduct {
-  _id: ObjectId;
+interface ProductRow {
+  id: string;
   seller_id: string;
   name: string;
   description: string | null;
@@ -19,9 +17,9 @@ interface DbProduct {
   updated_at: string;
 }
 
-function mapDbToProduct(row: DbProduct): Partial<Product> {
+function mapRowToProduct(row: ProductRow): Partial<Product> {
   return {
-    id: row._id.toString(),
+    id: row.id,
     sellerId: row.seller_id,
     title: row.name,
     nameTh: row.name,
@@ -76,14 +74,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const { db } = await connectDB();
-    const products = await db
-      .collection("products")
-      .find({ seller_id: sellerId })
-      .sort({ created_at: -1 })
-      .toArray();
+    const supabase = createServiceRoleClient();
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("seller_id", sellerId)
+      .order("created_at", { ascending: false });
 
-    const mapped = (products as unknown as DbProduct[]).map(mapDbToProduct);
+    if (error) {
+      console.error("Seller products list error:", error);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+
+    const mapped = (data as ProductRow[]).map(mapRowToProduct);
     return NextResponse.json({ products: mapped });
   } catch (error) {
     console.error("Seller products list error:", error);
@@ -126,23 +129,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Stock must be a number of 0 or greater" }, { status: 400 });
     }
 
-    const { db } = await connectDB();
-    const now = new Date().toISOString();
-    const result = await db.collection("products").insertOne({
-      seller_id: sellerId,
-      name: name.trim(),
-      description: body.description || null,
-      category: category.trim(),
-      price: price,
-      stock: stock,
-      image_url: body.image || null,
-      is_active: true,
-      created_at: now,
-      updated_at: now,
-    });
+    const supabase = createServiceRoleClient();
+    const { data, error } = await supabase
+      .from("products")
+      .insert({
+        seller_id: sellerId,
+        name: name.trim(),
+        description: body.description || null,
+        category: category.trim(),
+        price: price,
+        stock: stock,
+        image_url: body.image || null,
+        is_active: true,
+      })
+      .select()
+      .single();
 
-    const inserted = await db.collection("products").findOne({ _id: result.insertedId });
-    return NextResponse.json({ product: mapDbToProduct(inserted as unknown as DbProduct) }, { status: 201 });
+    if (error) {
+      console.error("Seller product create error:", error);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+
+    return NextResponse.json({ product: mapRowToProduct(data as ProductRow) }, { status: 201 });
   } catch (error) {
     console.error("Seller product create error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

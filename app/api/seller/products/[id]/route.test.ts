@@ -1,45 +1,41 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { PATCH } from "./route";
+import { GET, PATCH, DELETE } from "./route";
 
 // ---------------------------------------------------------------------------
 // Mock state
 // ---------------------------------------------------------------------------
 
 const mockState = {
+  seller: null as { id: string; user_id: string } | null,
   product: null as Record<string, unknown> | null,
-  throwError: null as Error | null,
-  sellerData: null as { id: string; user_id: string } | null,
   authUserId: "test-user-id",
-  updateResult: null as Record<string, unknown> | null,
 };
 
-function makeCollection(name: string) {
-  if (name === "products") {
-    return {
-      find: vi.fn().mockReturnValue({
-        sort: vi.fn().mockReturnThis(),
-        toArray: vi.fn().mockResolvedValue([]),
-      }),
-      findOne: vi.fn().mockImplementation(() => {
-        if (mockState.throwError) return Promise.reject(mockState.throwError);
-        return Promise.resolve(mockState.product);
-      }),
-      findOneAndUpdate: vi.fn().mockImplementation(() => {
-        if (mockState.throwError) return Promise.reject(mockState.throwError);
-        return Promise.resolve(mockState.updateResult);
-      }),
-      insertOne: vi.fn().mockResolvedValue({ insertedId: "mock-id" }),
-    };
-  }
-  return {
-    find: vi.fn().mockReturnValue({
-      sort: vi.fn().mockReturnThis(),
-      toArray: vi.fn().mockResolvedValue([]),
-    }),
-    findOne: vi.fn().mockResolvedValue(null),
-    insertOne: vi.fn().mockResolvedValue({ insertedId: "mock-id" }),
+function buildThenable(data: unknown, error: unknown) {
+  const obj: Record<string, unknown> = {
+    then: (resolve: (val: { data: unknown; error: unknown }) => void) => {
+      setTimeout(() => resolve({ data, error }), 0);
+      return obj;
+    },
   };
+  const methods = [
+    "select",
+    "eq",
+    "neq",
+    "order",
+    "limit",
+    "in",
+    "single",
+    "maybeSingle",
+    "data",
+    "error",
+    "count",
+  ];
+  for (const m of methods) {
+    obj[m] = () => buildThenable(data, error);
+  }
+  return obj;
 }
 
 vi.mock("@/lib/auth/jwt", () => ({
@@ -49,32 +45,46 @@ vi.mock("@/lib/auth/jwt", () => ({
   }),
 }));
 
-vi.mock("@/lib/db/mongodb", () => ({
-  connectDB: vi.fn().mockImplementation(async () => {
-    if (mockState.throwError) throw mockState.throwError;
-    return {
-      client: {} as unknown,
-      db: {
-        collection: vi.fn().mockImplementation((name: string) => makeCollection(name)),
-      },
-    };
-  }),
-  getDb: vi.fn(),
-}));
-
 vi.mock("@/lib/supabase/supabase", () => ({
   createServiceRoleClient: vi.fn().mockReturnValue({
-    from: vi.fn().mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockImplementation(() => {
-            if (!mockState.sellerData) {
-              return Promise.resolve({ data: null, error: { message: "not found" } });
-            }
-            return Promise.resolve({ data: mockState.sellerData, error: null });
+    from: vi.fn().mockImplementation((table: string) => {
+      if (table === "sellers") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockImplementation(() =>
+                buildThenable(mockState.seller, null)
+              ),
+            }),
           }),
-        }),
-      }),
+        };
+      }
+      if (table === "products") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockImplementation(() =>
+                buildThenable(mockState.product, null)
+              ),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockImplementation(() =>
+                  buildThenable(mockState.product, null)
+                ),
+              }),
+              error: null,
+            }),
+            error: null,
+          }),
+        };
+      }
+      return {
+        select: vi.fn().mockReturnValue(buildThenable(null, null)),
+        update: vi.fn().mockReturnValue(buildThenable(null, null)),
+      };
     }),
   }),
 }));
@@ -83,13 +93,12 @@ vi.mock("@/lib/supabase/supabase", () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Use valid 24-char hex string for MongoDB ObjectId
 const VALID_PRODUCT_ID = "507f1f77bcf86cd799439011";
 
-function buildReq(productId: string, body?: unknown) {
+function buildReq(productId: string, body?: unknown, method = "PATCH") {
   const headers = new Headers();
   if (mockState.authUserId) headers.set("authorization", "Bearer mock-token");
-  const init: RequestInit = { headers, method: "PATCH" };
+  const init: RequestInit = { headers, method };
   if (body) init.body = JSON.stringify(body);
   return new NextRequest(`http://localhost/api/seller/products/${productId}`, init);
 }
@@ -98,8 +107,8 @@ function buildParams(id: string) {
   return { params: Promise.resolve({ id }) };
 }
 
-const baseProduct = {
-  _id: VALID_PRODUCT_ID,
+const baseProductRow = {
+  id: VALID_PRODUCT_ID,
   seller_id: "seller-001",
   name: "Test Product",
   description: "A test product",
@@ -113,16 +122,58 @@ const baseProduct = {
 };
 
 // ---------------------------------------------------------------------------
+// GET /api/seller/products/[id]
+// ---------------------------------------------------------------------------
+describe("GET /api/seller/products/[id]", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockState.product = null;
+    mockState.authUserId = "test-user-id";
+    mockState.seller = { id: "seller-001", user_id: "test-user-id" };
+  });
+
+  it("returns 401 without auth", async () => {
+    mockState.authUserId = "";
+
+    const res = await GET(buildReq(VALID_PRODUCT_ID), buildParams(VALID_PRODUCT_ID));
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 when product not found", async () => {
+    mockState.product = null;
+
+    const res = await GET(buildReq(VALID_PRODUCT_ID), buildParams(VALID_PRODUCT_ID));
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 403 when accessing another seller's product", async () => {
+    mockState.product = { ...baseProductRow, seller_id: "other-seller" };
+
+    const res = await GET(buildReq(VALID_PRODUCT_ID), buildParams(VALID_PRODUCT_ID));
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 200 with product data", async () => {
+    mockState.product = { ...baseProductRow };
+
+    const res = await GET(buildReq(VALID_PRODUCT_ID), buildParams(VALID_PRODUCT_ID));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.product).toBeInstanceOf(Object);
+    expect(json.product.title).toBe("Test Product");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // PATCH /api/seller/products/[id]
 // ---------------------------------------------------------------------------
 describe("PATCH /api/seller/products/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockState.product = null;
-    mockState.throwError = null;
     mockState.authUserId = "test-user-id";
-    mockState.sellerData = { id: "seller-001", user_id: "test-user-id" };
-    mockState.updateResult = null;
+    mockState.seller = { id: "seller-001", user_id: "test-user-id" };
   });
 
   it("returns 401 without auth", async () => {
@@ -140,20 +191,18 @@ describe("PATCH /api/seller/products/[id]", () => {
   });
 
   it("returns 403 when updating another seller's product", async () => {
-    mockState.product = { ...baseProduct, seller_id: "other-seller" };
+    mockState.product = { ...baseProductRow, seller_id: "other-seller" };
 
     const res = await PATCH(buildReq(VALID_PRODUCT_ID, { name: "New Name" }), buildParams(VALID_PRODUCT_ID));
     expect(res.status).toBe(403);
   });
 
-  it("successfully updates own product (price, stock, name)", async () => {
-    mockState.product = { ...baseProduct };
-    mockState.updateResult = {
-      ...baseProduct,
+  it("successfully updates own product", async () => {
+    mockState.product = {
+      ...baseProductRow,
       name: "Updated Name",
       price: 200,
       stock: 50,
-      updated_at: "2025-01-02T00:00:00Z",
     };
 
     const res = await PATCH(
@@ -169,43 +218,64 @@ describe("PATCH /api/seller/products/[id]", () => {
     expect(json.product.stock).toBe(50);
   });
 
-  it("response shape is correct", async () => {
-    mockState.product = { ...baseProduct };
-    mockState.updateResult = {
-      ...baseProduct,
-      name: "Updated",
-      price: 150,
-      stock: 20,
-      updated_at: "2025-01-02T00:00:00Z",
-    };
+  it("returns 400 when name is empty", async () => {
+    mockState.product = { ...baseProductRow };
 
-    const res = await PATCH(
-      buildReq(VALID_PRODUCT_ID, { name: "Updated", price: 150, stock: 20 }),
-      buildParams(VALID_PRODUCT_ID)
-    );
-    const json = await res.json();
+    const res = await PATCH(buildReq(VALID_PRODUCT_ID, { name: "" }), buildParams(VALID_PRODUCT_ID));
+    expect(res.status).toBe(400);
+  });
 
-    expect(res.status).toBe(200);
-    expect(json).toHaveProperty("product");
-    expect(json.product).toHaveProperty("id");
-    expect(json.product).toHaveProperty("title");
-    expect(json.product).toHaveProperty("price");
-    expect(json.product).toHaveProperty("stock");
-    expect(json.product).toHaveProperty("isActive");
+  it("returns 400 when price is invalid", async () => {
+    mockState.product = { ...baseProductRow };
+
+    const res = await PATCH(buildReq(VALID_PRODUCT_ID, { price: -10 }), buildParams(VALID_PRODUCT_ID));
+    expect(res.status).toBe(400);
   });
 
   it("returns 404 when no seller account", async () => {
-    mockState.sellerData = null;
+    mockState.seller = null;
 
     const res = await PATCH(buildReq(VALID_PRODUCT_ID, { name: "Test" }), buildParams(VALID_PRODUCT_ID));
     expect(res.status).toBe(404);
   });
+});
 
-  it("returns 500 on DB error", async () => {
-    mockState.product = { ...baseProduct };
-    mockState.throwError = new Error("DB connection failed");
+// ---------------------------------------------------------------------------
+// DELETE /api/seller/products/[id]
+// ---------------------------------------------------------------------------
+describe("DELETE /api/seller/products/[id]", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockState.product = null;
+    mockState.authUserId = "test-user-id";
+    mockState.seller = { id: "seller-001", user_id: "test-user-id" };
+  });
 
-    const res = await PATCH(buildReq(VALID_PRODUCT_ID, { name: "Test" }), buildParams(VALID_PRODUCT_ID));
-    expect(res.status).toBe(500);
+  it("returns 401 without auth", async () => {
+    mockState.authUserId = "";
+
+    const res = await DELETE(buildReq(VALID_PRODUCT_ID, undefined, "DELETE"), buildParams(VALID_PRODUCT_ID));
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 when product not found", async () => {
+    mockState.product = null;
+
+    const res = await DELETE(buildReq(VALID_PRODUCT_ID, undefined, "DELETE"), buildParams(VALID_PRODUCT_ID));
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 403 when deleting another seller's product", async () => {
+    mockState.product = { ...baseProductRow, seller_id: "other-seller" };
+
+    const res = await DELETE(buildReq(VALID_PRODUCT_ID, undefined, "DELETE"), buildParams(VALID_PRODUCT_ID));
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 204 on successful deletion", async () => {
+    mockState.product = { ...baseProductRow };
+
+    const res = await DELETE(buildReq(VALID_PRODUCT_ID, undefined, "DELETE"), buildParams(VALID_PRODUCT_ID));
+    expect(res.status).toBe(204);
   });
 });
