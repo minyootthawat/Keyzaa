@@ -93,15 +93,15 @@ test.describe("Checkout Page", () => {
     await page.goto(BASE, { waitUntil: "networkidle" });
     await page.evaluate(() => localStorage.removeItem("keyzaa_cart"));
 
-    // Go directly to a known product (ROV diamonds)
-    await page.goto(`${BASE}/products/rov`);
+    // Go directly to a known product (ROV diamonds — id is p1)
+    await page.goto(`${BASE}/products/p1`);
     await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
 
-    // Click "Add to cart" secondary button
-    const addToCartBtn = page.getByRole("button", { name: /เพิ่มลงรถเข็น|add to cart/i });
-    await expect(addToCartBtn).toBeVisible({ timeout: 5000 });
-    await addToCartBtn.click();
+    // Click the primary CTA "เริ่มเดโมการชำระเงิน" button (adds to cart AND navigates to checkout)
+    const primaryBtn = page.getByRole("button", { name: /เริ่มเดโมการชำระเงิน|Start mock checkout/i });
+    await expect(primaryBtn).toBeVisible({ timeout: 10000 });
+    await primaryBtn.click();
 
     // Should navigate to checkout — wait for URL change first
     await page.waitForURL(/checkout/, { timeout: 10000 });
