@@ -194,7 +194,7 @@ function LeftPanel() {
 
 function FormSection() {
   const router = useRouter();
-  const { registerSeller, isRegisteredSeller, loading: authLoading } = useAuth();
+  const { registerSeller } = useAuth();
   const { t } = useLanguage();
   const [shopName, setShopName] = useState("");
   const [phone, setPhone] = useState("");
@@ -206,12 +206,6 @@ function FormSection() {
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  useEffect(() => {
-    if (!authLoading && isRegisteredSeller) {
-      router.push("/seller/dashboard");
-    }
-  }, [authLoading, isRegisteredSeller, router]);
 
   const validate = useCallback(() => {
     const errs: { shopName?: string; phone?: string } = {};

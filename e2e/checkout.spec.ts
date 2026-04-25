@@ -93,8 +93,8 @@ test.describe("Checkout Page", () => {
     await page.goto(BASE, { waitUntil: "networkidle" });
     await page.evaluate(() => localStorage.removeItem("keyzaa_cart"));
 
-    // Go directly to a known product (ROV diamonds — id is p1)
-    await page.goto(`${BASE}/products/p1`);
+    // Go directly to a known product (ROV Diamond Pack 1000)
+    await page.goto(`${BASE}/products/2080ae33-205f-4aff-92ab-d5d1ee71a97f`);
     await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
 

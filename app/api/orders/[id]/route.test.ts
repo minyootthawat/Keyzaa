@@ -85,7 +85,7 @@ vi.mock("@/lib/supabase/supabase", () => ({
 // Mock: marketplace-server
 // ---------------------------------------------------------------------------
 vi.mock("@/lib/marketplace-server", () => ({
-  getStaticSellerSeedById: vi.fn().mockReturnValue(undefined),
+  getSellerByIdFromDb: vi.fn().mockResolvedValue(null),
   mapOrderDocument: vi.fn().mockImplementation((doc: Record<string, unknown>) => ({
     id: doc.orderId,
     buyerId: doc.buyerId,

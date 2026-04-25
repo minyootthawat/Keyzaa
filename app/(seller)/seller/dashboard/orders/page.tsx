@@ -6,7 +6,7 @@ import { useAuth } from "@/app/context/AuthContext";
 import { getStoredToken } from "@/app/lib/auth-client";
 import OrderCard from "@/app/components/OrderCard";
 import type { Order } from "@/app/types";
-import { MOCK_ORDERS } from "@/lib/mock-data";
+
 
 type ViewMode = "list" | "kanban";
 
@@ -65,7 +65,6 @@ export default function SellerOrdersPage() {
     const token = getStoredToken();
 
     if (!token) {
-      setOrders(MOCK_ORDERS as unknown as Order[]);
       setLoading(false);
       return;
     }
@@ -87,7 +86,7 @@ export default function SellerOrdersPage() {
         setOrders(data.orders);
       })
       .catch(() => {
-        setOrders(MOCK_ORDERS as unknown as Order[]);
+        // error — orders stay empty
       })
       .finally(() => {
         setLoading(false);

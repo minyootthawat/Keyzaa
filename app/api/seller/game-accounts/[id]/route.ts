@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBearerPayload } from "@/lib/auth/jwt";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import { MOCK_GAME_ACCOUNTS } from "@/lib/mock-data";
 
 async function getSellerIdFromUserId(userId: string): Promise<string | null> {
   const supabase = createServiceRoleClient();
@@ -29,9 +28,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const { id } = await params;
-  const account = MOCK_GAME_ACCOUNTS.find((a) => a.id === id && a.seller_id === sellerId);
-  if (!account) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json({ account });
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("game_accounts")
+    .select("*")
+    .eq("id", id)
+    .eq("seller_id", sellerId)
+    .single();
+
+  if (error || !data) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json({ account: data });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -48,12 +54,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
-  const account = MOCK_GAME_ACCOUNTS.find((a) => a.id === id && a.seller_id === sellerId);
-  if (!account) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const supabase = createServiceRoleClient();
+  const { data: existing, error: fetchError } = await supabase
+    .from("game_accounts")
+    .select("*")
+    .eq("id", id)
+    .eq("seller_id", sellerId)
+    .single();
+
+  if (fetchError || !existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
-  const updated = { ...account, ...body };
-  return NextResponse.json({ account: updated });
+  const { data, error } = await supabase
+    .from("game_accounts")
+    .update({ ...body, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ account: data });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -70,8 +92,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }
 
   const { id } = await params;
-  const account = MOCK_GAME_ACCOUNTS.find((a) => a.id === id && a.seller_id === sellerId);
-  if (!account) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase
+    .from("game_accounts")
+    .delete()
+    .eq("id", id)
+    .eq("seller_id", sellerId);
 
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ success: true });
 }

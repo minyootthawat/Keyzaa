@@ -9,7 +9,6 @@ import { formatThaiBaht } from "@/app/lib/marketplace";
 import CTAButton from "@/app/components/CTAButton";
 import Badge from "@/app/components/Badge";
 import type { Product } from "@/app/types";
-import { MOCK_PRODUCTS } from "@/lib/mock-data";
 
 type SellerProduct = Product;
 
@@ -42,7 +41,6 @@ export default function SellerProductsPage() {
     const token = getStoredToken();
 
     if (!token) {
-      setProducts(MOCK_PRODUCTS as unknown as Product[]);
       setLoading(false);
       return;
     }
@@ -64,7 +62,7 @@ export default function SellerProductsPage() {
         setProducts(data.products);
       })
       .catch(() => {
-        setProducts(MOCK_PRODUCTS as unknown as Product[]);
+        // API failed, leave products as empty
       })
       .finally(() => {
         setLoading(false);

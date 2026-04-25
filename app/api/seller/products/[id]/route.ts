@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { createServiceRoleClient } from "@/lib/db/supabase";
 import type { Product } from "@/app/types";
 
 interface ProductRow {
@@ -167,6 +167,10 @@ export async function PATCH(
 
     if (body.isActive !== undefined) {
       updates.is_active = Boolean(body.isActive);
+    }
+
+    if (body.listingStatus !== undefined) {
+      updates.is_active = body.listingStatus === "active";
     }
 
     if (Object.keys(updates).length === 0) {

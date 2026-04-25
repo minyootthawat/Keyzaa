@@ -8,6 +8,7 @@ import CTAButton from "@/app/components/CTAButton";
 import { getStoredToken } from "@/app/lib/auth-client";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { getMockPaymentMethodLabel, getMockPaymentNotice } from "@/app/lib/payment-mock";
+import BuyerRouteGuard from "@/app/components/BuyerRouteGuard";
 import type { Order } from "@/app/types";
 
 interface OrderSellerSummary {
@@ -18,7 +19,7 @@ interface OrderSellerSummary {
   salesCount: number;
 }
 
-export default function OrderDeliveryPage() {
+function OrderDeliveryContent() {
   const params = useParams<{ id: string }>();
   const { lang, t } = useLanguage();
   const [order, setOrder] = useState<Order | null>(null);
@@ -294,5 +295,13 @@ export default function OrderDeliveryPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function OrderDeliveryPage() {
+  return (
+    <BuyerRouteGuard>
+      <OrderDeliveryContent />
+    </BuyerRouteGuard>
   );
 }

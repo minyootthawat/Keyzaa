@@ -53,6 +53,8 @@ export interface Product {
   category: string;
   platform: string;
   sellerId: string;
+  sellerName?: string;
+  sellerVerificationStatus?: SellerVerificationStatus;
   stock: number;
   soldCount: number;
   isActive: boolean;

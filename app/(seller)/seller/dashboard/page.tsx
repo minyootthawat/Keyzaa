@@ -6,7 +6,6 @@ import { useLanguage } from "@/app/context/LanguageContext";
 import { useAuth } from "@/app/context/AuthContext";
 import { getStoredToken } from "@/app/lib/auth-client";
 import { formatThaiBaht } from "@/app/lib/marketplace";
-import { MOCK_OVERVIEW, MOCK_ORDERS } from "@/lib/mock-data";
 import type { Order } from "@/app/types";
 
 interface SellerOverviewResponse {
@@ -51,8 +50,7 @@ export default function SellerDashboardPage() {
         setOverview(data);
       })
       .catch(() => {
-        // Use mock data when API unavailable
-        setOverview(MOCK_OVERVIEW as unknown as SellerOverviewResponse);
+        // API unavailable, leave overview as null (show empty state)
       })
       .finally(() => {
         setLoading(false);
@@ -88,7 +86,7 @@ export default function SellerDashboardPage() {
     );
   }
 
-  const displayOrders = overview?.orders?.length ? overview.orders : MOCK_ORDERS;
+  const displayOrders = overview?.orders || [];
 
   return (
     <div className="space-y-6 md:space-y-7">
@@ -173,11 +171,11 @@ export default function SellerDashboardPage() {
                     {new Date("created_at" in order ? (order as {created_at: string}).created_at : order.id).toLocaleDateString(lang === "th" ? "th-TH" : "en-US")}
                   </p>
                 </div>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${order.status === "completed" || order.status === "paid" ? "bg-accent/20 text-accent" : "bg-warning/20 text-warning"}`}>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${order.status === "delivered" || order.status === "paid" ? "bg-accent/20 text-accent" : "bg-warning/20 text-warning"}`}>
                   {order.status}
                 </span>
               </div>
-              <p className="mt-3 type-num text-lg font-bold text-text-main">฿{formatThaiBaht("total_price" in order ? order.total_price : (order as {totalPrice: number}).totalPrice)}</p>
+              <p className="mt-3 type-num text-lg font-bold text-text-main">฿{formatThaiBaht(order.totalPrice)}</p>
             </div>
           ))}
         </div>

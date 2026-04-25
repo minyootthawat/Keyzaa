@@ -4,11 +4,9 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import sellersData from "@/data/sellers.json";
 import { useCart } from "@/app/context/CartContext";
 import { useLanguage } from "@/app/context/LanguageContext";
 import {
-  buildSellerSummary,
   getActivationMethod,
   getActivationSteps,
   getDeliveryLabel,
@@ -20,7 +18,7 @@ import {
   getTrustLabel,
 } from "@/app/lib/marketplace";
 import { getMockPaymentNotice } from "@/app/lib/payment-mock";
-import type { Product, Seller, SellerOption } from "@/app/types";
+import type { Product, SellerOption } from "@/app/types";
 import CTAButton from "@/app/components/CTAButton";
 import Badge from "@/app/components/Badge";
 import PriceTag from "@/app/components/PriceTag";
@@ -38,7 +36,6 @@ interface ProductDetail extends Product {
   reviews: Review[];
 }
 
-const MOCK_FETCH_DELAY = 300;
 const SKELETON_ARRAY = Array.from({ length: 1 });
 
 function SkeletonLoader() {
@@ -61,69 +58,111 @@ export default function ProductDetailPage() {
   const [activeTab, setActiveTab] = useState<"description" | "reviews">("description");
 
   useEffect(function fetchProductData() {
-    const timer = setTimeout(() => {
-      import("@/data/products.json").then((mod) => {
-        const products = mod.default as Product[];
-        const baseProduct = products.find((item) => item.id === params.id);
+    let cancelled = false;
+    setLoading(true);
 
-        if (!baseProduct) {
+    fetch("/api/products")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch");
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+
+        const apiProduct = (data.products ?? []).find(
+          (p: { id: string }) => p.id === params.id,
+        );
+
+        if (!apiProduct) {
           router.push("/products");
           return;
         }
 
-        const sellers = (sellersData as Seller[])
-          .filter((seller) => seller.id === baseProduct.sellerId || seller.verificationStatus !== "new")
-          .slice(0, 3)
-          .map((seller, index) => ({
-            id: seller.id,
-            name: seller.shopName,
-            price: Math.max(baseProduct.price - (index === 0 ? 0 : 0), baseProduct.price),
-            rating: seller.rating,
-            salesCount: seller.salesCount,
-            deliverySpeed: baseProduct.deliveryLabelTh || t("common_instantDelivery"),
-            isOfficial: seller.id === baseProduct.sellerId,
-            verificationStatus: seller.verificationStatus,
-            fulfillmentRate: seller.fulfillmentRate,
-          }));
+        // Map API shape to ProductDetail — expand as API adds fields
+        const baseProduct: Product = {
+          id: apiProduct.id,
+          title: apiProduct.title,
+          nameTh: (apiProduct as { nameTh?: string }).nameTh ?? apiProduct.title,
+          nameEn: (apiProduct as { nameEn?: string }).nameEn ?? apiProduct.title,
+          image: apiProduct.image,
+          price: apiProduct.price,
+          originalPrice: (apiProduct as { originalPrice?: number }).originalPrice ?? apiProduct.price,
+          discount: (apiProduct as { discount?: number }).discount ?? 0,
+          category: apiProduct.category,
+          platform: (apiProduct as { platform?: string }).platform ?? "general",
+          sellerId: apiProduct.sellerId,
+          stock: apiProduct.stock,
+          soldCount: (apiProduct as { soldCount?: number }).soldCount ?? 0,
+          isActive: apiProduct.isActive,
+          // defaults for missing fields
+          sellerCount: 1,
+          listingStatus: "active",
+          regionLabelTh: (apiProduct as { regionLabelTh?: string }).regionLabelTh ?? "Thailand",
+          regionLabelEn: (apiProduct as { regionLabelEn?: string }).regionLabelEn ?? "Thailand",
+          deliveryLabelTh: (apiProduct as { deliveryLabelTh?: string }).deliveryLabelTh ?? "Instant",
+          deliveryLabelEn: (apiProduct as { deliveryLabelEn?: string }).deliveryLabelEn ?? "Instant",
+          activationMethodTh: (apiProduct as { activationMethodTh?: string }).activationMethodTh ?? "Automatic",
+          activationMethodEn: (apiProduct as { activationMethodEn?: string }).activationMethodEn ?? "Automatic",
+          shortDescriptionTh: (apiProduct as { shortDescriptionTh?: string }).shortDescriptionTh,
+          shortDescriptionEn: (apiProduct as { shortDescriptionEn?: string }).shortDescriptionEn,
+          descriptionTh: (apiProduct as { descriptionTh?: string }).descriptionTh,
+          descriptionEn: (apiProduct as { descriptionEn?: string }).descriptionEn,
+          activationStepsTh: (apiProduct as { activationStepsTh?: string[] }).activationStepsTh,
+          activationStepsEn: (apiProduct as { activationStepsEn?: string[] }).activationStepsEn,
+          trustLabelTh: (apiProduct as { trustLabelTh?: string }).trustLabelTh,
+          trustLabelEn: (apiProduct as { trustLabelEn?: string }).trustLabelEn,
+        };
 
-        const reviews: Review[] = [
-          {
-            id: "r1",
-            user: "Nok",
-            rating: 5,
-            comment: t("pdp_reviewMockCheckout"),
-            date: "2026-04-14",
-          },
-          {
-            id: "r2",
-            user: "Mint",
-            rating: 5,
-            comment: t("pdp_reviewThailandCompat"),
-            date: "2026-04-09",
-          },
-        ];
+        // Build single seller option from API seller data
+        const apiSeller = apiProduct.seller;
+        const sellers: SellerOption[] = apiSeller
+          ? [
+              {
+                id: apiSeller.id,
+                name: apiSeller.storeName,
+                price: apiProduct.price,
+                rating: (apiProduct as { sellerRating?: number }).sellerRating ?? 4.5,
+                salesCount: (apiProduct as { sellerSalesCount?: number }).sellerSalesCount ?? 0,
+                deliverySpeed: baseProduct.deliveryLabelTh || "Instant",
+                isOfficial: true,
+                verificationStatus: apiSeller.verified ? "verified" : "new",
+                fulfillmentRate: (apiProduct as { fulfillmentRate?: number }).fulfillmentRate ?? 95,
+              },
+            ]
+          : [];
 
         const detail: ProductDetail = {
           ...baseProduct,
           sellers,
-          reviews,
+          reviews: [],
         };
 
-        setProduct(detail);
-        setSelectedSeller(sellers[0] || null);
-        setLoading(false);
+        if (!cancelled) {
+          setProduct(detail);
+          setSelectedSeller(sellers[0] || null);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        router.push("/products");
       });
-    }, MOCK_FETCH_DELAY);
 
     return function cleanupFetch() {
-      clearTimeout(timer);
+      cancelled = true;
     };
-  }, [lang, params.id, router, t]);
+  }, [params.id, router]);
 
   const sellerSummary = useMemo(() => {
     if (!selectedSeller) return null;
-    const seller = (sellersData as Seller[]).find((item) => item.id === selectedSeller.id);
-    return seller ? buildSellerSummary(seller) : null;
+    // Seller summary derived from selected seller option (DB enrichment deferred)
+    return selectedSeller
+      ? {
+          fulfillmentRate: selectedSeller.fulfillmentRate ?? 95,
+          responseTimeMinutes: 5,
+          disputeRate: 0.5,
+        }
+      : null;
   }, [selectedSeller]);
 
   const buildCartItem = useCallback(

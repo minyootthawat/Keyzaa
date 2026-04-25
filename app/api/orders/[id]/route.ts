@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBearerPayload } from "@/lib/auth/jwt";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import { getStaticSellerSeedById, mapOrderDocument } from "@/lib/marketplace-server";
+import { getSellerByIdFromDb, mapOrderDocument } from "@/lib/marketplace-server";
 import type { OrderItem, OrderStatus, PaymentStatus, FulfillmentStatus } from "@/app/types";
 
 type RouteContext = {
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
       .eq("id", sellerId)
       .single();
 
-    const staticSeller = getStaticSellerSeedById(sellerId);
+    const dbSeller = await getSellerByIdFromDb(sellerId);
 
     return NextResponse.json({
       order: mapOrderDocument({
@@ -92,14 +92,14 @@ export async function GET(req: NextRequest, context: RouteContext) {
         id: sellerId,
         shopName:
           (sellerRow?.store_name as string | undefined) ||
-          staticSeller?.shopName ||
+          dbSeller?.shopName ||
           sellerId,
         verificationStatus:
           (sellerRow?.verified === true ? "verified" : undefined) ||
-          staticSeller?.verificationStatus ||
+          dbSeller?.verificationStatus ||
           "verified",
-        rating: (sellerRow?.rating as number | undefined) || staticSeller?.rating || 0,
-        salesCount: (sellerRow?.sales_count as number | undefined) || staticSeller?.salesCount || 0,
+        rating: (sellerRow?.rating as number | undefined) || dbSeller?.rating || 0,
+        salesCount: (sellerRow?.sales_count as number | undefined) || dbSeller?.salesCount || 0,
       },
     });
   } catch (error) {

@@ -4,8 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCart } from "@/app/context/CartContext";
 import { useLanguage } from "@/app/context/LanguageContext";
-import sellersData from "@/data/sellers.json";
-import type { Product, Seller } from "@/app/types";
+import type { Product } from "@/app/types";
 import { getActivationMethod, getDeliveryLabel, getProductTitle, getRegionLabel, getSellerTrustLabel, getSellerTrustTone } from "@/app/lib/marketplace";
 import Badge from "./Badge";
 import PriceTag from "./PriceTag";
@@ -22,8 +21,11 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
 
   const rating = 4.8;
   const reviewCount = Math.max(120, Math.round(product.soldCount / 10));
-  const defaultSeller = ((sellersData as Seller[]).find((seller) => seller.id === product.sellerId) || (sellersData as Seller[])[0]);
-  const sellerTrustLabel = getSellerTrustLabel(defaultSeller.verificationStatus, lang);
+  // seller info comes from the product itself, no external lookup needed
+  const sellerId = product.sellerId;
+  const sellerName = product.sellerName || "Unknown seller";
+  const sellerVerificationStatus = product.sellerVerificationStatus;
+  const sellerTrustLabel = getSellerTrustLabel(sellerVerificationStatus, lang);
 
   const handleQuickBuy = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -37,8 +39,8 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
       price: product.price,
       image: product.image,
       quantity: 1,
-      sellerId: product.sellerId || defaultSeller.id,
-      sellerName: defaultSeller.shopName,
+      sellerId: sellerId,
+      sellerName: sellerName,
       platform: product.platform,
       regionCode: product.regionCode,
       deliveryLabelTh: product.deliveryLabelTh,
@@ -83,7 +85,7 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
       <div className="relative z-10 flex flex-1 flex-col gap-4 p-5 sm:p-6">
         <div className="flex items-start justify-between gap-2">
           <span className="type-meta truncate text-text-muted">{product.category}</span>
-          <Badge label={sellerTrustLabel} tone={getSellerTrustTone(defaultSeller.verificationStatus)} />
+          <Badge label={sellerTrustLabel} tone={getSellerTrustTone(sellerVerificationStatus)} />
         </div>
 
         <div className="flex-1 space-y-2">

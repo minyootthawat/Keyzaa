@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useAuth } from "@/app/context/AuthContext";
 import { useLanguage } from "@/app/context/LanguageContext";
 import CTAButton from "@/app/components/CTAButton";
+import BuyerRouteGuard from "@/app/components/BuyerRouteGuard";
 
 function formatCompactNumber(value: number | undefined) {
   return Intl.NumberFormat("en", {
@@ -12,7 +13,7 @@ function formatCompactNumber(value: number | undefined) {
   }).format(value || 0);
 }
 
-export default function ProfilePage() {
+function ProfileContent() {
   const { user, seller, isRegisteredSeller, isAdmin, logout, loading } = useAuth();
   const { t, lang } = useLanguage();
 
@@ -48,7 +49,7 @@ export default function ProfilePage() {
 
   return (
     <div className="section-container py-8 md:py-12">
-      <div className="mx-auto grid max-w-6xl gap-6 xl:grid-cols-[minmax(0,1.2fr)_360px]">
+      <div className="mx-auto grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_360px]">
         <div className="space-y-6">
           <section className="surface-card glass-panel overflow-hidden p-6 md:p-8">
             <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
@@ -235,5 +236,13 @@ export default function ProfilePage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <BuyerRouteGuard>
+      <ProfileContent />
+    </BuyerRouteGuard>
   );
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClientSupabase } from "@/lib/supabase/supabase";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
 interface ProductWithSeller {
   id: string;
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     const actualSortBy = validSortColumns.includes(sortBy) ? sortBy : "created_at";
     const actualSortOrder = validSortOrders.includes(sortOrder) ? sortOrder : "desc";
 
-    const supabase = createServerClientSupabase();
+    const supabase = createServiceRoleClient();
 
     // Count query (with all filters applied)
     let countQuery = supabase
@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
       .from("products")
       .select(`
         *,
-        sellers:id (id, store_name, verified)
+        sellers:seller_id(id, store_name, verified)
       `)
       .eq("is_active", true);
 
