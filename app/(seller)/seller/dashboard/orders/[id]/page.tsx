@@ -8,7 +8,6 @@ import CTAButton from "@/app/components/CTAButton";
 import Badge from "@/app/components/Badge";
 import { getStoredToken } from "@/app/lib/auth-client";
 import { useLanguage } from "@/app/context/LanguageContext";
-import type { Order } from "@/app/types";
 
 type OrderStatus = "pending_payment" | "paid" | "fulfilling" | "delivered" | "disputed" | "refunded" | "cancelled";
 
@@ -59,7 +58,7 @@ const STATUS_CONFIG: Record<string, { label: string; tone: "success" | "promo" |
 
 export default function SellerOrderDetailPage() {
   const params = useParams<{ id: string }>();
-  const { lang, t } = useLanguage();
+  const { lang } = useLanguage();
   const [order, setOrder] = useState<OrderDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);

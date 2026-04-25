@@ -34,11 +34,6 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('keyzaa_theme');if(t==='light'){document.documentElement.classList.add('light');}}catch(e){}})()`,
-          }}
-        />
       </head>
       <body className="min-h-full flex flex-col font-sans bg-bg-subtle">
         <LanguageProvider>
