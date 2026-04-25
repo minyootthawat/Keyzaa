@@ -1,13 +1,16 @@
 "use client";
 
+import Link from "next/link";
+
 type CTAButtonProps = {
   children: React.ReactNode;
-  onClick?: React.MouseEventHandler<HTMLButtonElement>;
+  onClick?: React.MouseEventHandler<HTMLButtonElement | HTMLAnchorElement>;
   className?: string;
   variant?: "primary" | "secondary";
   fullWidth?: boolean;
   type?: "button" | "submit";
   disabled?: boolean;
+  href?: string;
   "data-testid"?: string;
 };
 
@@ -19,6 +22,7 @@ export default function CTAButton({
   fullWidth = false,
   type = "button",
   disabled = false,
+  href,
   "data-testid": dataTestid,
 }: CTAButtonProps) {
   const base =
@@ -30,9 +34,23 @@ export default function CTAButton({
       : "btn-secondary";
 
   const width = fullWidth ? "w-full" : "";
+  const combinedClassName = `${base} ${style} ${width} ${className}`;
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        onClick={onClick as any}
+        data-testid={dataTestid}
+        className={combinedClassName}
+      >
+        {children}
+      </Link>
+    );
+  }
 
   return (
-    <button type={type} onClick={onClick} disabled={disabled} data-testid={dataTestid} className={`${base} ${style} ${width} ${className}`}>
+    <button type={type} onClick={onClick as any} disabled={disabled} data-testid={dataTestid} className={combinedClassName}>
       {children}
     </button>
   );

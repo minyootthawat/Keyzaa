@@ -56,7 +56,7 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
     <Link
       href={`/products/${product.id}`}
       id={`product-${product.id}`}
-      className="group/cinema group/card relative flex h-full flex-col overflow-hidden rounded-3xl border border-border-subtle bg-[linear-gradient(180deg,rgba(19,33,54,0.94)_0%,rgba(10,19,33,0.98)_100%)] shadow-[0_14px_30px_rgba(4,11,23,0.18)] transition-all duration-300 hover:-translate-y-1 hover:border-border-main hover:shadow-[0_18px_38px_rgba(4,11,23,0.24)]"
+      className="group/cinema group/card surface-card relative flex h-full flex-col overflow-hidden transition-all duration-300"
       style={{ animationDelay: `${animationDelay}ms` }}
     >
       <div className="pointer-events-none absolute inset-0 rounded-3xl border border-white/[0.06] bg-gradient-to-b from-white/[0.03] to-transparent opacity-0 transition-opacity duration-500 group-hover/cinema:opacity-100" />
@@ -89,7 +89,7 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
         </div>
 
         <div className="flex-1 space-y-2">
-          <h3 className="line-clamp-2 text-base font-semibold leading-snug text-text-main transition-colors duration-300 group-hover/cinema:text-brand-tertiary">
+          <h3 className="line-clamp-2 text-base font-semibold leading-snug text-text-main transition-colors duration-300 group-hover/cinema:text-brand-primary">
             {getProductTitle(product, lang)}
           </h3>
           <p className="line-clamp-2 text-sm leading-6 text-text-muted">

@@ -210,7 +210,7 @@ export default function CheckoutPage() {
 
               <div className="space-y-4">
                 {items.map((item) => (
-                  <div key={item.id} className="flex items-start gap-4 rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                  <div key={item.id} className="flex items-start gap-4 rounded-2xl border border-border-subtle bg-bg-surface p-4">
                     <div className="relative h-20 w-20 overflow-hidden rounded-2xl">
                       <Image src={item.image} alt={(lang === "th" ? item.titleTh : item.titleEn) || item.title} fill className="object-cover" sizes="80px" />
                     </div>
@@ -257,7 +257,7 @@ export default function CheckoutPage() {
                   <button
                     key={method.id}
                     onClick={() => setPaymentMethod(method.id)}
-                    className={`rounded-2xl border p-4 text-left transition-all ${paymentMethod === method.id ? "border-brand-primary bg-brand-primary/10" : "border-white/8 bg-bg-surface/70"}`}
+                    className={`rounded-2xl border p-4 text-left transition-all ${paymentMethod === method.id ? "border-brand-primary bg-brand-primary/10" : "border-border-subtle bg-bg-surface"}`}
                   >
                     <p className="font-semibold text-text-main">{method.label}</p>
                     <p className="mt-1 text-sm text-text-muted">{method.hint}</p>
@@ -267,7 +267,7 @@ export default function CheckoutPage() {
 
               <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
                 <div className="space-y-3">
-                  <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                  <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                     <p className="text-sm font-semibold text-text-main">{t("checkout_mockHowToPay")}</p>
                     <ol className="mt-3 list-inside list-decimal space-y-2 text-sm leading-7 text-text-subtle">
                       <li>{t("checkout_mockStep1")}</li>
@@ -283,7 +283,7 @@ export default function CheckoutPage() {
                 <div className="surface-card p-5 text-center">
                   <p className="text-base text-text-subtle">{t("checkout_totalAmount")}</p>
                   <p className="type-num text-5xl font-extrabold text-gradient-brand">฿{formatThaiBaht(totalPrice)}</p>
-                  <div className="elevation-2 mx-auto mt-5 grid h-56 w-56 place-items-center rounded-3xl border border-white/8 bg-[radial-gradient(circle_at_top,rgba(99,91,255,0.16),transparent_60%),linear-gradient(180deg,rgba(26,35,68,1),rgba(12,17,32,1))] overflow-hidden text-text-main">
+                  <div className="elevation-2 mx-auto mt-5 grid h-56 w-56 place-items-center rounded-3xl overflow-hidden bg-bg-elevated text-text-main">
                     {qrData ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -359,14 +359,14 @@ export default function CheckoutPage() {
               ))}
             </div>
 
-            <div className="border-t border-white/8 pt-4">
+            <div className="border-t border-border-subtle pt-4">
               <div className="flex items-center justify-between text-base">
                 <span className="text-text-subtle">{t("checkout_totalLabel")}</span>
                 <span className="type-num text-xl font-bold text-text-main">฿{formatThaiBaht(totalPrice)}</span>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4 text-sm leading-7 text-text-subtle">
+            <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4 text-sm leading-7 text-text-subtle">
               <p className="font-semibold text-text-main">{t("checkout_trustSignalsTitle")}</p>
               <ul className="mt-2 space-y-1">
                 <li>{t("checkout_trustSignalThb")}</li>

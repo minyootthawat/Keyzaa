@@ -23,7 +23,7 @@ const statusColors: Record<string, string> = {
   fulfilling: "bg-brand-primary/20 text-brand-primary",
   delivered: "bg-success/20 text-accent",
   disputed: "bg-warning/20 text-warning",
-  refunded: "bg-white/10 text-text-subtle",
+  refunded: "bg-bg-subtle text-text-subtle",
   cancelled: "bg-danger/20 text-danger",
 };
 

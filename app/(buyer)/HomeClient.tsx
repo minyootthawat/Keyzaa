@@ -139,36 +139,34 @@ export default function HomeClient() {
       </div>
 
       {/* Hero Banner */}
-      <section className="section-container pt-8 lg:pt-10">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-primary via-brand-secondary to-brand-tertiary p-8 md:p-12 mb-8">
+      <section className="section-container pt-6 lg:pt-8 pb-12 lg:pb-16">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-primary via-brand-secondary to-brand-tertiary p-8 md:p-14 lg:p-20">
           {/* Hero background image */}
           <Image
             src="/hero-banner.png"
-            alt="KeyZaa Hero"
+            alt=""
+            aria-hidden="true"
             fill
             className="object-cover opacity-30 mix-blend-soft-light"
             priority
             sizes="100vw"
           />
           <div className="relative z-10 max-w-xl">
-            <h1 className="type-h1 text-white">{t("home_heroH1")}</h1>
-            <p className="mt-2 text-white/80 max-w-[40ch]">
+            <h1 className="type-h1 text-white lg:text-5xl lg:leading-[1.1]">{t("home_heroH1")}</h1>
+            <p className="mt-4 text-lg text-white/85 max-w-[42ch]">
               {t("home_heroSubtitle")}
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-4">
-              <Link href="/products">
-                <CTAButton className="bg-white text-brand-primary hover:bg-white/90 h-12 px-8">
-                  {t("home_ctaViewAll")}
-                </CTAButton>
-              </Link>
-              <Link href="/seller/register">
-                <CTAButton
-                  variant="secondary"
-                  className="border-white/30 text-white hover:bg-white/10 h-12 px-6"
-                >
-                  {t("home_ctaRegisterSeller")}
-                </CTAButton>
-              </Link>
+              <CTAButton href="/products" className="bg-white text-brand-primary hover:bg-white/90 h-12 px-8">
+                {t("home_ctaViewAll")}
+              </CTAButton>
+              <CTAButton
+                href="/seller/register"
+                variant="secondary"
+                className="border-white/30 text-white hover:bg-white/10 h-12 px-6"
+              >
+                {t("home_ctaRegisterSeller")}
+              </CTAButton>
             </div>
           </div>
           <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/10" />
@@ -177,10 +175,10 @@ export default function HomeClient() {
       </section>
 
       {/* Categories */}
-      <section className="section-container py-16 lg:py-20">
-        <div className="mb-8 flex items-end justify-between gap-4">
-          <div className="space-y-2">
-            <h2 className="type-h2 text-text-main">
+      <section className="section-container py-12 lg:py-16" aria-labelledby="categories-heading">
+        <div className="mb-8 lg:mb-10 flex items-end justify-between gap-4">
+          <div className="space-y-3">
+            <h2 id="categories-heading" className="type-h2 text-text-main">
               {t("home_popularCategories")}
             </h2>
             <p className="max-w-2xl text-sm leading-6 text-text-muted">
@@ -189,12 +187,12 @@ export default function HomeClient() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           {categories.map((category, index) => (
             <Link
               key={category.key}
               href={`/products?category=${encodeURIComponent(category.key)}`}
-              className="surface-card group relative overflow-hidden p-5 transition-transform duration-300 hover:scale-[1.03]"
+              className="surface-card group relative overflow-hidden p-5 transition-transform duration-300 hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
               style={{
                 animation: `fade-up 520ms ${index * 60}ms cubic-bezier(0.22,1,0.36,1) both`,
               }}
@@ -221,24 +219,24 @@ export default function HomeClient() {
       </section>
 
       {/* Best Deals */}
-      <section className="section-container py-8 lg:py-10">
-        <div className="mb-8 flex items-end justify-between gap-4">
-          <div className="space-y-2">
-            <h2 className="type-h2 text-text-main">{t("home_bestDeals")}</h2>
+      <section className="section-container py-12 lg:py-16" aria-labelledby="best-deals-heading">
+        <div className="mb-8 lg:mb-10 flex items-end justify-between gap-4">
+          <div className="space-y-3">
+            <h2 id="best-deals-heading" className="type-h2 text-text-main">{t("home_bestDeals")}</h2>
             <p className="text-sm leading-6 text-text-muted">
               {t("home_dealsProof")}
             </p>
           </div>
           <Link
             href="/products"
-            className="text-sm font-semibold text-brand-tertiary transition-colors hover:text-text-main"
+            className="text-sm font-semibold text-brand-primary transition-colors hover:text-brand-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45 rounded-md px-1"
           >
             {t("common_viewAll")} →
           </Link>
         </div>
 
         {isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
             {[...Array(4)].map((_, i) => (
               <div
                 key={i}
@@ -262,19 +260,19 @@ export default function HomeClient() {
             <p className="text-text-muted">ไม่สามารถโหลดสินค้าได้</p>
             <button
               onClick={fetchHome}
-              className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-brand-primary hover:text-brand-tertiary transition-colors"
+              className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-brand-primary hover:text-brand-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45 rounded-lg p-1"
             >
               <RefreshCw className="w-4 h-4" />
               ลองอีกครั้ง
             </button>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
             {bestDeals.map((product, index) => (
               <Link
                 key={product.id}
                 href={`/products/${product.id}`}
-                className="surface-card group flex h-full flex-col overflow-hidden"
+                className="surface-card group flex h-full flex-col overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
                 style={{
                   animation: `fade-up 520ms ${index * 70}ms cubic-bezier(0.22,1,0.36,1) both`,
                 }}
@@ -309,7 +307,7 @@ export default function HomeClient() {
                     </div>
                   </div>
                   <div className="flex flex-1 flex-col justify-between gap-3">
-                    <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/[0.025] px-3 py-2.5">
+                    <div className="flex items-center justify-between rounded-2xl border border-border-subtle bg-bg-surface px-3 py-2.5">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
                           {t("common_verifiedSellers")}
@@ -337,10 +335,10 @@ export default function HomeClient() {
       </section>
 
       {/* Hot Deals */}
-      <section className="section-container py-16 lg:py-20">
-        <div className="mb-8 flex items-end justify-between gap-4">
-          <div className="space-y-2">
-            <h2 className="type-h2 text-text-main">{t("home_recommended")}</h2>
+      <section className="section-container py-12 lg:py-16" aria-labelledby="hot-deals-heading">
+        <div className="mb-8 lg:mb-10 flex items-end justify-between gap-4">
+          <div className="space-y-3">
+            <h2 id="hot-deals-heading" className="type-h2 text-text-main">{t("home_recommended")}</h2>
             <p className="max-w-2xl text-sm leading-6 text-text-muted">
               {t("home_recommendedDesc")}
             </p>
@@ -348,7 +346,7 @@ export default function HomeClient() {
         </div>
 
         {isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
             {[...Array(4)].map((_, i) => (
               <div
                 key={i}
@@ -364,12 +362,12 @@ export default function HomeClient() {
             ))}
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
             {hotDeals.map((product, index) => (
               <Link
                 key={product.id}
                 href={`/products/${product.id}`}
-                className="surface-card group flex h-full flex-col overflow-hidden"
+                className="surface-card group flex h-full flex-col overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
                 style={{
                   animation: `fade-up 520ms ${index * 70}ms cubic-bezier(0.22,1,0.36,1) both`,
                 }}
@@ -389,7 +387,7 @@ export default function HomeClient() {
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-bg-base/80 via-transparent to-transparent" />
                   <div className="absolute left-3 top-3">
-                    <span className="rounded-full border border-brand-tertiary/16 bg-brand-primary/10 px-2.5 py-1 text-xs font-semibold text-brand-tertiary">
+                    <span className="rounded-full border border-brand-tertiary/16 bg-brand-primary/10 px-2.5 py-1 text-xs font-semibold text-brand-primary dark:text-brand-tertiary">
                       {t("common_verifiedSellers")}
                     </span>
                   </div>
@@ -425,31 +423,27 @@ export default function HomeClient() {
       </section>
 
       {/* CTA Section */}
-      <section className="section-container pb-6 pt-2 lg:pb-10">
-        <div className="trust-panel px-6 py-8 text-center sm:px-8 sm:py-10">
+      <section className="section-container py-12 lg:py-20" aria-labelledby="trust-cta-heading">
+        <div className="trust-panel px-6 py-12 text-center sm:px-8 sm:py-16 lg:py-20">
           <div className="relative mx-auto max-w-3xl">
-            <div className="mx-auto mb-4 inline-flex items-center gap-2 rounded-full border border-brand-tertiary/18 bg-brand-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-brand-tertiary">
+            <div className="mx-auto mb-4 inline-flex items-center gap-2 rounded-full border border-brand-primary/20 bg-brand-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-brand-primary">
               Keyzaa
               <span className="h-1.5 w-1.5 rounded-full bg-brand-tertiary" />
               {t("home_trustFirstMarketplace")}
             </div>
-            <h2 className="type-h1 text-text-main">
+            <h2 id="trust-cta-heading" className="type-h1 text-text-main">
               {t("home_ctaTrustTitle")}
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-text-subtle">
               {t("home_ctaTrustDesc")}
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              <Link href="/products">
-                <CTAButton className="h-14 px-8 text-base">
-                  {t("home_ctaTrustPrimary")}
-                </CTAButton>
-              </Link>
-              <Link href="/orders">
-                <CTAButton variant="secondary" className="h-14 px-8 text-base">
-                  {t("home_ctaTrustSecondary")}
-                </CTAButton>
-              </Link>
+              <CTAButton href="/products" className="h-14 px-8 text-base">
+                {t("home_ctaTrustPrimary")}
+              </CTAButton>
+              <CTAButton href="/orders" variant="secondary" className="h-14 px-8 text-base">
+                {t("home_ctaTrustSecondary")}
+              </CTAButton>
             </div>
           </div>
         </div>
