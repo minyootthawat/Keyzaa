@@ -206,7 +206,7 @@ export default function ProductCard({ product, index = 0 }: ProductCardProps) {
           </div>
         </div>
 
-        <div className="mt-5">
+        <div className="mt-4">
           <CTAButton
             onClick={handleQuickBuy}
             className="h-11 w-full rounded-[1.05rem] text-sm font-bold transition-[transform,box-shadow] hover:-translate-y-0.5"

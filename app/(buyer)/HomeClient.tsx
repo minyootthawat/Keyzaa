@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { Bot, CreditCard, Gamepad2, Gift, Sparkles, Store } from "lucide-react";
 import CTAButton from "@/app/components/CTAButton";
+import ProductCard from "@/app/components/ProductCard";
 import CategoryCard from "@/app/components/home/category-card";
 import HeroSection from "@/app/components/home/hero-section";
 import ProductSection from "@/app/components/home/product-section";
@@ -152,8 +154,8 @@ export default function HomeClient() {
   }, []);
 
   const bestDeals = products.slice(0, 4);
-  const hotDeals = products.slice(4, 8).length > 0 ? products.slice(4, 8) : products.slice(0, 4);
-  const spotlightProducts = products.slice(0, 3);
+  const hotProducts = products.slice(4, 8).length > 0 ? products.slice(4, 8) : [];
+  const featuredProducts = products.slice(0, 3);
 
   const displayCategories = [
     {
@@ -203,15 +205,6 @@ export default function HomeClient() {
       </div>
 
       <HeroSection
-        spotlightProducts={spotlightProducts.map((product) => ({
-          id: product.id,
-          title: product.nameTh,
-          category: product.category,
-          price: product.price,
-          image: product.image,
-          discount: product.discount,
-          sellerName: product.sellerName || "ร้านแนะนำ",
-        }))}
         title={t("home_marketplaceTitle")}
         description={t("home_marketplaceDesc")}
         badge={t("home_marketplaceBadge")}
@@ -226,9 +219,7 @@ export default function HomeClient() {
           t("home_trustPillarVerifiedDesc"),
           t("home_trustPillarDisputeDesc"),
         ]}
-        spotlightLabel={t("home_heroSpotlightLabel")}
-        featuredLabel={t("home_heroFeaturedLabel")}
-        featuredStatus={t("home_heroFeaturedStatus")}
+        searchPlaceholder={t("home_heroSearchPlaceholder")}
         browseLabel={t("home_heroBrowseLabel")}
         statusLabel={t("home_heroStatusLabel")}
         inventoryLabel={t("home_heroInventoryLabel")}
@@ -261,6 +252,28 @@ export default function HomeClient() {
           ))}
         </div>
       </section>
+
+      {/* Featured Deals interstitial — after categories, before trust */}
+      {featuredProducts.length > 0 && (
+        <section className="section-container py-10 lg:py-14" aria-labelledby="featured-deals-heading">
+          <div className="mb-7 flex items-end justify-between gap-4 lg:mb-9">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-accent" aria-hidden="true">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" /></svg>
+              </span>
+              <h2 id="featured-deals-heading" className="type-h2 text-text-main">{t("home_heroSpotlightLabel")}</h2>
+            </div>
+            <Link href="/products" className="hidden text-sm font-semibold text-brand-tertiary transition-colors hover:text-text-main sm:inline-flex">
+              ดูทั้งหมด →
+            </Link>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">
+            {featuredProducts.map((product, index) => (
+              <ProductCard key={product.id} product={product} index={index} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <TrustSection
         eyebrow={t("home_trustEyebrow")}
@@ -306,13 +319,16 @@ export default function HomeClient() {
         onRetry={() => void fetchHome()}
       />
 
-      <ProductSection
-        id="hot-deals-heading"
-        title={t("home_recommended")}
-        description={t("home_recommendedDesc")}
-        products={hotDeals}
-        isLoading={isLoading}
-      />
+      {hotProducts.length > 0 && (
+        <ProductSection
+          id="hot-deals-heading"
+          title={t("home_recommended")}
+          description={t("home_recommendedDesc")}
+          products={hotProducts}
+          isLoading={isLoading}
+          variant="hot"
+        />
+      )}
 
       <section className="section-container py-16 lg:py-24">
         <div className="group relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(25,43,71,0.96)_0%,rgba(18,32,54,0.98)_55%,rgba(9,19,34,1)_100%)] p-6 shadow-[0_24px_70px_rgba(3,9,22,0.4)] transition-all duration-500 hover:border-brand-primary/30 sm:p-8 lg:flex lg:items-center lg:justify-between lg:gap-10 lg:p-12">
@@ -351,19 +367,57 @@ export default function HomeClient() {
         </div>
       </section>
 
-      <section className="section-container py-12 text-center lg:py-20" aria-labelledby="trust-cta-heading">
-        <div className="mb-12 grid gap-4 md:grid-cols-3 lg:gap-6">
+      {/* Social proof: testimonials replacing hardcoded stats */}
+      <section className="section-container py-12 lg:py-16" aria-labelledby="testimonials-heading">
+        <div className="mb-8 text-center lg:mb-10">
+          <h2 id="testimonials-heading" className="type-h2 text-text-main">{t("home_testimonialsTitle")}</h2>
+          <p className="mt-3 text-sm text-text-muted">{t("home_testimonialsDesc")}</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[
-            { num: "50,000+", label: t("home_marketStatUsers"), color: "text-brand-tertiary" },
-            { num: "120,000+", label: t("home_marketStatOrders"), color: "text-accent" },
-            { num: "4.9/5", label: t("home_marketStatRating"), color: "text-warning" },
-          ].map((stat, index) => (
-            <div key={index} className="rounded-[1.65rem] border border-white/10 bg-white/[0.025] p-7 text-center shadow-[0_18px_50px_rgba(3,9,22,0.2)]">
-              <div className={`mb-3 text-4xl font-black md:text-5xl ${stat.color}`}>{stat.num}</div>
-              <div className="text-sm font-bold uppercase tracking-[0.15em] text-text-muted">{stat.label}</div>
-            </div>
+            {
+              quote: t("home_testimonial1Quote"),
+              author: t("home_testimonial1Author"),
+              role: t("home_testimonial1Role"),
+            },
+            {
+              quote: t("home_testimonial2Quote"),
+              author: t("home_testimonial2Author"),
+              role: t("home_testimonial2Role"),
+            },
+            {
+              quote: t("home_testimonial3Quote"),
+              author: t("home_testimonial3Author"),
+              role: t("home_testimonial3Role"),
+            },
+          ].map((t_, index) => (
+            <figure
+              key={index}
+              className="rounded-[1.75rem] border border-border-subtle bg-bg-surface p-6 text-left"
+            >
+              <div className="mb-4 flex items-center gap-1" aria-label="5 stars">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <svg key={i} className="h-4 w-4 fill-warning text-warning" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                ))}
+              </div>
+              <blockquote className="text-sm leading-6 text-text-subtle">&ldquo;{t_.quote}&rdquo;</blockquote>
+              <figcaption className="mt-4 flex items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-primary/20 text-brand-tertiary text-sm font-bold">
+                  {t_.author.charAt(0)}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-text-main">{t_.author}</p>
+                  <p className="text-xs text-text-muted">{t_.role}</p>
+                </div>
+              </figcaption>
+            </figure>
           ))}
         </div>
+      </section>
+
+      <section className="section-container py-12 text-center lg:py-20" aria-labelledby="trust-cta-heading">
 
         <div className="rounded-[2rem] border border-border-main/50 bg-bg-subtle px-6 py-12 text-center shadow-[0_24px_70px_rgba(3,9,22,0.32)] sm:px-8 sm:py-16 lg:py-20">
           <div className="relative mx-auto max-w-3xl">

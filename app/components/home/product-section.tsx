@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Flame, Zap } from "lucide-react";
 import ProductCard from "@/app/components/ProductCard";
 import type { Product } from "@/app/types";
 
@@ -10,6 +11,7 @@ interface ProductSectionProps {
   isLoading: boolean;
   hasError?: boolean;
   onRetry?: () => void;
+  variant?: "default" | "hot" | "featured";
 }
 
 const skeletonArray = Array.from({ length: 4 });
@@ -22,14 +24,29 @@ export default function ProductSection({
   isLoading,
   hasError = false,
   onRetry,
+  variant = "default",
 }: ProductSectionProps) {
+  const isHot = variant === "hot";
+  const isFeatured = variant === "featured";
   return (
     <section className="section-container py-12 lg:py-16" aria-labelledby={id}>
       <div className="mb-7 flex items-end justify-between gap-4 lg:mb-9">
         <div className="max-w-2xl space-y-3">
-          <h2 id={id} className="type-h2 text-text-main">
-            {title}
-          </h2>
+          <div className="flex items-center gap-2">
+            {isHot ? (
+              <span className="inline-flex items-center gap-1.5 text-danger" aria-hidden="true">
+                <Flame className="h-5 w-5" />
+              </span>
+            ) : null}
+            {isFeatured ? (
+              <span className="inline-flex items-center gap-1.5 text-accent" aria-hidden="true">
+                <Zap className="h-5 w-5" />
+              </span>
+            ) : null}
+            <h2 id={id} className="type-h2 text-text-main">
+              {title}
+            </h2>
+          </div>
           <p className="text-sm leading-6 text-text-muted">{description}</p>
         </div>
         <Link
