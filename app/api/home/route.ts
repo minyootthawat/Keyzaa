@@ -1,6 +1,20 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
+function buildDeterministicDiscount(id: string, price: number) {
+  const seed = Array.from(id).reduce((total, char, index) => total + char.charCodeAt(0) * (index + 17), 0);
+  const maxDiscount = price < 200 ? 36 : 18;
+  const minDiscount = price < 200 ? 12 : 0;
+  const spread = Math.max(maxDiscount - minDiscount, 0);
+  const discount = minDiscount + (spread === 0 ? 0 : seed % (spread + 1));
+  const originalPrice = discount > 0 ? Math.round(price / (1 - discount / 100)) : price;
+
+  return {
+    discount,
+    originalPrice,
+  };
+}
+
 export async function GET() {
   try {
     const supabase = createServiceRoleClient();
@@ -45,15 +59,10 @@ export async function GET() {
       .from("sellers")
       .select("*", { count: "exact", head: true });
 
-    // Compute derived fields the landing page needs
-    // Simulate realistic discounts: products under ฿200 get higher discounts (bundles/deals)
+    // Compute deterministic derived fields the landing page needs.
     const enrichedProducts = (products ?? []).map((p) => {
       const price = Number(p.price);
-      // Products under ฿200 get 15-50% discount, others 0-25%
-      const discount = price < 200
-        ? Math.floor(Math.random() * 35) + 15   // 15-50%
-        : Math.floor(Math.random() * 25);        // 0-25%
-      const originalPrice = discount > 0 ? Math.round(price / (1 - discount / 100)) : price;
+      const { discount, originalPrice } = buildDeterministicDiscount(p.id, price);
       const sellerData = p.sellers as unknown as { id: string; store_name: string; verified: boolean } | null;
 
       return {

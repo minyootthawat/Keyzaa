@@ -5,6 +5,8 @@ import { useLanguage } from "@/app/context/LanguageContext";
 import { getStoredToken } from "@/app/lib/auth-client";
 import { formatThaiBaht } from "@/app/lib/marketplace";
 import CTAButton from "@/app/components/CTAButton";
+import SellerPageShell from "@/app/components/seller/seller-page-shell";
+import SellerStatusBadge from "@/app/components/seller/seller-status-badge";
 import type { GameAccount } from "@/types/database";
 
 interface AddModalProps {
@@ -17,7 +19,6 @@ const PLATFORMS = ["Mobile", "PC", "PS4", "PS5", "Xbox", "Switch"];
 const REGIONS = ["Global", "Thai", "SEA", "CN", "JP", "KR", "EU", "US"];
 
 function AddGameAccountModal({ onClose, onAdd }: AddModalProps) {
-  const { t } = useLanguage();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
@@ -126,11 +127,10 @@ function AddGameAccountModal({ onClose, onAdd }: AddModalProps) {
 }
 
 export default function GameAccountsPage() {
-  const { t } = useLanguage();
+  const { lang } = useLanguage();
   const [accounts, setAccounts] = useState<GameAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -165,35 +165,38 @@ export default function GameAccountsPage() {
   const totalValue = activeAccounts.reduce((sum, a) => sum + a.price * a.stock, 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="type-h1">🎮 บัญชีเกม</h1>
-        <CTAButton onClick={() => setShowAdd(true)}>+ เพิ่มบัญชี</CTAButton>
-      </div>
+    <SellerPageShell
+      eyebrow={lang === "th" ? "Account Inventory" : "Account Inventory"}
+      title={lang === "th" ? "ระบบจัดการบัญชีเกม" : "Game account inventory"}
+      description={
+        lang === "th"
+          ? "ติดตามบัญชีเกมที่เปิดขาย จำนวน stock และมูลค่าสินค้าคงเหลือจากพื้นที่เดียว"
+          : "Manage resellable game accounts, stock counts, and inventory value from one workspace."
+      }
+      action={<CTAButton onClick={() => setShowAdd(true)}>+ เพิ่มบัญชี</CTAButton>}
+    >
 
-      {/* KPI Row */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="surface-card p-5">
+        <div className="rounded-[1.5rem] border border-white/10 bg-bg-surface/80 p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">จำนวนบัญชี</p>
           <p className="type-num mt-2 text-3xl font-extrabold text-text-main">{accounts.length}</p>
         </div>
-        <div className="surface-card p-5">
+        <div className="rounded-[1.5rem] border border-white/10 bg-bg-surface/80 p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">บัญชีที่ขายได้</p>
           <p className="type-num mt-2 text-3xl font-extrabold text-accent">{activeAccounts.length}</p>
         </div>
-        <div className="surface-card p-5">
+        <div className="rounded-[1.5rem] border border-white/10 bg-bg-surface/80 p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">มูลค่ารวม</p>
           <p className="type-num mt-2 text-3xl font-extrabold text-text-main">฿{formatThaiBaht(totalValue)}</p>
         </div>
       </div>
 
-      {/* List */}
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => <div key={i} className="skeleton h-24 rounded-2xl" />)}
         </div>
       ) : accounts.length === 0 ? (
-        <div className="surface-card flex flex-col items-center justify-center py-16 text-center">
+        <div className="rounded-[1.75rem] border border-white/10 bg-bg-surface/80 py-16 text-center">
           <span className="text-5xl">🎮</span>
           <p className="mt-4 text-text-muted">ยังไม่มีบัญชีเกม</p>
           <CTAButton onClick={() => setShowAdd(true)} className="mt-4">+ เพิ่มบัญชีแรก</CTAButton>
@@ -201,7 +204,7 @@ export default function GameAccountsPage() {
       ) : (
         <div className="space-y-3">
           {accounts.map((acc) => (
-            <div key={acc.id} className={`surface-card p-5 ${!acc.is_active ? "opacity-60" : ""}`}>
+            <div key={acc.id} className={`rounded-[1.5rem] border border-white/10 bg-bg-surface/80 p-5 ${!acc.is_active ? "opacity-60" : ""}`}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-4">
                   <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-brand-primary/20 text-2xl">
@@ -211,9 +214,7 @@ export default function GameAccountsPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-bold text-text-main">{acc.game_name}</p>
                       {acc.game_name_th && <span className="text-sm text-text-muted">({acc.game_name_th})</span>}
-                      <span className={`badge ${acc.is_active ? "badge-success" : "badge-muted"}`}>
-                        {acc.is_active ? "เปิดขาย" : "ปิด"}
-                      </span>
+                      <SellerStatusBadge label={acc.is_active ? "active" : "paused"} />
                     </div>
                     <p className="mt-1 text-sm text-text-subtle">
                       👤 {acc.account_username}
@@ -256,6 +257,6 @@ export default function GameAccountsPage() {
       )}
 
       {showAdd && <AddGameAccountModal onClose={() => setShowAdd(false)} onAdd={(acc) => setAccounts((a) => [acc, ...a])} />}
-    </div>
+    </SellerPageShell>
   );
 }

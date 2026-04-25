@@ -157,11 +157,11 @@ function OrderDeliveryContent() {
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                      <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                         <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("order_activationTitle")}</p>
                         <p className="mt-2 text-sm text-text-main">{lang === "th" ? item.activationMethodTh : item.activationMethodEn}</p>
                       </div>
-                      <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                      <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                         <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("order_statusTitle")}</p>
                         <p className="mt-2 text-sm font-semibold text-accent">{t("order_statusReady")}</p>
                       </div>
@@ -173,7 +173,7 @@ function OrderDeliveryContent() {
                         const isRevealed = revealedKeys[keyId];
 
                         return (
-                          <div key={keyId} className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                          <div key={keyId} className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                               <div className="min-w-0">
                                 <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("order_codeLabel")}</p>

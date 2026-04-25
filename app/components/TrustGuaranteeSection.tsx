@@ -10,7 +10,7 @@ interface TrustPillarProps {
 
 function TrustPillar({ icon, heading, description }: TrustPillarProps) {
   return (
-    <div className="rounded-lg border border-bg-bg-surface/50 bg-bg-surface/5 p-6 shadow-xl transition-all duration-300 hover:bg-bg-bg-surface">
+    <div className="rounded-lg border border-border-subtle bg-bg-surface p-6 shadow-xl transition-all duration-300 hover:bg-bg-surface-hover">
       <div className="mb-3 flex items-center space-x-3">
         {icon}
         <h3 className="text-xl font-semibold text-text-main">{heading}</h3>
@@ -26,7 +26,7 @@ function IconShell({ children, colorClass }: { children: React.ReactNode; colorC
 
 export default function TrustGuaranteeSection() {
   return (
-    <section className="border-y border-bg-bg-subtle/50 bg-bg-base py-20">
+    <section className="border-y border-border-subtle bg-bg-base py-20">
       <div className="container mx-auto max-w-screen-xl px-4">
         <h2 className="mb-12 text-center text-3xl font-bold text-text-main">Shop with Confidence.</h2>
         <div className="grid grid-cols-1 gap-8 md:grid-cols-3">

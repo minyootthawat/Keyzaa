@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useTransition } from "react";
+import { Suspense, useEffect, useMemo, useState, useCallback, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
-import SearchBar from "@/app/components/SearchBar";
-import FilterBar from "@/app/components/FilterBar";
-import SortingDropdown from "@/app/components/SortingDropdown";
+import { Search, SlidersHorizontal, ChevronDown, ShieldCheck, Zap } from "lucide-react";
+import FilterSidebar, { defaultFilters } from "@/app/components/FilterSidebar";
 import ProductCard from "@/app/components/ProductCard";
 import SkeletonCard from "@/app/components/SkeletonCard";
 import SectionContainer from "@/app/components/SectionContainer";
@@ -13,30 +12,60 @@ import { useLanguage } from "@/app/context/LanguageContext";
 import { matchesProductQuery } from "@/app/lib/marketplace";
 import type { Product } from "@/app/types";
 
-const PAGE_SIZE = 10;
-const SKELETON_COUNT = 10;
-
+const PAGE_SIZE = 12;
+const SKELETON_COUNT = 12;
 const SKELETON_ARRAY = Array.from({ length: SKELETON_COUNT });
 
-type SortOption = "cheap" | "expensive" | "popular" | "discount";
-
 export default function ProductsPage() {
+  return (
+    <Suspense fallback={<ProductsPageLoading />}>
+      <ProductsPageContent />
+    </Suspense>
+  );
+}
+
+function ProductsPageLoading() {
+  return (
+    <div className="bg-bg-base min-h-screen">
+      {/* Trust Banner Skeleton */}
+      <div className="bg-bg-elevated border-b border-border-subtle py-3 hidden md:block">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="h-4 w-64 bg-bg-subtle/40 rounded animate-pulse" />
+        </div>
+      </div>
+      <SectionContainer>
+        <div className="py-6 md:py-10 flex flex-col md:flex-row gap-8">
+          <div className="w-full md:w-[280px] shrink-0 hidden md:block">
+            <div className="h-[600px] rounded-[2rem] bg-bg-subtle/40 animate-pulse" />
+          </div>
+          <div className="flex-1 space-y-6">
+            <div className="h-16 rounded-2xl bg-bg-subtle/40 animate-pulse" />
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {SKELETON_ARRAY.map((_, i) => <SkeletonCard key={i} />)}
+            </div>
+          </div>
+        </div>
+      </SectionContainer>
+    </div>
+  );
+}
+
+function ProductsPageContent() {
   const searchParams = useSearchParams();
   const { t, lang } = useLanguage();
   const [isPending, startTransition] = useTransition();
 
-  // Initialize from URL params (set by header search)
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // States
   const [search, setSearch] = useState(searchParams.get("search") ?? "");
-  const [category, setCategory] = useState(searchParams.get("category") ?? "all");
-  const [platform, setPlatform] = useState("all");
-  const [priceRange, setPriceRange] = useState("all");
-  const [sort, setSort] = useState<SortOption>("cheap");
+  const [filters, setFilters] = useState(defaultFilters);
+  const [sort, setSort] = useState("popular");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
 
-  // Fetch products
-  useEffect(function fetchProducts() {
+  useEffect(() => {
     let cancelled = false;
     setLoading(true);
 
@@ -56,65 +85,12 @@ export default function ProductsPage() {
         setLoading(false);
       });
 
-    return function cancelFetch() {
+    return () => {
       cancelled = true;
     };
   }, []);
 
-  // Reset pagination when filters change
-  useEffect(
-    function resetPagination() {
-      setVisibleCount(PAGE_SIZE);
-    },
-    [category, platform, priceRange, sort, search]
-  );
-
-  // Sync state setters to avoid stale closures
-  const handleSearchChange = useCallback((value: string) => {
-    setSearch(value);
-    setVisibleCount(PAGE_SIZE);
-  }, []);
-
-  const handleCategoryChange = useCallback((value: string) => {
-    setCategory(value);
-  }, []);
-
-  const handlePlatformChange = useCallback((value: string) => {
-    setPlatform(value);
-  }, []);
-
-  const handlePriceRangeChange = useCallback((value: string) => {
-    setPriceRange(value);
-  }, []);
-
-  const handleSortChange = useCallback((value: string) => {
-    setSort(value as SortOption);
-  }, []);
-
-  const handleLoadMore = useCallback(() => {
-    setVisibleCount((prev) => prev + PAGE_SIZE);
-  }, []);
-
-  const handleClearFilters = useCallback(() => {
-    startTransition(() => {
-      setSearch("");
-      setCategory("all");
-      setPlatform("all");
-      setPriceRange("all");
-      setSort("cheap");
-      setVisibleCount(PAGE_SIZE);
-    });
-  }, []);
-
-  // Suggestions for SearchBar
-  const suggestions = useMemo(() => {
-    if (!search.trim()) return [];
-    return allProducts
-      .map((product) => (lang === "th" ? product.nameTh : product.nameEn))
-      .filter((title) => title.toLowerCase().includes(search.toLowerCase()));
-  }, [allProducts, lang, search]);
-
-  // Derive filtered + sorted list
+  // Filter and Sort Logic
   const filtered = useMemo(() => {
     let list = [...allProducts];
 
@@ -122,103 +98,179 @@ export default function ProductsPage() {
       list = list.filter((product) => matchesProductQuery(product, search));
     }
 
-    if (category !== "all") {
-      list = list.filter((product) => product.category === category);
+    if (filters.games.length > 0) {
+      // Mock category logic since real products might not have 'games' field perfectly matching
+      // Assuming product.category maps to games for this demo
+      list = list.filter((product) => filters.games.includes(product.category) || filters.games.some(g => product.nameTh?.includes(g) || product.nameEn?.includes(g)));
     }
 
-    if (platform !== "all") {
-      list = list.filter((product) => product.platform === platform);
+    if (filters.minPrice) {
+      list = list.filter(p => p.price >= parseInt(filters.minPrice));
+    }
+    if (filters.maxPrice) {
+      list = list.filter(p => p.price <= parseInt(filters.maxPrice));
     }
 
-    if (priceRange !== "all") {
-      if (priceRange === "<100") {
-        list = list.filter((product) => product.price < 100);
-      } else if (priceRange === ">500") {
-        list = list.filter((product) => product.price > 500);
-      } else {
-        const [minStr, maxStr] = priceRange.split("-");
-        const min = parseInt(minStr, 10);
-        const max = parseInt(maxStr, 10);
-        list = list.filter((product) => product.price >= min && product.price <= max);
-      }
+    if (filters.delivery.includes("ส่งอัตโนมัติ (Instant)")) {
+      list = list.filter(p => p.sellerCount === 0 || p.soldCount > 100); // Mock instant logic
     }
 
+    // Sort
     return list.sort((a, b) => {
       if (sort === "cheap") return a.price - b.price;
       if (sort === "expensive") return b.price - a.price;
       if (sort === "popular") return b.soldCount - a.soldCount;
-      return b.discount - a.discount;
+      if (sort === "new") return b.id.localeCompare(a.id); // Mock new
+      return 0; // Default or reviews
     });
-  }, [allProducts, category, platform, priceRange, search, sort]);
+  }, [allProducts, search, filters, sort]);
 
   const visibleProducts = filtered.slice(0, visibleCount);
   const hasMore = visibleCount < filtered.length;
-  const isFiltered = search || category !== "all" || platform !== "all" || priceRange !== "all";
+
+  const handleLoadMore = () => {
+    setVisibleCount(prev => prev + PAGE_SIZE);
+  };
 
   return (
-    <SectionContainer>
-      <div className="space-y-8 py-10 md:py-14">
-        {/* Search */}
-        <div className="space-y-5">
-          <SearchBar suggestions={suggestions} onSelect={handleSearchChange} />
-          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-            <FilterBar
-              category={category}
-              setCategory={handleCategoryChange}
-              platform={platform}
-              setPlatform={handlePlatformChange}
-              priceRange={priceRange}
-              setPriceRange={handlePriceRangeChange}
-            />
-            <SortingDropdown sort={sort} setSort={handleSortChange} />
+    <div className="bg-bg-base min-h-screen">
+      {/* Trust Elements Banner */}
+      <div className="bg-brand-primary/10 border-b border-brand-primary/20 py-2 hidden md:block">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 flex justify-center items-center gap-6 text-sm font-semibold text-brand-primary">
+          <span className="flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> ซื้อขายปลอดภัยด้วยระบบ Escrow</span>
+          <span className="flex items-center gap-2 text-text-subtle"><Zap className="w-4 h-4 text-warning" /> รับประกันได้ของ 100%</span>
+        </div>
+      </div>
+
+      <SectionContainer className="!max-w-[1400px]">
+        <div className="py-6 md:py-10 flex flex-col md:flex-row gap-8 items-start">
+          
+          {/* Desktop Sidebar */}
+          <aside className="hidden md:block w-[280px] shrink-0 sticky top-24 h-[calc(100vh-120px)]">
+            <FilterSidebar filters={filters} setFilters={setFilters} />
+          </aside>
+
+          {/* Main Content */}
+          <div className="flex-1 w-full min-w-0">
+            
+            {/* Top Bar */}
+            <div className="flex flex-col gap-4 mb-8">
+              <div className="flex items-center gap-3">
+                <div className="relative flex-1 group">
+                  <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-text-muted group-focus-within:text-brand-primary transition-colors">
+                    <Search className="w-5 h-5" />
+                  </div>
+                  <input
+                    type="text"
+                    aria-label="ค้นหาสินค้า"
+                    placeholder="ค้นหาไอดีเกม หรือสินค้า..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full h-14 pl-12 pr-4 rounded-2xl bg-bg-surface border border-border-main text-text-main placeholder:text-text-muted focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all shadow-sm"
+                  />
+                </div>
+
+                {/* Desktop Sort */}
+                <div className="hidden md:flex relative">
+                  <select
+                    value={sort}
+                    aria-label="เรียงลำดับสินค้า"
+                    onChange={(e) => setSort(e.target.value)}
+                    className="h-14 pl-4 pr-10 rounded-2xl bg-bg-surface border border-border-main text-text-main font-medium appearance-none focus:outline-none focus:border-brand-primary cursor-pointer shadow-sm"
+                  >
+                    <option value="popular">ยอดนิยม</option>
+                    <option value="cheap">ราคาต่ำ → สูง</option>
+                    <option value="expensive">ราคาสูง → ต่ำ</option>
+                    <option value="reviews">รีวิวดีที่สุด</option>
+                    <option value="new">ใหม่ล่าสุด</option>
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Mobile Sort & Results count */}
+              <div className="flex items-center justify-between mt-2">
+                <p className="text-sm font-semibold text-text-muted">
+                  พบสินค้า <span className="text-brand-primary">{filtered.length.toLocaleString()}</span> รายการ
+                </p>
+                <div className="md:hidden relative">
+                  <select
+                    value={sort}
+                    aria-label="เรียงลำดับสินค้า"
+                    onChange={(e) => setSort(e.target.value)}
+                    className="text-sm bg-transparent text-text-main font-semibold appearance-none pr-6 focus:outline-none"
+                  >
+                    <option value="popular">ยอดนิยม</option>
+                    <option value="cheap">ราคาต่ำ → สูง</option>
+                    <option value="expensive">ราคาสูง → ต่ำ</option>
+                  </select>
+                  <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+                </div>
+              </div>
+            </div>
+
+            {/* Grid */}
+            {loading ? (
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {SKELETON_ARRAY.map((_, i) => <SkeletonCard key={i} />)}
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="surface-card flex flex-col items-center justify-center space-y-5 py-32 rounded-[2rem]">
+                <div className="relative">
+                  <div className="absolute inset-0 rounded-full bg-brand-primary/10 blur-3xl" />
+                  <Search className="relative h-16 w-16 text-text-muted" />
+                </div>
+                <div className="text-center">
+                  <p className="text-xl font-bold text-text-main">ไม่พบสินค้าที่ตรงกับเงื่อนไข</p>
+                  <p className="mt-2 text-sm text-text-muted">ลองปรับตัวกรองหรือคำค้นหาของคุณอีกครั้ง</p>
+                </div>
+                <CTAButton onClick={() => setFilters(defaultFilters)} className="mt-4 px-8">ล้างตัวกรอง</CTAButton>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {visibleProducts.map((product, index) => (
+                    <ProductCard key={product.id} product={product} index={index} />
+                  ))}
+                </div>
+                {hasMore && (
+                  <div className="flex justify-center pt-10 pb-8">
+                    <CTAButton variant="secondary" onClick={handleLoadMore} className="px-10 h-14 rounded-2xl">
+                      {t("common_loadMore")}
+                    </CTAButton>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
+      </SectionContainer>
 
-        {/* Result count */}
-        {!loading ? (
-          <p className="type-num text-sm font-semibold text-text-subtle motion-fade-in" style={{ animationDelay: "300ms" }}>
-            <span className="text-brand-primary">{filtered.length}</span> {t("products_items")}
-          </p>
-        ) : null}
-
-        {/* Content */}
-        {loading ? (
-          <div className="grid grid-cols-1 gap-5 sm:gap-6 lg:grid-cols-4">
-            {SKELETON_ARRAY.map((_, index) => (
-              <SkeletonCard key={index} />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="surface-card motion-fade-up flex flex-col items-center justify-center space-y-5 py-24">
-            <div className="relative">
-              <div className="absolute inset-0 rounded-full bg-brand-primary/10 blur-3xl" />
-              <svg className="relative h-16 w-16 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-              </svg>
-            </div>
-            <div className="text-center">
-              <p className="text-lg font-bold text-text-main">{t("products_notFound")}</p>
-              <p className="mt-1 text-sm text-text-muted">{t("products_notFoundHint")}</p>
-            </div>
-            <CTAButton onClick={handleClearFilters}>{t("common_clearFilters")}</CTAButton>
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 gap-5 sm:gap-6 lg:grid-cols-4">
-              {visibleProducts.map((product, index) => (
-                <ProductCard key={product.id} product={product} index={index} />
-              ))}
-            </div>
-            {hasMore ? (
-              <div className="flex justify-center pt-6">
-                <CTAButton variant="secondary" onClick={handleLoadMore} className="px-8">
-                  {t("common_loadMore")}
-                </CTAButton>
-              </div>
-            ) : null}
-          </>
-        )}
+      {/* Sticky Mobile Filter Button */}
+      <div className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
+        <button
+          onClick={() => setIsMobileFilterOpen(true)}
+          className="flex items-center gap-2 px-6 py-3.5 rounded-full bg-brand-primary text-white font-bold shadow-[0_8px_30px_rgb(99,91,255,0.4)] backdrop-blur-md transition-transform active:scale-95"
+        >
+          <SlidersHorizontal className="w-5 h-5" />
+          ตัวกรองสินค้า
+          {Object.values(filters).some(f => Array.isArray(f) ? f.length > 0 : f !== "") && (
+            <span className="flex items-center justify-center w-5 h-5 ml-1 text-[10px] font-black bg-white text-brand-primary rounded-full">
+              !
+            </span>
+          )}
+        </button>
       </div>
-    </SectionContainer>
+
+      {/* Mobile Filter Drawer */}
+      {isMobileFilterOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden justify-end">
+          <div className="absolute inset-0 bg-bg-base/80 backdrop-blur-sm transition-opacity duration-300" onClick={() => setIsMobileFilterOpen(false)} />
+          <div className="relative w-[85vw] sm:max-w-sm h-full bg-bg-surface overflow-hidden shadow-2xl animate-in slide-in-from-right duration-300 ease-out border-l border-border-subtle">
+            <FilterSidebar filters={filters} setFilters={setFilters} onClose={() => setIsMobileFilterOpen(false)} isMobile />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

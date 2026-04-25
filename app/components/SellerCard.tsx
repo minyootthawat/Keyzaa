@@ -24,8 +24,8 @@ export default function SellerCard({ seller, isSelected, isBest, onSelect }: Sel
       onClick={() => onSelect(seller)}
       className={`w-full rounded-2xl p-4 text-left transition-all ${
         isSelected
-          ? "accent-ring bg-linear-to-b from-bg-elevated to-bg-surface"
-          : "bg-bg-surface/90 shadow-[0_10px_22px_rgba(5,10,24,0.16)] hover:bg-bg-surface-hover"
+          ? "accent-ring bg-bg-surface"
+          : "bg-bg-surface shadow-[0_10px_22px_rgba(5,10,24,0.1)] hover:bg-bg-surface-hover"
       }`}
     >
       <div className="flex items-start justify-between gap-3">

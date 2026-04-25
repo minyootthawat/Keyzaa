@@ -18,7 +18,8 @@ const notoSansThai = Noto_Sans_Thai({
 
 export const metadata: Metadata = {
   title: "Keyzaa - เติมเกม & ซื้อ Gift Card ราคาถูก จัดส่งทันที",
-  description: "ดิจิทัลมาร์เก็ตเพลสชั้นนำของไทย พร้อมโปรโมชั่นดีลเด็ดและบริการตลอด 24 ชั่วโมง",
+  description:
+    "ดิจิทัลมาร์เก็ตเพลสชั้นนำของไทย พร้อมโปรโมชั่นดีลเด็ดและบริการตลอด 24 ชั่วโมง",
 };
 
 export default function RootLayout({
@@ -32,11 +33,11 @@ export default function RootLayout({
       className={`${inter.variable} ${notoSansThai.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+      </head>
       <body className="min-h-full flex flex-col font-sans bg-bg-subtle">
         <LanguageProvider>
-          <Providers>
-            {children}
-          </Providers>
+          <Providers>{children}</Providers>
         </LanguageProvider>
       </body>
     </html>

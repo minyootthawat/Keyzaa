@@ -247,7 +247,7 @@ export default function ProductDetailPage() {
 
             <div className="grid gap-3 sm:grid-cols-3">
               {infoCards.map((card) => (
-                <div key={card.label} className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                <div key={card.label} className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                   <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{card.label}</p>
                   <p className="mt-2 text-sm font-semibold text-text-main">{card.value}</p>
                 </div>
@@ -289,7 +289,7 @@ export default function ProductDetailPage() {
             ) : (
               <div className="mt-5 space-y-4">
                 {product.reviews.map((review) => (
-                  <div key={review.id} className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                  <div key={review.id} className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                     <div className="flex items-center justify-between">
                       <p className="font-semibold text-text-main">{review.user}</p>
                       <p className="text-sm text-warning">★ {review.rating.toFixed(1)}</p>
@@ -321,7 +321,7 @@ export default function ProductDetailPage() {
                 <button
                   key={seller.id}
                   onClick={() => setSelectedSeller(seller)}
-                  className={`w-full rounded-2xl border p-4 text-left transition-all ${selectedSeller.id === seller.id ? "border-brand-primary bg-brand-primary/10" : "border-white/8 bg-bg-surface/70 hover:border-white/15"}`}
+                  className={`w-full rounded-2xl border p-4 text-left transition-all ${selectedSeller.id === seller.id ? "border-brand-primary bg-brand-primary/10" : "border-border-subtle bg-bg-surface hover:border-white/15"}`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -342,17 +342,17 @@ export default function ProductDetailPage() {
             {/* Seller stats */}
             {sellerSummary ? (
               <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-                <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                   <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("pdp_fulfillment")}</p>
                   <p className="mt-2 text-lg font-semibold text-text-main">{sellerSummary.fulfillmentRate}%</p>
                 </div>
-                <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                   <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("pdp_response")}</p>
                   <p className="mt-2 text-lg font-semibold text-text-main">
                     {sellerSummary.responseTimeMinutes} {t("pdp_minutes")}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                   <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("pdp_disputeRate")}</p>
                   <p className="mt-2 text-lg font-semibold text-text-main">{sellerSummary.disputeRate}%</p>
                 </div>
@@ -375,7 +375,7 @@ export default function ProductDetailPage() {
               <p className="mt-1">{getMockPaymentNotice(lang)}</p>
             </div>
 
-            <Link href="/products" className="text-sm font-semibold text-brand-tertiary">
+            <Link href="/products" className="text-sm font-semibold text-brand-primary">
               {t("pdp_backToProducts")}
             </Link>
           </div>

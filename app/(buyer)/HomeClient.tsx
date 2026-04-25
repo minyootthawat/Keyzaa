@@ -1,33 +1,24 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
-import { useState, useEffect } from "react";
-import {
-  LucideIcon,
-  ShieldCheck,
-  Zap,
-  Headphones,
-  Store,
-  Clock,
-  CreditCard,
-  ThumbsUp,
-  RefreshCw,
-} from "lucide-react";
-import Badge from "@/app/components/Badge";
+import { useEffect, useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import { Bot, CreditCard, Gamepad2, Gift, Sparkles, Store } from "lucide-react";
 import CTAButton from "@/app/components/CTAButton";
-import PriceTag from "@/app/components/PriceTag";
+import CategoryCard from "@/app/components/home/category-card";
+import HeroSection from "@/app/components/home/hero-section";
+import ProductSection from "@/app/components/home/product-section";
+import TrustSection, { defaultTrustIcons } from "@/app/components/home/trust-section";
 import { useLanguage } from "@/app/context/LanguageContext";
+import type { Product, SellerVerificationStatus } from "@/app/types";
 
 const categoryGradients: Record<string, string> = {
-  เติมเกม: "from-game-start to-game-end",
-  "Gift Card": "from-gift-start to-gift-end",
-  Subscription: "from-sub-start to-sub-end",
-  "AI Tools": "from-ai-start to-game-end",
-  โปร: "from-pro-start to-pro-end",
+  เติมเกม: "from-brand-primary/25 via-brand-primary/5 to-transparent",
+  "Gift Card": "from-warning/20 via-warning/5 to-transparent",
+  Subscription: "from-brand-tertiary/20 via-brand-primary/5 to-transparent",
+  "AI Tools": "from-accent/20 via-accent/5 to-transparent",
+  โปร: "from-danger/20 via-danger/5 to-transparent",
 };
 
-// Maps API category names to display categories
 const CATEGORY_MAP: Record<string, string> = {
   "Mobile Top-up": "เติมเกม",
   "Genshin Impact": "เติมเกม",
@@ -39,15 +30,21 @@ const CATEGORY_MAP: Record<string, string> = {
   "AI Tools": "AI Tools",
 };
 
-const categoryIcons: Record<string, LucideIcon> = {
-  เติมเกม: Zap,
-  "Gift Card": CreditCard,
-  Subscription: Zap,
-  "AI Tools": Zap,
-  โปร: Zap,
+const CATEGORY_DISPLAY_MAP: Record<string, string> = {
+  เติมเกม: "เติมเกม",
+  "Gift Card": "บัตรของขวัญ",
+  Subscription: "สมัครสมาชิก",
+  "AI Tools": "เครื่องมือ AI",
+  โปร: "โปร",
 };
 
-const trustIcons: LucideIcon[] = [ShieldCheck, Zap, Headphones, Store];
+const categoryIcons: Record<string, LucideIcon> = {
+  เติมเกม: Gamepad2,
+  "Gift Card": Gift,
+  Subscription: Sparkles,
+  "AI Tools": Bot,
+  โปร: CreditCard,
+};
 
 interface HomeProduct {
   id: string;
@@ -67,120 +64,181 @@ interface HomeProduct {
   };
 }
 
+interface HomeResponse {
+  categories: Record<string, number>;
+  products: HomeProduct[];
+  totalProducts: number;
+  totalSellers: number;
+}
+
+function mapHomeProductToProduct(product: HomeProduct): Product {
+  const normalizedCategory = CATEGORY_MAP[product.category] ?? product.category;
+  const mappedCategory = CATEGORY_DISPLAY_MAP[normalizedCategory] ?? normalizedCategory;
+  const sellerVerificationStatus: SellerVerificationStatus = product.seller.verified
+    ? "verified"
+    : "new";
+
+  return {
+    id: product.id,
+    title: product.title,
+    nameTh: product.title,
+    nameEn: product.title,
+    image: product.image,
+    price: product.price,
+    originalPrice: product.originalPrice,
+    discount: product.discount,
+    category: mappedCategory,
+    platform: mappedCategory,
+    sellerId: product.seller.id,
+    sellerName: product.seller.storeName,
+    sellerVerificationStatus,
+    stock: product.stock,
+    soldCount: Math.max(product.sellerCount * 18, 24),
+    isActive: product.isActive,
+    sellerCount: product.sellerCount,
+    regionCode: "TH",
+    regionLabelTh: "รองรับประเทศไทย",
+    regionLabelEn: "Works in Thailand",
+    deliverySlaMinutes: 5,
+    deliveryLabelTh: "รับโค้ดทันทีภายใน 5 นาที",
+    deliveryLabelEn: "Get your code within 5 minutes",
+    activationMethodTh: "รับโค้ดแล้วนำไปใช้งานทันที",
+    activationMethodEn: "Receive your code and redeem instantly",
+    trustLabelTh: product.seller.verified ? "ร้านค้ายืนยันตัวตนแล้ว" : "ร้านค้ากำลังเติบโต",
+    trustLabelEn: product.seller.verified ? "Verified seller" : "Growing seller",
+  };
+}
+
 export default function HomeClient() {
-  const { t, lang } = useLanguage();
-  const [products, setProducts] = useState<HomeProduct[]>([]);
-  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>(
-    {},
-  );
+  const { t } = useLanguage();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [totalSellers, setTotalSellers] = useState(0);
 
-  function fetchHome() {
+  async function fetchHome(signal?: AbortSignal) {
     setIsLoading(true);
     setHasError(false);
-    fetch("/api/home")
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((data) => {
-        setProducts(data.products || []);
-        setCategoryCounts(data.categories || {});
-      })
-      .catch(() => setHasError(true))
-      .finally(() => setIsLoading(false));
+
+    try {
+      const response = await fetch("/api/home", { signal });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = (await response.json()) as HomeResponse;
+      setProducts((data.products || []).map(mapHomeProductToProduct));
+      setCategoryCounts(data.categories || {});
+      setTotalProducts(data.totalProducts || 0);
+      setTotalSellers(data.totalSellers || 0);
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
+      setHasError(true);
+    } finally {
+      if (!signal?.aborted) {
+        setIsLoading(false);
+      }
+    }
   }
 
   useEffect(() => {
-    fetchHome();
+    const controller = new AbortController();
+    void fetchHome(controller.signal);
+    return () => controller.abort();
   }, []);
 
   const bestDeals = products.slice(0, 4);
-  const hotDeals = products.slice(4, 8);
+  const hotDeals = products.slice(4, 8).length > 0 ? products.slice(4, 8) : products.slice(0, 4);
   const spotlightProducts = products.slice(0, 3);
 
-  // Build categories from dynamic API counts — all labels in Thai
   const displayCategories = [
-    { key: "เติมเกม", labelTh: t("home_categoryTopup") },
-    { key: "Gift Card", labelTh: t("home_categoryGiftCard") },
-    { key: "Subscription", labelTh: t("home_categorySubscription") },
-    { key: "AI Tools", labelTh: t("home_categoryAITools") },
-    { key: "โปร", labelTh: t("home_categoryPromo") },
+    {
+      key: "เติมเกม",
+      label: t("home_categoryTopup"),
+      description: "สินค้าเกมยอดนิยม ราคาชัด ส่งไว เหมาะกับการซื้อใช้ทันที",
+    },
+    {
+      key: "Gift Card",
+      label: t("home_categoryGiftCard"),
+      description: "รวมบัตรเติมเงินและโค้ดดิจิทัลจากร้านค้าที่ตรวจสอบแล้ว",
+    },
+    {
+      key: "Subscription",
+      label: t("home_categorySubscription"),
+      description: "แพ็กเกจรายเดือนสำหรับบริการที่ใช้งานบ่อยในราคาคุ้มกว่า",
+    },
+    {
+      key: "AI Tools",
+      label: t("home_categoryAITools"),
+      description: "เครื่องมือดิจิทัลและบัญชีใช้งานพร้อมส่งสำหรับสายทำงาน",
+    },
+    {
+      key: "โปร",
+      label: t("home_categoryPromo"),
+      description: "ดีลลดราคาและสินค้าขายเร็วที่กำลังถูกจับตาในตลาด",
+    },
   ];
 
-  const categories = displayCategories.map((cat) => ({
-    ...cat,
-    gradient: categoryGradients[cat.key] ?? "from-game-start to-game-end",
-    Icon: categoryIcons[cat.key] ?? Zap,
+  const categories = displayCategories.map((category) => ({
+    ...category,
+    accent:
+      categoryGradients[category.key] ??
+      "from-brand-primary/25 via-brand-primary/5 to-transparent",
+    Icon: categoryIcons[category.key] ?? Gamepad2,
     count: Object.entries(categoryCounts)
-      .filter(([apiCat]) => CATEGORY_MAP[apiCat] === cat.key)
-      .reduce((sum, [, n]) => sum + n, 0),
+      .filter(([apiCategory]) => CATEGORY_MAP[apiCategory] === category.key)
+      .reduce((sum, [, count]) => sum + count, 0),
   }));
-
-  const trustItems = [
-    { icon: Clock, text: t("home_trustVerified") },
-    { icon: ShieldCheck, text: t("home_trustProtected") },
-    { icon: CreditCard, text: t("home_trustPayments") },
-    { icon: ThumbsUp, text: t("home_trustSla") },
-  ];
-
-  const trustStats = [
-    { value: "12,000+", label: t("home_trustStatOrders") },
-    { value: "230+", label: t("home_trustStatVendors") },
-    { value: "09:00-24:00", label: t("home_trustStatSupport") },
-  ];
 
   return (
     <div className="relative overflow-hidden pb-16">
       <div className="absolute inset-0 -z-10">
-        <div className="absolute left-[-8%] top-0 h-[44rem] w-[44rem] rounded-full bg-[radial-gradient(circle,rgba(45,91,255,0.18),transparent_68%)]" />
-        <div className="absolute right-[-12%] top-[18rem] h-[36rem] w-[36rem] rounded-full bg-[radial-gradient(circle,rgba(141,181,255,0.14),transparent_72%)]" />
+        <div className="absolute left-[-8%] top-0 h-[42rem] w-[42rem] rounded-full bg-[radial-gradient(circle,rgba(45,91,255,0.18),transparent_68%)]" />
+        <div className="absolute right-[-12%] top-[14rem] h-[32rem] w-[32rem] rounded-full bg-[radial-gradient(circle,rgba(141,181,255,0.12),transparent_72%)]" />
+        <div className="absolute left-[30%] top-[40rem] h-[24rem] w-[24rem] rounded-full bg-[radial-gradient(circle,rgba(63,207,142,0.06),transparent_72%)]" />
       </div>
 
-      {/* Hero Banner */}
-      <section className="section-container pt-8 lg:pt-10">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-primary via-brand-secondary to-brand-tertiary p-8 md:p-12 mb-8">
-          {/* Hero background image */}
-          <Image
-            src="/hero-banner.png"
-            alt="KeyZaa Hero"
-            fill
-            className="object-cover opacity-30 mix-blend-soft-light"
-            priority
-            sizes="100vw"
-          />
-          <div className="relative z-10 max-w-xl">
-            <h1 className="type-h1 text-white">{t("home_heroH1")}</h1>
-            <p className="mt-2 text-white/80 max-w-[40ch]">
-              {t("home_heroSubtitle")}
-            </p>
-            <div className="mt-6 flex flex-wrap items-center gap-4">
-              <Link href="/products">
-                <CTAButton className="bg-white text-brand-primary hover:bg-white/90 h-12 px-8">
-                  {t("home_ctaViewAll")}
-                </CTAButton>
-              </Link>
-              <Link href="/seller/register">
-                <CTAButton
-                  variant="secondary"
-                  className="border-white/30 text-white hover:bg-white/10 h-12 px-6"
-                >
-                  {t("home_ctaRegisterSeller")}
-                </CTAButton>
-              </Link>
-            </div>
-          </div>
-          <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/10" />
-          <div className="absolute -bottom-6 -right-4 h-24 w-24 rounded-full bg-white/5" />
-        </div>
-      </section>
+      <HeroSection
+        spotlightProducts={spotlightProducts.map((product) => ({
+          id: product.id,
+          title: product.nameTh,
+          category: product.category,
+          price: product.price,
+          image: product.image,
+          discount: product.discount,
+          sellerName: product.sellerName || "ร้านแนะนำ",
+        }))}
+        title={t("home_marketplaceTitle")}
+        description={t("home_marketplaceDesc")}
+        badge={t("home_marketplaceBadge")}
+        proof={t("home_proofCompact")}
+        totalProducts={Math.max(totalProducts, products.length)}
+        totalSellers={Math.max(totalSellers, 12)}
+        primaryCta={t("home_heroPrimaryCta")}
+        secondaryCta={t("home_heroSecondaryCta")}
+        trustTitle={t("home_heroTrustTitle")}
+        trustPoints={[
+          t("home_trustPillarEscrowDesc"),
+          t("home_trustPillarVerifiedDesc"),
+          t("home_trustPillarDisputeDesc"),
+        ]}
+        spotlightLabel={t("home_heroSpotlightLabel")}
+        featuredLabel={t("home_heroFeaturedLabel")}
+        featuredStatus={t("home_heroFeaturedStatus")}
+        browseLabel={t("home_heroBrowseLabel")}
+        statusLabel={t("home_heroStatusLabel")}
+        inventoryLabel={t("home_heroInventoryLabel")}
+        sellerCountLabel={t("home_heroSellerCountLabel")}
+      />
 
-      {/* Categories */}
-      <section className="section-container py-16 lg:py-20">
-        <div className="mb-8 flex items-end justify-between gap-4">
-          <div className="space-y-2">
-            <h2 className="type-h2 text-text-main">
+      <section className="section-container py-12 lg:py-16" aria-labelledby="categories-heading">
+        <div className="mb-8 flex items-end justify-between gap-4 lg:mb-10">
+          <div className="space-y-3">
+            <h2 id="categories-heading" className="type-h2 text-text-main">
               {t("home_popularCategories")}
             </h2>
             <p className="max-w-2xl text-sm leading-6 text-text-muted">
@@ -189,267 +247,146 @@ export default function HomeClient() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {categories.map((category, index) => (
-            <Link
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          {categories.map((category) => (
+            <CategoryCard
               key={category.key}
               href={`/products?category=${encodeURIComponent(category.key)}`}
-              className="surface-card group relative overflow-hidden p-5 transition-transform duration-300 hover:scale-[1.03]"
-              style={{
-                animation: `fade-up 520ms ${index * 60}ms cubic-bezier(0.22,1,0.36,1) both`,
-              }}
-            >
-              <div
-                className={`absolute inset-0 bg-gradient-to-br ${category.gradient} opacity-20 transition-opacity duration-300 group-hover:opacity-30`}
-              />
-              <div className="relative flex flex-col gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white">
-                  <category.Icon className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-text-main">
-                    {category.labelTh}
-                  </p>
-                  <p className="mt-1 text-xs text-text-muted">
-                    {category.count} {t("products_items")}
-                  </p>
-                </div>
-              </div>
-            </Link>
+              title={category.label}
+              description={category.description}
+              count={category.count}
+              accent={category.accent}
+              Icon={category.Icon}
+            />
           ))}
         </div>
       </section>
 
-      {/* Best Deals */}
-      <section className="section-container py-8 lg:py-10">
-        <div className="mb-8 flex items-end justify-between gap-4">
-          <div className="space-y-2">
-            <h2 className="type-h2 text-text-main">{t("home_bestDeals")}</h2>
-            <p className="text-sm leading-6 text-text-muted">
-              {t("home_dealsProof")}
-            </p>
-          </div>
-          <Link
-            href="/products"
-            className="text-sm font-semibold text-brand-tertiary transition-colors hover:text-text-main"
-          >
-            {t("common_viewAll")} →
-          </Link>
-        </div>
+      <TrustSection
+        eyebrow={t("home_trustEyebrow")}
+        title={t("home_trustSectionTitle")}
+        description={t("home_trustSectionDesc")}
+        pillars={[
+          {
+            eyebrow: t("home_trustPillarEscrowEyebrow"),
+            title: t("home_trustPillarEscrowTitle"),
+            description: t("home_trustPillarEscrowDesc"),
+            Icon: defaultTrustIcons.escrow,
+            iconClass: "text-brand-tertiary",
+          },
+          {
+            eyebrow: t("home_trustPillarVerifiedEyebrow"),
+            title: t("home_trustPillarVerifiedTitle"),
+            description: t("home_trustPillarVerifiedDesc"),
+            Icon: defaultTrustIcons.verified,
+            iconClass: "text-accent",
+          },
+          {
+            eyebrow: t("home_trustPillarDisputeEyebrow"),
+            title: t("home_trustPillarDisputeTitle"),
+            description: t("home_trustPillarDisputeDesc"),
+            Icon: defaultTrustIcons.dispute,
+            iconClass: "text-warning",
+          },
+        ]}
+        flowEyebrow={t("home_trustFlowEyebrow")}
+        flowTitle={t("home_trustFlowTitle")}
+        flowDescription={t("home_trustFlowDesc")}
+        journeySteps={[t("home_trustStep1"), t("home_trustStep2"), t("home_trustStep3")]}
+        flowFooter={t("home_trustFlowFooter")}
+      />
 
-        {isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[...Array(4)].map((_, i) => (
-              <div
-                key={i}
-                className="surface-card flex h-full flex-col overflow-hidden"
-              >
-                <div className="aspect-[4/3] w-full animate-pulse bg-bg-subtle/40" />
-                <div className="flex flex-1 flex-col gap-3 p-4">
-                  <div className="space-y-2">
-                    <div className="h-3 w-16 animate-pulse rounded bg-bg-subtle/40" />
-                    <div className="h-4 w-full animate-pulse rounded bg-bg-subtle/40" />
-                  </div>
-                  <div className="mt-auto flex items-end justify-between gap-3">
-                    <div className="h-8 w-24 animate-pulse rounded bg-bg-subtle/40" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : hasError ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-border-subtle bg-bg-subtle/20 py-16 text-center">
-            <p className="text-text-muted">ไม่สามารถโหลดสินค้าได้</p>
-            <button
-              onClick={fetchHome}
-              className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-brand-primary hover:text-brand-tertiary transition-colors"
-            >
-              <RefreshCw className="w-4 h-4" />
-              ลองอีกครั้ง
-            </button>
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {bestDeals.map((product, index) => (
-              <Link
-                key={product.id}
-                href={`/products/${product.id}`}
-                className="surface-card group flex h-full flex-col overflow-hidden"
-                style={{
-                  animation: `fade-up 520ms ${index * 70}ms cubic-bezier(0.22,1,0.36,1) both`,
-                }}
-              >
-                <div className="relative aspect-[4/3] w-full overflow-hidden bg-bg-subtle/60">
-                  {product.discount > 20 && (
-                    <div className="absolute top-3 right-3 z-10 rounded-full bg-danger px-2 py-1 text-xs font-bold text-white">
-                      HOT DEAL
-                    </div>
-                  )}
-                  <Image
-                    src={product.image}
-                    alt={product.title}
-                    fill
-                    className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
-                    sizes="(max-width: 640px) 50vw, (max-width: 1280px) 25vw, 20vw"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-bg-base/80 via-transparent to-transparent" />
-                  <div className="absolute left-3 top-3">
-                    <Badge label={`-${product.discount}%`} tone="promo" />
-                  </div>
-                </div>
-                <div className="flex flex-1 flex-col gap-3 p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="type-meta text-text-muted">
-                        {product.category}
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-base font-semibold leading-snug text-text-main">
-                        {product.title}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-1 flex-col justify-between gap-3">
-                    <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/[0.025] px-3 py-2.5">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
-                          {t("common_verifiedSellers")}
-                        </p>
-                        <p className="mt-1 text-sm font-semibold text-text-subtle">
-                          {product.sellerCount} {t("common_sellers")}
-                        </p>
-                      </div>
-                      <div className="rounded-full border border-accent/20 bg-accent/10 px-2.5 py-1 text-xs font-bold text-accent">
-                        {t("common_instantDelivery")}
-                      </div>
-                    </div>
-                    <div className="flex items-end justify-between gap-3">
-                      <PriceTag
-                        price={product.price}
-                        originalPrice={product.originalPrice}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
+      <ProductSection
+        id="best-deals-heading"
+        title={t("home_bestDeals")}
+        description={t("home_dealsProof")}
+        products={bestDeals}
+        isLoading={isLoading}
+        hasError={hasError}
+        onRetry={() => void fetchHome()}
+      />
 
-      {/* Hot Deals */}
-      <section className="section-container py-16 lg:py-20">
-        <div className="mb-8 flex items-end justify-between gap-4">
-          <div className="space-y-2">
-            <h2 className="type-h2 text-text-main">{t("home_recommended")}</h2>
-            <p className="max-w-2xl text-sm leading-6 text-text-muted">
-              {t("home_recommendedDesc")}
-            </p>
-          </div>
-        </div>
+      <ProductSection
+        id="hot-deals-heading"
+        title={t("home_recommended")}
+        description={t("home_recommendedDesc")}
+        products={hotDeals}
+        isLoading={isLoading}
+      />
 
-        {isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[...Array(4)].map((_, i) => (
-              <div
-                key={i}
-                className="surface-card flex h-full flex-col overflow-hidden"
-              >
-                <div className="aspect-[4/3] w-full animate-pulse bg-bg-subtle/40" />
-                <div className="flex flex-1 flex-col gap-3 p-4">
-                  <div className="h-3 w-16 animate-pulse rounded bg-bg-subtle/40" />
-                  <div className="h-4 w-full animate-pulse rounded bg-bg-subtle/40" />
-                  <div className="mt-auto h-6 w-20 animate-pulse rounded bg-bg-subtle/40" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {hotDeals.map((product, index) => (
-              <Link
-                key={product.id}
-                href={`/products/${product.id}`}
-                className="surface-card group flex h-full flex-col overflow-hidden"
-                style={{
-                  animation: `fade-up 520ms ${index * 70}ms cubic-bezier(0.22,1,0.36,1) both`,
-                }}
-              >
-                <div className="relative aspect-[4/3] w-full overflow-hidden bg-bg-subtle/60">
-                  {product.discount > 20 && (
-                    <div className="absolute top-3 right-3 z-10 rounded-full bg-danger px-2 py-1 text-xs font-bold text-white">
-                      HOT DEAL
-                    </div>
-                  )}
-                  <Image
-                    src={product.image}
-                    alt={product.title}
-                    fill
-                    className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
-                    sizes="(max-width: 640px) 50vw, (max-width: 1280px) 25vw, 20vw"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-bg-base/80 via-transparent to-transparent" />
-                  <div className="absolute left-3 top-3">
-                    <span className="rounded-full border border-brand-tertiary/16 bg-brand-primary/10 px-2.5 py-1 text-xs font-semibold text-brand-tertiary">
-                      {t("common_verifiedSellers")}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex flex-1 flex-col gap-3 p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="type-meta text-text-muted">
-                      {product.category}
-                    </p>
-                  </div>
-                  <p className="line-clamp-2 text-base font-semibold leading-snug text-text-main">
-                    {product.title}
-                  </p>
-                  <div className="mt-auto flex items-end justify-between gap-3">
-                    <PriceTag
-                      price={product.price}
-                      originalPrice={product.originalPrice}
-                    />
-                    <div className="text-right">
-                      <p className="text-xs text-text-muted">
-                        {t("common_instantDelivery")}
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-accent">
-                        {t("home_stockReady")}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* CTA Section */}
-      <section className="section-container pb-6 pt-2 lg:pb-10">
-        <div className="trust-panel px-6 py-8 text-center sm:px-8 sm:py-10">
-          <div className="relative mx-auto max-w-3xl">
-            <div className="mx-auto mb-4 inline-flex items-center gap-2 rounded-full border border-brand-tertiary/18 bg-brand-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-brand-tertiary">
-              Keyzaa
-              <span className="h-1.5 w-1.5 rounded-full bg-brand-tertiary" />
-              {t("home_trustFirstMarketplace")}
+      <section className="section-container py-16 lg:py-24">
+        <div className="group relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(25,43,71,0.96)_0%,rgba(18,32,54,0.98)_55%,rgba(9,19,34,1)_100%)] p-6 shadow-[0_24px_70px_rgba(3,9,22,0.4)] transition-all duration-500 hover:border-brand-primary/30 sm:p-8 lg:flex lg:items-center lg:justify-between lg:gap-10 lg:p-12">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_100%_0%,rgba(45,91,255,0.15),transparent_50%)] opacity-70 pointer-events-none transition-opacity duration-500 group-hover:opacity-100" />
+          <div className="relative z-10 flex-1">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-brand-primary/10 px-3 py-1.5 text-xs font-bold text-brand-tertiary">
+              <Store className="h-3.5 w-3.5" />
+              {t("home_sellerBadge")}
             </div>
-            <h2 className="type-h1 text-text-main">
-              {t("home_ctaTrustTitle")}
+            <h2 className="type-h1 text-text-main text-3xl tracking-tight md:text-5xl">
+              {t("home_sellerTitle")}
+            </h2>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-text-subtle sm:text-base">
+              {t("home_sellerDesc")}
+            </p>
+            <ul className="mt-8 space-y-4">
+              {[
+                { icon: Store, text: t("home_sellerPointReach"), color: "text-brand-tertiary" },
+                { icon: CreditCard, text: t("home_sellerPointTrust"), color: "text-accent" },
+                { icon: Sparkles, text: t("home_sellerPointMobile"), color: "text-warning" },
+              ].map((item, index) => (
+                <li key={index} className="flex items-center gap-4 text-base font-medium text-text-subtle">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border-subtle bg-bg-surface shadow-sm">
+                    <item.icon className={`h-5 w-5 ${item.color}`} />
+                  </div>
+                  {item.text}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="relative z-10 mt-8 w-full shrink-0 lg:mt-0 lg:w-auto">
+            <CTAButton href="/seller/register" className="h-14 w-full px-8 text-base font-bold shadow-xl shadow-brand-primary/20 lg:h-16 lg:w-auto lg:px-10 lg:text-lg">
+              {t("home_sellerCta")}
+            </CTAButton>
+          </div>
+        </div>
+      </section>
+
+      <section className="section-container py-12 text-center lg:py-20" aria-labelledby="trust-cta-heading">
+        <div className="mb-12 grid gap-4 md:grid-cols-3 lg:gap-6">
+          {[
+            { num: "50,000+", label: t("home_marketStatUsers"), color: "text-brand-tertiary" },
+            { num: "120,000+", label: t("home_marketStatOrders"), color: "text-accent" },
+            { num: "4.9/5", label: t("home_marketStatRating"), color: "text-warning" },
+          ].map((stat, index) => (
+            <div key={index} className="rounded-[1.65rem] border border-white/10 bg-white/[0.025] p-7 text-center shadow-[0_18px_50px_rgba(3,9,22,0.2)]">
+              <div className={`mb-3 text-4xl font-black md:text-5xl ${stat.color}`}>{stat.num}</div>
+              <div className="text-sm font-bold uppercase tracking-[0.15em] text-text-muted">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-[2rem] border border-border-main/50 bg-bg-subtle px-6 py-12 text-center shadow-[0_24px_70px_rgba(3,9,22,0.32)] sm:px-8 sm:py-16 lg:py-20">
+          <div className="relative mx-auto max-w-3xl">
+            <h2 id="trust-cta-heading" className="type-h1 text-text-main">
+              {t("home_finalCtaTitle")}
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-text-subtle">
-              {t("home_ctaTrustDesc")}
+              {t("home_finalCtaDesc")}
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              <Link href="/products">
-                <CTAButton className="h-14 px-8 text-base">
-                  {t("home_ctaTrustPrimary")}
-                </CTAButton>
-              </Link>
-              <Link href="/orders">
-                <CTAButton variant="secondary" className="h-14 px-8 text-base">
-                  {t("home_ctaTrustSecondary")}
-                </CTAButton>
-              </Link>
+              <CTAButton href="/products" className="h-14 px-8 text-base">
+                {t("home_finalCtaPrimary")}
+              </CTAButton>
+              <CTAButton href="/seller/register" variant="secondary" className="h-14 px-8 text-base">
+                {t("home_finalCtaSecondary")}
+              </CTAButton>
+            </div>
+            <div className="mt-6 flex flex-col items-center gap-3 text-sm text-text-muted sm:flex-row sm:justify-center">
+              {[t("home_finalTrustChipEscrow"), t("home_finalTrustChipVerified"), t("home_finalTrustChipMobile")].map((chip) => (
+                <div key={chip} className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2">
+                  {chip}
+                </div>
+              ))}
             </div>
           </div>
         </div>

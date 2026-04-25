@@ -16,7 +16,7 @@ export default function FloatingChat() {
         <div className="glass-panel elevation-1 relative whitespace-nowrap rounded-xl px-4 py-2.5">
           <p className="text-sm font-semibold text-text-main">มีข้อสงสัย? คุยกับเราสิ</p>
           <p className="text-xs text-text-subtle">ตอบไวภายใน 1 นาที</p>
-          <div className="absolute right-[-6px] top-1/2 -translate-y-1/2 w-3 h-3 bg-bg-surface border-r border-t border-white/10 rotate-45" />
+          <div className="absolute right-[-6px] top-1/2 -translate-y-1/2 w-3 h-3 bg-bg-surface border-r border-t border-border-subtle rotate-45" />
         </div>
       </div>
 

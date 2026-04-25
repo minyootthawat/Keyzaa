@@ -30,7 +30,7 @@ export default function SortingDropdown({ sort, setSort }: SortingDropdownProps)
           aria-label={t("common_sort")}
           value={sort}
           onChange={(e) => setSort(e.target.value)}
-          className="cursor-pointer appearance-none rounded-xl border border-white/[0.06] bg-bg-elevated/60 backdrop-blur-md pl-9 pr-8 py-2.5 text-sm font-medium text-text-main transition-all hover:bg-bg-elevated hover:border-white/[0.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50 focus-visible:border-brand-primary/30"
+          className="cursor-pointer appearance-none rounded-xl border border-border-subtle bg-bg-surface pl-9 pr-8 py-2.5 text-sm font-medium text-text-main transition-all hover:border-border-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50 focus-visible:border-brand-primary/30"
         >
           {sortOptions.map((opt) => (
             <option key={opt.value} value={opt.value} className="bg-bg-surface text-text-main">

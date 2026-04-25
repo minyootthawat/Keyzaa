@@ -14,7 +14,7 @@ const getJwtSecret = () => {
   return new TextEncoder().encode(clean || "fallback-dev-secret");
 };
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Check for token in cookies or Authorization header
