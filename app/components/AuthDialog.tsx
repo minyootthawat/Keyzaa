@@ -122,7 +122,7 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
 
         {user ? (
           <div className="space-y-4">
-            <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-text-main">{user.name}</p>
@@ -133,7 +133,7 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                <span className="rounded-full border border-white/8 bg-bg-base/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                    <span className="rounded-full border border-border-subtle bg-bg-surface px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
                   {user.role}
                 </span>
                 {isRegisteredSeller ? (
@@ -246,7 +246,7 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
                   key={account.id}
                   type="button"
                   onClick={() => applyDemoCredentials(account.email, account.password)}
-                  className="rounded-2xl border border-white/8 bg-bg-surface/70 px-4 py-3 text-left transition-colors hover:border-brand-primary/30 hover:bg-bg-surface"
+                  className="rounded-2xl border border-border-subtle bg-bg-surface px-4 py-3 text-left transition-colors hover:border-brand-primary/30 hover:bg-bg-surface"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">

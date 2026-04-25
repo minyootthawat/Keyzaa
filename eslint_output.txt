@@ -1,0 +1,39 @@
+
+/Users/min/dev/Keyzaa/app/components/StickyHeader.tsx
+  103:7   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/min/dev/Keyzaa/app/components/StickyHeader.tsx:103:7
+  101 |       url.searchParams.delete("auth_required");
+  102 |       window.history.replaceState({}, "", url.pathname);
+> 103 |       setShowAuthDialog(true);
+      |       ^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  104 |     }
+  105 |   }, []);
+  106 |               react-hooks/set-state-in-effect
+  129:5   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/min/dev/Keyzaa/app/components/StickyHeader.tsx:129:5
+  127 |   // Load recent searches on mount
+  128 |   useEffect(function loadRecentSearches() {
+> 129 |     setRecentSearches(getRecentSearches());
+      |     ^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  130 |   }, []);
+  131 |
+  132 |   // Close panel on click outside  react-hooks/set-state-in-effect
+  183:9   warning  'isDashboardLinkVisible' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             @typescript-eslint/no-unused-vars
+  226:15  warning  The attribute aria-expanded is not supported by the role textbox. This role is implicit on the element input                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            jsx-a11y/role-supports-aria-props
+
+✖ 4 problems (2 errors, 2 warnings)
+

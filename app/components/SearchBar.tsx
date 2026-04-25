@@ -106,11 +106,11 @@ export default function SearchBar({ suggestions, onSelect }: { suggestions: stri
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onFocus={() => setShowList(query.trim().length > 0)}
-          className="w-full rounded-2xl border border-white/[0.06] bg-bg-elevated/50 backdrop-blur-md py-3.5 pl-12 pr-4 text-sm font-medium text-text-main placeholder:text-text-muted/60 transition-all focus:border-brand-primary/40 focus:bg-bg-elevated/70 focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+          className="w-full rounded-2xl border border-border-subtle bg-bg-surface py-3.5 pl-12 pr-4 text-sm font-medium text-text-main placeholder:text-text-muted/60 transition-all focus:border-brand-primary/40 focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
         />
       </div>
       {showSuggestions ? (
-        <ul id={listId} role="listbox" className="glass-panel absolute z-10 mt-2 max-h-64 w-full overflow-y-auto rounded-2xl border border-white/[0.08]">
+        <ul id={listId} role="listbox" className="absolute z-10 mt-2 max-h-64 w-full overflow-y-auto rounded-2xl border border-border-subtle bg-bg-surface p-2 shadow-lg">
           {hasSuggestions ? (
             suggestions.map((s, i) => (
               <li
@@ -123,9 +123,7 @@ export default function SearchBar({ suggestions, onSelect }: { suggestions: stri
                   e.preventDefault();
                   handleSelect(s);
                 }}
-                className={`cursor-pointer border-b border-white/[0.04] px-4 py-3 text-sm transition-colors first:rounded-t-2xl last:rounded-b-2xl last:border-0 ${
-                  activeIndex === i ? "bg-brand-primary/10 text-text-main" : "text-text-subtle hover:bg-bg-elevated/50 hover:text-text-main"
-                }`}
+                className={`cursor-pointer border-b border-border-subtle px-4 py-3 text-sm transition-colors first:rounded-t-2xl last:rounded-b-2xl last:border-0 ${activeIndex === i ? "bg-brand-primary/10 text-text-main" : "text-text-subtle hover:bg-bg-elevated/50 hover:text-text-main"}`}
               >
                 {s}
               </li>

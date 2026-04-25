@@ -80,7 +80,7 @@ export default function CartDialog({ onClose }: CartDialogProps) {
                   </div>
                 ))}
 
-                <div className="rounded-2xl border border-white/8 bg-bg-elevated/80 p-4 text-sm leading-7 text-text-subtle">
+                <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4 text-sm leading-7 text-text-subtle">
                   <p className="font-semibold text-text-main">{lang === "th" ? "เดโมการชำระเงิน" : "Mock checkout"}</p>
                   <ul className="mt-2 space-y-1">
                     <li>THB-first pricing</li>

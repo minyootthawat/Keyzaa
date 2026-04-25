@@ -63,7 +63,7 @@ function ProfileContent() {
                     <p className="type-body text-text-subtle">{user.email}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <span className="rounded-full border border-white/8 bg-bg-base/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                    <span className="rounded-full border border-border-subtle bg-bg-surface px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
                       {user.role}
                     </span>
                     {isRegisteredSeller ? (
@@ -90,11 +90,11 @@ function ProfileContent() {
             </div>
 
             <div className="mt-8 grid gap-4 md:grid-cols-3">
-              <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+              <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("profile_accountLabel")}</p>
                 <p className="mt-2 text-sm font-semibold text-text-main">{user.email}</p>
               </div>
-              <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+              <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("profile_permissions")}</p>
                 <p className="mt-2 text-sm font-semibold text-text-main">
                   {isAdmin
@@ -110,7 +110,7 @@ function ProfileContent() {
                         : "Buyer"}
                 </p>
               </div>
-              <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+              <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("profile_status")}</p>
                 <p className="mt-2 text-sm font-semibold text-text-main">
                   {isRegisteredSeller
@@ -160,19 +160,19 @@ function ProfileContent() {
               </div>
 
               <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                   <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("profile_shopName")}</p>
                   <p className="mt-2 text-sm font-semibold text-text-main">{seller.shopName}</p>
                 </div>
-                <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                   <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("wallet_available")}</p>
                   <p className="type-num mt-2 text-xl font-bold text-text-main">฿{seller.balance.toLocaleString("en-US")}</p>
                 </div>
-                <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                   <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("profile_sales")}</p>
                   <p className="type-num mt-2 text-xl font-bold text-text-main">{formatCompactNumber(seller.salesCount)}</p>
                 </div>
-                <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                <div className="rounded-2xl border border-border-subtle bg-bg-surface p-4">
                   <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("profile_rating")}</p>
                   <p className="type-num mt-2 text-xl font-bold text-text-main">{seller.rating.toFixed(1)}</p>
                 </div>
@@ -213,20 +213,20 @@ function ProfileContent() {
             <div className="mt-4 grid gap-3">
               <Link
                 href="/products"
-                className="rounded-2xl border border-white/8 bg-bg-surface/70 px-4 py-3 text-sm font-semibold text-text-main transition-colors hover:border-border-main"
+                className="rounded-2xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm font-semibold text-text-main transition-colors hover:border-border-main"
               >
                 {lang === "th" ? "เลือกซื้อสินค้า" : "Browse products"}
               </Link>
               <Link
                 href="/orders"
-                className="rounded-2xl border border-white/8 bg-bg-surface/70 px-4 py-3 text-sm font-semibold text-text-main transition-colors hover:border-border-main"
+                className="rounded-2xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm font-semibold text-text-main transition-colors hover:border-border-main"
               >
                 {t("profile_openOrders")}
               </Link>
               {isRegisteredSeller ? (
                 <Link
                   href="/seller/dashboard/settings"
-                  className="rounded-2xl border border-white/8 bg-bg-surface/70 px-4 py-3 text-sm font-semibold text-text-main transition-colors hover:border-border-main"
+                  className="rounded-2xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm font-semibold text-text-main transition-colors hover:border-border-main"
                 >
                   {t("settings_title")}
                 </Link>

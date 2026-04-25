@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useCart } from "@/app/context/CartContext";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { useAuth } from "@/app/context/AuthContext";
+import { useTheme } from "@/app/context/ThemeContext";
 import AuthDialog from "@/app/components/AuthDialog";
 
 // Stable icon components — extracted outside render to avoid re-creation
@@ -89,6 +90,7 @@ export default function StickyHeader() {
   const [searchQuery, setSearchQuery] = useState("");
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const { totalItems } = useCart();
 
   // Check if we were redirected here because auth was required on /seller/register
@@ -103,8 +105,9 @@ export default function StickyHeader() {
     }
   }, []);
 
-  const { user, role, isAdmin, isRegisteredSeller } = useAuth();
+  const { user, role, isAdmin, isRegisteredSeller, logout } = useAuth();
   const { lang, toggleLang, t } = useLanguage();
+  const { theme, toggleTheme } = useTheme();
   const isClient = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -112,6 +115,7 @@ export default function StickyHeader() {
   );
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
 
   // Scroll listener — passive for better scroll performance
   useEffect(function handleScroll() {
@@ -132,6 +136,9 @@ export default function StickyHeader() {
     const handler = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setSearchFocused(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -189,7 +196,7 @@ export default function StickyHeader() {
       <header
         className={`fixed inset-x-0 top-0 z-50 flex flex-col transition-all duration-300 ${
           scrolled
-            ? "bg-bg-base/72 backdrop-blur-2xl border-b border-border-subtle shadow-[0_18px_44px_rgba(4,11,23,0.22)]"
+            ? "bg-bg-base/72 backdrop-blur-2xl border-b border-border-subtle elevation-2"
             : "bg-transparent border-transparent"
         }`}
       >
@@ -216,7 +223,7 @@ export default function StickyHeader() {
             <div
               className={`flex items-center gap-2.5 rounded-2xl border px-4 py-2.5 transition-all duration-200 ${
                 searchFocused
-                  ? "border-border-main bg-bg-surface shadow-[0_12px_24px_rgba(4,11,23,0.18)]"
+                  ? "border-border-main bg-bg-surface elevation-2"
                   : "border-border-subtle bg-bg-surface/88 hover:border-border-main"
               }`}
             >
@@ -264,7 +271,7 @@ export default function StickyHeader() {
                       <button
                         key={cat.key}
                         onClick={() => handleCategoryClick(cat.key)}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-bg-surface/60 px-3 py-1.5 text-xs font-semibold text-text-subtle transition-all hover:border-border-main hover:text-text-main hover:bg-bg-surface"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-bg-surface/60 px-3 py-1.5 text-xs font-semibold text-text-subtle transition-all hover:border-border-main hover:text-text-main hover:bg-bg-surface-hover"
                       >
                         {cat.label}
                       </button>
@@ -281,7 +288,7 @@ export default function StickyHeader() {
                         <li key={q}>
                           <button
                             onClick={() => handleSearchSubmit(q)}
-                            className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm text-text-subtle transition-colors hover:bg-bg-surface hover:text-text-main"
+                            className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm text-text-subtle transition-colors hover:bg-bg-surface-hover hover:text-text-main"
                           >
                             <span className="flex items-center gap-3">
                               <ClockIcon className="h-4 w-4 shrink-0 text-text-muted" />
@@ -327,9 +334,9 @@ export default function StickyHeader() {
             {showSwitchToSeller && (
               <Link
                 href="/seller/dashboard"
-                className="hidden lg:flex items-center gap-2 rounded-full border border-brand-tertiary/18 bg-brand-primary/8 px-3 py-2 text-[11px] font-semibold tracking-[0.12em] uppercase text-brand-tertiary hover:bg-brand-primary/15 transition-colors"
+                className="hidden lg:flex items-center gap-2 rounded-full border border-brand-primary/20 bg-brand-primary/8 px-3 py-2 text-[11px] font-semibold tracking-[0.12em] uppercase text-brand-primary hover:bg-brand-primary/15 transition-colors"
               >
-                <span className="h-2 w-2 rounded-full bg-brand-tertiary" />
+                <span className="h-2 w-2 rounded-full bg-brand-primary" />
                 {t("common_sellerMode")}
               </Link>
             )}
@@ -348,16 +355,34 @@ export default function StickyHeader() {
             <button
               onClick={toggleLang}
               aria-label={t("common_toggleLanguage")}
-              className="h-11 rounded-xl px-3 text-sm font-bold text-text-subtle hover:bg-bg-surface hover:text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
+              className="h-11 rounded-xl px-3 text-sm font-bold text-text-subtle hover:bg-bg-surface-hover hover:text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
             >
               {lang === "th" ? "TH" : "EN"}
+            </button>
+
+            {/* Theme toggle */}
+            <button
+              onClick={toggleTheme}
+              aria-label={`Theme: ${!isClient || theme === "dark" ? "Dark" : "Light"}`}
+              title={`Theme: ${!isClient || theme === "dark" ? "Dark" : "Light"}`}
+              className="h-11 w-11 shrink-0 flex items-center justify-center rounded-xl text-text-subtle hover:bg-bg-surface-hover hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
+            >
+              {!isClient || theme === "dark" ? (
+                <svg className="h-[20px] w-[20px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+                </svg>
+              ) : (
+                <svg className="h-[20px] w-[20px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+                </svg>
+              )}
             </button>
 
             {/* Cart */}
             <button
               onClick={() => router.push("/checkout")}
               aria-label={t("common_openCart")}
-              className="relative flex h-11 w-11 items-center justify-center rounded-xl text-text-subtle hover:bg-bg-surface hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
+              className="relative flex h-11 w-11 items-center justify-center rounded-xl text-text-subtle hover:bg-bg-surface-hover hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
             >
               <CartIcon className="h-[22px] w-[22px]" />
               {isClient && totalItems > 0 && (
@@ -369,20 +394,65 @@ export default function StickyHeader() {
 
             {/* Profile / Auth */}
             {user ? (
-              <Link
-                href="/profile"
-                aria-label={t("common_profile")}
-                className="hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-text-subtle hover:bg-bg-surface hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
-              >
-                <div className="h-8 w-8 rounded-full bg-brand-primary flex items-center justify-center text-white text-xs font-bold">
-                  {user.name.charAt(0).toUpperCase()}
-                </div>
-              </Link>
+              <div className="relative" ref={profileRef}>
+                <button
+                  onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+                  aria-label={t("common_profile")}
+                  aria-expanded={profileMenuOpen}
+                  className="hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-text-subtle hover:bg-bg-surface-hover hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
+                >
+                  <div className="h-8 w-8 rounded-full bg-brand-primary flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                    {user.name.charAt(0).toUpperCase()}
+                  </div>
+                </button>
+                
+                {profileMenuOpen && (
+                  <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-2xl border border-white/[0.08] bg-bg-surface elevation-3 p-2 shadow-xl glass-panel">
+                    <div className="px-3 py-2.5 border-b border-border-subtle mb-1.5">
+                      <p className="text-sm font-semibold text-text-main truncate">{user.name}</p>
+                      <p className="mt-0.5 text-xs text-text-muted truncate">{user.email}</p>
+                    </div>
+                    
+                    <div className="flex flex-col gap-0.5">
+                      <Link 
+                        href="/profile" 
+                        className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-text-subtle hover:bg-bg-surface-hover hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
+                        onClick={() => setProfileMenuOpen(false)}
+                      >
+                        <UserLucide className="h-4 w-4 shrink-0 text-text-muted" />
+                        {t("common_profile") || "Profile"}
+                      </Link>
+                      
+                      <Link 
+                        href="/orders" 
+                        className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-text-subtle hover:bg-bg-surface-hover hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
+                        onClick={() => setProfileMenuOpen(false)}
+                      >
+                        <ShoppingBag className="h-4 w-4 shrink-0 text-text-muted" />
+                        {t("common_orders") || "Orders"}
+                      </Link>
+
+                      <div className="my-1 h-px bg-border-subtle" />
+
+                      <button 
+                        onClick={() => {
+                          setProfileMenuOpen(false);
+                          logout();
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-danger hover:bg-danger/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/45"
+                      >
+                        <LogOut className="h-4 w-4 shrink-0 text-danger/80" />
+                        {t("common_logout") || "Logout"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
               <button
                 onClick={openAuthDialog}
                 aria-label={t("common_profile")}
-                className="hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-text-subtle hover:bg-bg-surface hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
+                className="hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-text-subtle hover:bg-bg-surface-hover hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
               >
                 <UserIcon className="h-[22px] w-[22px]" />
               </button>
@@ -395,7 +465,7 @@ export default function StickyHeader() {
           <div
             className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-all ${
               searchFocused
-                ? "border-border-main bg-bg-surface shadow-[0_10px_22px_rgba(4,11,23,0.18)]"
+                ? "border-border-main bg-bg-surface elevation-1"
                 : "border-border-subtle bg-bg-surface/94"
             }`}
           >
