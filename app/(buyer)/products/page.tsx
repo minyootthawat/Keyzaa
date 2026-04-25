@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useTransition } from "react";
+import { Suspense, useEffect, useMemo, useState, useCallback, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import SearchBar from "@/app/components/SearchBar";
 import FilterBar from "@/app/components/FilterBar";
@@ -21,6 +21,34 @@ const SKELETON_ARRAY = Array.from({ length: SKELETON_COUNT });
 type SortOption = "cheap" | "expensive" | "popular" | "discount";
 
 export default function ProductsPage() {
+  return (
+    <Suspense fallback={<ProductsPageLoading />}>
+      <ProductsPageContent />
+    </Suspense>
+  );
+}
+
+function ProductsPageLoading() {
+  return (
+    <SectionContainer>
+      <div className="space-y-8 py-10 md:py-14">
+        <div className="space-y-5">
+          <div className="h-12 w-full animate-pulse rounded-2xl bg-bg-subtle/40" />
+          <div className="flex gap-3">
+            <div className="h-10 w-32 animate-pulse rounded-xl bg-bg-subtle/40" />
+            <div className="h-10 w-32 animate-pulse rounded-xl bg-bg-subtle/40" />
+            <div className="h-10 w-32 animate-pulse rounded-xl bg-bg-subtle/40" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-5 sm:gap-6 lg:grid-cols-4">
+          {SKELETON_ARRAY.map((_, i) => <SkeletonCard key={i} />)}
+        </div>
+      </div>
+    </SectionContainer>
+  );
+}
+
+function ProductsPageContent() {
   const searchParams = useSearchParams();
   const { t, lang } = useLanguage();
   const [isPending, startTransition] = useTransition();
