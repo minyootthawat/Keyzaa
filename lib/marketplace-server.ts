@@ -1,6 +1,6 @@
-import productsData from "@/data/products.json";
-import sellersData from "@/data/sellers.json";
 import type { Order, OrderItem, OrderStatus, PaymentStatus, FulfillmentStatus, Product, Seller, SellerLedgerEntry, SellerWalletSummary } from "@/app/types";
+import { getSellerById } from "@/lib/db/supabase";
+import { getProductsBySeller } from "@/lib/db/supabase";
 
 export const MARKETPLACE_COMMISSION_RATE = Number(process.env.PLATFORM_COMMISSION_RATE || "0.12");
 export const MARKETPLACE_CURRENCY = "THB";
@@ -157,10 +157,45 @@ export function calculateWalletSummary(entries: SellerLedgerEntry[]): SellerWall
   };
 }
 
-export function getStaticSellerSeedById(sellerId: string) {
-  return (sellersData as Seller[]).find((seller) => seller.id === sellerId) || null;
+export async function getSellerByIdFromDb(sellerId: string) {
+  const seller = await getSellerById(sellerId);
+  if (!seller) return null;
+  return {
+    id: seller.id,
+    userId: seller.user_id,
+    shopName: seller.store_name,
+    phone: seller.phone ?? "",
+    rating: seller.rating,
+    salesCount: seller.sales_count,
+    balance: seller.balance,
+    pendingBalance: seller.pending_balance,
+    verificationStatus: seller.verified ? "verified" as const : "new" as const,
+    responseTimeMinutes: seller.response_time_minutes,
+    fulfillmentRate: seller.fulfillment_rate,
+    disputeRate: seller.dispute_rate,
+    payoutStatus: seller.payout_status,
+    createdAt: seller.created_at,
+  };
 }
 
-export function getStaticProductsBySellerId(sellerId: string) {
-  return (productsData as Product[]).filter((product) => product.sellerId === sellerId);
+export async function getProductsBySellerId(sellerId: string): Promise<Product[]> {
+  const products = await getProductsBySeller(sellerId);
+  return products.map((p) => ({
+    id: p.id,
+    title: p.name,
+    nameTh: p.name,
+    nameEn: p.name,
+    image: p.image_url ?? "",
+    price: p.price,
+    originalPrice: p.price,
+    discount: 0,
+    category: p.category,
+    platform: "",
+    sellerId: p.seller_id,
+    stock: p.stock,
+    soldCount: 0,
+    isActive: p.is_active,
+    description: p.description ?? "",
+    createdAt: p.created_at,
+  }));
 }

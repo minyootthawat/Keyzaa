@@ -13,7 +13,6 @@ import { useLanguage } from "@/app/context/LanguageContext";
 import { matchesProductQuery } from "@/app/lib/marketplace";
 import type { Product } from "@/app/types";
 
-const MOCK_FETCH_DELAY = 600;
 const PAGE_SIZE = 10;
 const SKELETON_COUNT = 10;
 
@@ -38,14 +37,27 @@ export default function ProductsPage() {
 
   // Fetch products
   useEffect(function fetchProducts() {
-    const timer = setTimeout(function loadProducts() {
-      import("@/data/products.json").then((mod) => {
-        setAllProducts(mod.default as Product[]);
+    let cancelled = false;
+    setLoading(true);
+
+    fetch("/api/products")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch");
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setAllProducts((data.products ?? []) as Product[]);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAllProducts([]);
         setLoading(false);
       });
-    }, MOCK_FETCH_DELAY);
+
     return function cancelFetch() {
-      clearTimeout(timer);
+      cancelled = true;
     };
   }, []);
 

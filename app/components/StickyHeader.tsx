@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore, useCallback, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useCart } from "@/app/context/CartContext";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { useAuth } from "@/app/context/AuthContext";
@@ -83,12 +83,26 @@ function removeRecentSearch(query: string) {
 
 export default function StickyHeader() {
   const router = useRouter();
+  const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const { totalItems } = useCart();
+
+  // Check if we were redirected here because auth was required on /seller/register
+  useEffect(function openAuthDialogIfRequired() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("auth_required") === "1") {
+      // Remove the param from URL without a full navigation
+      const url = new URL(window.location.href);
+      url.searchParams.delete("auth_required");
+      window.history.replaceState({}, "", url.pathname);
+      setShowAuthDialog(true);
+    }
+  }, []);
+
   const { user, role, isAdmin, isRegisteredSeller } = useAuth();
   const { lang, toggleLang, t } = useLanguage();
   const isClient = useSyncExternalStore(
@@ -163,7 +177,11 @@ export default function StickyHeader() {
   const closeAuthDialog = useCallback(() => setShowAuthDialog(false), []);
 
   const isSeller = role === "seller" || role === "both";
-  const isDashboardLinkVisible = isSeller && isRegisteredSeller;
+  const isRegistered = isRegisteredSeller;
+  const isDashboardLinkVisible = isSeller && isRegistered;
+  const isOnSellerRoute = pathname.startsWith("/seller");
+  const showSwitchToBuyer = isRegistered && isOnSellerRoute;
+  const showSwitchToSeller = isRegistered && !isOnSellerRoute;
   const showSearchPanel = searchFocused;
 
   return (
@@ -293,19 +311,26 @@ export default function StickyHeader() {
 
           {/* Actions */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Verified sellers badge */}
-            <div className="hidden lg:flex items-center gap-2 rounded-full border border-accent/18 bg-accent/8 px-3 py-2 text-[11px] font-semibold tracking-[0.12em] uppercase text-accent">
-              <span className="h-2 w-2 rounded-full bg-accent" />
-              {t("common_verifiedSellers")}
-            </div>
 
-            {/* Seller dashboard link */}
-            {isDashboardLinkVisible && (
+            {/* Seller mode: switch to buyer */}
+            {showSwitchToBuyer && (
+              <Link
+                href="/"
+                className="hidden lg:flex items-center gap-2 rounded-full border border-accent/18 bg-accent/8 px-3 py-2 text-[11px] font-semibold tracking-[0.12em] uppercase text-accent hover:bg-accent/15 transition-colors"
+              >
+                <span className="h-2 w-2 rounded-full bg-accent" />
+                {t("common_switchToBuyerMode")}
+              </Link>
+            )}
+
+            {/* Buyer mode: switch to seller */}
+            {showSwitchToSeller && (
               <Link
                 href="/seller/dashboard"
                 className="hidden lg:flex items-center gap-2 rounded-full border border-brand-tertiary/18 bg-brand-primary/8 px-3 py-2 text-[11px] font-semibold tracking-[0.12em] uppercase text-brand-tertiary hover:bg-brand-primary/15 transition-colors"
               >
-                {t("common_goSellerDashboard")}
+                <span className="h-2 w-2 rounded-full bg-brand-tertiary" />
+                {t("common_sellerMode")}
               </Link>
             )}
 

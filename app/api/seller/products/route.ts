@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSellerAccessFromRequest } from "@/lib/auth/seller";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { createServiceRoleClient } from "@/lib/db/supabase";
 import type { Product } from "@/app/types";
 
 interface ProductRow {

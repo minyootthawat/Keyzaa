@@ -7,9 +7,10 @@ import { getStoredToken } from "@/app/lib/auth-client";
 import { useLanguage } from "@/app/context/LanguageContext";
 import OrderCard from "@/app/components/OrderCard";
 import CTAButton from "@/app/components/CTAButton";
+import BuyerRouteGuard from "@/app/components/BuyerRouteGuard";
 import type { Order } from "@/app/types";
 
-export default function BuyerOrdersPage() {
+function BuyerOrdersContent() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -73,5 +74,13 @@ export default function BuyerOrdersPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function BuyerOrdersPage() {
+  return (
+    <BuyerRouteGuard>
+      <BuyerOrdersContent />
+    </BuyerRouteGuard>
   );
 }

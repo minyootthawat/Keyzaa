@@ -2,52 +2,121 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { LucideIcon, ShieldCheck, Zap, Headphones, Store, Clock, CreditCard, ThumbsUp } from "lucide-react";
+import { useState, useEffect } from "react";
+import {
+  LucideIcon,
+  ShieldCheck,
+  Zap,
+  Headphones,
+  Store,
+  Clock,
+  CreditCard,
+  ThumbsUp,
+  RefreshCw,
+} from "lucide-react";
 import Badge from "@/app/components/Badge";
 import CTAButton from "@/app/components/CTAButton";
 import PriceTag from "@/app/components/PriceTag";
-import products from "@/data/products.json";
 import { useLanguage } from "@/app/context/LanguageContext";
 
 const categoryGradients: Record<string, string> = {
-  "เติมเกม": "from-game-start to-game-end",
+  เติมเกม: "from-game-start to-game-end",
   "Gift Card": "from-gift-start to-gift-end",
-  "Subscription": "from-sub-start to-sub-end",
-  "AI Tools": "from-ai-start to-ai-end",
-  "โปร": "from-pro-start to-pro-end",
+  Subscription: "from-sub-start to-sub-end",
+  "AI Tools": "from-ai-start to-game-end",
+  โปร: "from-pro-start to-pro-end",
 };
 
-const categoryProductCounts: Record<string, number> = {
-  "เติมเกม": 8,
-  "Gift Card": 5,
-  "Subscription": 4,
-  "AI Tools": 3,
-  "โปร": 2,
+// Maps API category names to display categories
+const CATEGORY_MAP: Record<string, string> = {
+  "Mobile Top-up": "เติมเกม",
+  "Genshin Impact": "เติมเกม",
+  "Honkai Star Rail": "เติมเกม",
+  "Mobile Legends": "เติมเกม",
+  "Gift Card": "Gift Card",
+  Subscription: "Subscription",
+  โปร: "โปร",
+  "AI Tools": "AI Tools",
 };
 
 const categoryIcons: Record<string, LucideIcon> = {
-  "เติมเกม": Zap,
+  เติมเกม: Zap,
   "Gift Card": CreditCard,
-  "Subscription": Zap,
+  Subscription: Zap,
   "AI Tools": Zap,
-  "โปร": Zap,
+  โปร: Zap,
 };
 
 const trustIcons: LucideIcon[] = [ShieldCheck, Zap, Headphones, Store];
 
+interface HomeProduct {
+  id: string;
+  title: string;
+  category: string;
+  price: number;
+  stock: number;
+  image: string;
+  isActive: boolean;
+  discount: number;
+  originalPrice: number;
+  sellerCount: number;
+  seller: {
+    id: string;
+    storeName: string;
+    verified: boolean;
+  };
+}
+
 export default function HomeClient() {
   const { t, lang } = useLanguage();
+  const [products, setProducts] = useState<HomeProduct[]>([]);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>(
+    {},
+  );
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+
+  function fetchHome() {
+    setIsLoading(true);
+    setHasError(false);
+    fetch("/api/home")
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        setProducts(data.products || []);
+        setCategoryCounts(data.categories || {});
+      })
+      .catch(() => setHasError(true))
+      .finally(() => setIsLoading(false));
+  }
+
+  useEffect(() => {
+    fetchHome();
+  }, []);
+
   const bestDeals = products.slice(0, 4);
   const hotDeals = products.slice(4, 8);
   const spotlightProducts = products.slice(0, 3);
 
-  const categories = [
-    { key: "เติมเกม", gradient: categoryGradients["เติมเกม"], Icon: categoryIcons["เติมเกม"] },
-    { key: "Gift Card", gradient: categoryGradients["Gift Card"], Icon: categoryIcons["Gift Card"] },
-    { key: "Subscription", gradient: categoryGradients["Subscription"], Icon: categoryIcons["Subscription"] },
-    { key: "AI Tools", gradient: categoryGradients["AI Tools"], Icon: categoryIcons["AI Tools"] },
-    { key: "โปร", gradient: categoryGradients["โปร"], Icon: categoryIcons["โปร"] },
+  // Build categories from dynamic API counts — all labels in Thai
+  const displayCategories = [
+    { key: "เติมเกม", labelTh: t("home_categoryTopup") },
+    { key: "Gift Card", labelTh: t("home_categoryGiftCard") },
+    { key: "Subscription", labelTh: t("home_categorySubscription") },
+    { key: "AI Tools", labelTh: t("home_categoryAITools") },
+    { key: "โปร", labelTh: t("home_categoryPromo") },
   ];
+
+  const categories = displayCategories.map((cat) => ({
+    ...cat,
+    gradient: categoryGradients[cat.key] ?? "from-game-start to-game-end",
+    Icon: categoryIcons[cat.key] ?? Zap,
+    count: Object.entries(categoryCounts)
+      .filter(([apiCat]) => CATEGORY_MAP[apiCat] === cat.key)
+      .reduce((sum, [, n]) => sum + n, 0),
+  }));
 
   const trustItems = [
     { icon: Clock, text: t("home_trustVerified") },
@@ -93,7 +162,10 @@ export default function HomeClient() {
                 </CTAButton>
               </Link>
               <Link href="/seller/register">
-                <CTAButton variant="secondary" className="border-white/30 text-white hover:bg-white/10 h-12 px-6">
+                <CTAButton
+                  variant="secondary"
+                  className="border-white/30 text-white hover:bg-white/10 h-12 px-6"
+                >
                   {t("home_ctaRegisterSeller")}
                 </CTAButton>
               </Link>
@@ -108,43 +180,39 @@ export default function HomeClient() {
       <section className="section-container py-16 lg:py-20">
         <div className="mb-8 flex items-end justify-between gap-4">
           <div className="space-y-2">
-            <h2 className="type-h2 text-text-main">{t("home_popularCategories")}</h2>
-            <p className="max-w-2xl text-sm leading-6 text-text-muted">{t("home_categoriesCaption")}</p>
+            <h2 className="type-h2 text-text-main">
+              {t("home_popularCategories")}
+            </h2>
+            <p className="max-w-2xl text-sm leading-6 text-text-muted">
+              {t("home_categoriesCaption")}
+            </p>
           </div>
         </div>
-        {/* Category showcase banner */}
-        <div className="relative mb-8 overflow-hidden rounded-2xl bg-gradient-to-r from-bg-subtle/80 to-bg-base/60 border border-border-subtle">
-          <Image
-            src="/category-icons.png"
-            alt={t("home_popularCategories")}
-            width={1200}
-            height={200}
-            className="w-full h-48 object-cover object-center"
-            sizes="100vw"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-bg-base/90 via-bg-base/40 to-transparent flex items-end">
-            <div className="p-6">
-              <p className="type-h2 text-white">{t("home_popularCategories")}</p>
-              <p className="mt-1 text-white/70">{t("home_categoryList")}</p>
-            </div>
-          </div>
-        </div>
+
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {categories.map((category, index) => (
             <Link
               key={category.key}
               href={`/products?category=${encodeURIComponent(category.key)}`}
               className="surface-card group relative overflow-hidden p-5 transition-transform duration-300 hover:scale-[1.03]"
-              style={{ animation: `fade-up 520ms ${index * 60}ms cubic-bezier(0.22,1,0.36,1) both` }}
+              style={{
+                animation: `fade-up 520ms ${index * 60}ms cubic-bezier(0.22,1,0.36,1) both`,
+              }}
             >
-              <div className={`absolute inset-0 bg-gradient-to-br ${category.gradient} opacity-20 transition-opacity duration-300 group-hover:opacity-30`} />
+              <div
+                className={`absolute inset-0 bg-gradient-to-br ${category.gradient} opacity-20 transition-opacity duration-300 group-hover:opacity-30`}
+              />
               <div className="relative flex flex-col gap-4">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white">
                   <category.Icon className="w-6 h-6" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-text-main">{category.key}</p>
-                  <p className="mt-1 text-xs text-text-muted">{categoryProductCounts[category.key]} {t("products_items")}</p>
+                  <p className="text-sm font-semibold text-text-main">
+                    {category.labelTh}
+                  </p>
+                  <p className="mt-1 text-xs text-text-muted">
+                    {category.count} {t("products_items")}
+                  </p>
                 </div>
               </div>
             </Link>
@@ -157,68 +225,115 @@ export default function HomeClient() {
         <div className="mb-8 flex items-end justify-between gap-4">
           <div className="space-y-2">
             <h2 className="type-h2 text-text-main">{t("home_bestDeals")}</h2>
-            <p className="text-sm leading-6 text-text-muted">{t("home_dealsProof")}</p>
+            <p className="text-sm leading-6 text-text-muted">
+              {t("home_dealsProof")}
+            </p>
           </div>
-          <Link href="/products" className="text-sm font-semibold text-brand-tertiary transition-colors hover:text-text-main">
+          <Link
+            href="/products"
+            className="text-sm font-semibold text-brand-tertiary transition-colors hover:text-text-main"
+          >
             {t("common_viewAll")} →
           </Link>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {bestDeals.map((product, index) => (
-            <Link
-              key={product.id}
-              href={`/products/${product.id}`}
-              className="surface-card group flex h-full flex-col overflow-hidden"
-              style={{ animation: `fade-up 520ms ${index * 70}ms cubic-bezier(0.22,1,0.36,1) both` }}
+        {isLoading ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[...Array(4)].map((_, i) => (
+              <div
+                key={i}
+                className="surface-card flex h-full flex-col overflow-hidden"
+              >
+                <div className="aspect-[4/3] w-full animate-pulse bg-bg-subtle/40" />
+                <div className="flex flex-1 flex-col gap-3 p-4">
+                  <div className="space-y-2">
+                    <div className="h-3 w-16 animate-pulse rounded bg-bg-subtle/40" />
+                    <div className="h-4 w-full animate-pulse rounded bg-bg-subtle/40" />
+                  </div>
+                  <div className="mt-auto flex items-end justify-between gap-3">
+                    <div className="h-8 w-24 animate-pulse rounded bg-bg-subtle/40" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : hasError ? (
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-border-subtle bg-bg-subtle/20 py-16 text-center">
+            <p className="text-text-muted">ไม่สามารถโหลดสินค้าได้</p>
+            <button
+              onClick={fetchHome}
+              className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-brand-primary hover:text-brand-tertiary transition-colors"
             >
-              <div className="relative aspect-[4/3] w-full overflow-hidden bg-bg-subtle/60">
-                {product.discount > 50 && (
-                  <div className="absolute top-3 right-3 z-10 rounded-full bg-danger px-2 py-1 text-xs font-bold text-white">
-                    HOT DEAL
+              <RefreshCw className="w-4 h-4" />
+              ลองอีกครั้ง
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {bestDeals.map((product, index) => (
+              <Link
+                key={product.id}
+                href={`/products/${product.id}`}
+                className="surface-card group flex h-full flex-col overflow-hidden"
+                style={{
+                  animation: `fade-up 520ms ${index * 70}ms cubic-bezier(0.22,1,0.36,1) both`,
+                }}
+              >
+                <div className="relative aspect-[4/3] w-full overflow-hidden bg-bg-subtle/60">
+                  {product.discount > 20 && (
+                    <div className="absolute top-3 right-3 z-10 rounded-full bg-danger px-2 py-1 text-xs font-bold text-white">
+                      HOT DEAL
+                    </div>
+                  )}
+                  <Image
+                    src={product.image}
+                    alt={product.title}
+                    fill
+                    className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1280px) 25vw, 20vw"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-bg-base/80 via-transparent to-transparent" />
+                  <div className="absolute left-3 top-3">
+                    <Badge label={`-${product.discount}%`} tone="promo" />
                   </div>
-                )}
-                <Image
-                  src={product.image}
-                  alt={product.title}
-                  fill
-                  className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
-                  sizes="(max-width: 640px) 50vw, (max-width: 1280px) 25vw, 20vw"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-bg-base/80 via-transparent to-transparent" />
-                <div className="absolute left-3 top-3">
-                  <Badge label={`-${product.discount}%`} tone="promo" />
                 </div>
-              </div>
-              <div className="flex flex-1 flex-col gap-3 p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="type-meta text-text-muted">{product.category}</p>
-                    <p className="mt-1 line-clamp-2 text-base font-semibold leading-snug text-text-main">{product.title}</p>
-                  </div>
-                </div>
-                <div className="flex flex-1 flex-col justify-between gap-3">
-                  <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/[0.025] px-3 py-2.5">
+                <div className="flex flex-1 flex-col gap-3 p-4">
+                  <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">{t("common_verifiedSellers")}</p>
-                      <p className="mt-1 text-sm font-semibold text-text-subtle">{product.sellerCount} {t("common_sellers")}</p>
-                    </div>
-                    <div className="rounded-full border border-accent/20 bg-accent/10 px-2.5 py-1 text-xs font-bold text-accent">
-                      {t("common_instantDelivery")}
+                      <p className="type-meta text-text-muted">
+                        {product.category}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-base font-semibold leading-snug text-text-main">
+                        {product.title}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex items-end justify-between gap-3">
-                    <PriceTag price={product.price} originalPrice={product.originalPrice} />
-                    <div className="text-right">
-                      <p className="type-num text-lg font-bold text-text-main">4.9</p>
-                      <p className="text-xs text-text-muted">{t("common_reviewsLabel")}</p>
+                  <div className="flex flex-1 flex-col justify-between gap-3">
+                    <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/[0.025] px-3 py-2.5">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                          {t("common_verifiedSellers")}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-text-subtle">
+                          {product.sellerCount} {t("common_sellers")}
+                        </p>
+                      </div>
+                      <div className="rounded-full border border-accent/20 bg-accent/10 px-2.5 py-1 text-xs font-bold text-accent">
+                        {t("common_instantDelivery")}
+                      </div>
+                    </div>
+                    <div className="flex items-end justify-between gap-3">
+                      <PriceTag
+                        price={product.price}
+                        originalPrice={product.originalPrice}
+                      />
                     </div>
                   </div>
                 </div>
-              </div>
-            </Link>
-          ))}
-        </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Hot Deals */}
@@ -226,53 +341,87 @@ export default function HomeClient() {
         <div className="mb-8 flex items-end justify-between gap-4">
           <div className="space-y-2">
             <h2 className="type-h2 text-text-main">{t("home_recommended")}</h2>
-            <p className="max-w-2xl text-sm leading-6 text-text-muted">{t("home_recommendedDesc")}</p>
+            <p className="max-w-2xl text-sm leading-6 text-text-muted">
+              {t("home_recommendedDesc")}
+            </p>
           </div>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {hotDeals.map((product, index) => (
-            <Link
-              key={product.id}
-              href={`/products/${product.id}`}
-              className="surface-card group flex h-full flex-col overflow-hidden"
-              style={{ animation: `fade-up 520ms ${index * 70}ms cubic-bezier(0.22,1,0.36,1) both` }}
-            >
-              <div className="relative aspect-[4/3] w-full overflow-hidden bg-bg-subtle/60">
-                {product.discount > 50 && (
-                  <div className="absolute top-3 right-3 z-10 rounded-full bg-danger px-2 py-1 text-xs font-bold text-white">
-                    HOT DEAL
-                  </div>
-                )}
-                <Image
-                  src={product.image}
-                  alt={product.title}
-                  fill
-                  className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
-                  sizes="(max-width: 640px) 50vw, (max-width: 1280px) 25vw, 20vw"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-bg-base/80 via-transparent to-transparent" />
-                <div className="absolute left-3 top-3">
-                  <span className="rounded-full border border-brand-tertiary/16 bg-brand-primary/10 px-2.5 py-1 text-xs font-semibold text-brand-tertiary">
-                    {t("common_verifiedSellers")}
-                  </span>
+
+        {isLoading ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[...Array(4)].map((_, i) => (
+              <div
+                key={i}
+                className="surface-card flex h-full flex-col overflow-hidden"
+              >
+                <div className="aspect-[4/3] w-full animate-pulse bg-bg-subtle/40" />
+                <div className="flex flex-1 flex-col gap-3 p-4">
+                  <div className="h-3 w-16 animate-pulse rounded bg-bg-subtle/40" />
+                  <div className="h-4 w-full animate-pulse rounded bg-bg-subtle/40" />
+                  <div className="mt-auto h-6 w-20 animate-pulse rounded bg-bg-subtle/40" />
                 </div>
               </div>
-              <div className="flex flex-1 flex-col gap-3 p-4">
-                <div className="flex items-center justify-between">
-                  <p className="type-meta text-text-muted">{product.category}</p>
-                </div>
-                <p className="line-clamp-2 text-base font-semibold leading-snug text-text-main">{product.title}</p>
-                <div className="mt-auto flex items-end justify-between gap-3">
-                  <PriceTag price={product.price} originalPrice={product.originalPrice} />
-                  <div className="text-right">
-                    <p className="text-xs text-text-muted">{t("common_instantDelivery")}</p>
-                      <p className="mt-1 text-sm font-semibold text-accent">{t("home_stockReady")}</p>
+            ))}
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {hotDeals.map((product, index) => (
+              <Link
+                key={product.id}
+                href={`/products/${product.id}`}
+                className="surface-card group flex h-full flex-col overflow-hidden"
+                style={{
+                  animation: `fade-up 520ms ${index * 70}ms cubic-bezier(0.22,1,0.36,1) both`,
+                }}
+              >
+                <div className="relative aspect-[4/3] w-full overflow-hidden bg-bg-subtle/60">
+                  {product.discount > 20 && (
+                    <div className="absolute top-3 right-3 z-10 rounded-full bg-danger px-2 py-1 text-xs font-bold text-white">
+                      HOT DEAL
+                    </div>
+                  )}
+                  <Image
+                    src={product.image}
+                    alt={product.title}
+                    fill
+                    className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1280px) 25vw, 20vw"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-bg-base/80 via-transparent to-transparent" />
+                  <div className="absolute left-3 top-3">
+                    <span className="rounded-full border border-brand-tertiary/16 bg-brand-primary/10 px-2.5 py-1 text-xs font-semibold text-brand-tertiary">
+                      {t("common_verifiedSellers")}
+                    </span>
                   </div>
                 </div>
-              </div>
-            </Link>
-          ))}
-        </div>
+                <div className="flex flex-1 flex-col gap-3 p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="type-meta text-text-muted">
+                      {product.category}
+                    </p>
+                  </div>
+                  <p className="line-clamp-2 text-base font-semibold leading-snug text-text-main">
+                    {product.title}
+                  </p>
+                  <div className="mt-auto flex items-end justify-between gap-3">
+                    <PriceTag
+                      price={product.price}
+                      originalPrice={product.originalPrice}
+                    />
+                    <div className="text-right">
+                      <p className="text-xs text-text-muted">
+                        {t("common_instantDelivery")}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-accent">
+                        {t("home_stockReady")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* CTA Section */}
@@ -284,11 +433,17 @@ export default function HomeClient() {
               <span className="h-1.5 w-1.5 rounded-full bg-brand-tertiary" />
               {t("home_trustFirstMarketplace")}
             </div>
-            <h2 className="type-h1 text-text-main">{t("home_ctaTrustTitle")}</h2>
-            <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-text-subtle">{t("home_ctaTrustDesc")}</p>
+            <h2 className="type-h1 text-text-main">
+              {t("home_ctaTrustTitle")}
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-text-subtle">
+              {t("home_ctaTrustDesc")}
+            </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
               <Link href="/products">
-                <CTAButton className="h-14 px-8 text-base">{t("home_ctaTrustPrimary")}</CTAButton>
+                <CTAButton className="h-14 px-8 text-base">
+                  {t("home_ctaTrustPrimary")}
+                </CTAButton>
               </Link>
               <Link href="/orders">
                 <CTAButton variant="secondary" className="h-14 px-8 text-base">

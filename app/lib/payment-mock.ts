@@ -1,19 +1,19 @@
 export type PaymentMockLanguage = "th" | "en";
 
-export const PAYMENT_MOCK_MODE = true;
+export const PAYMENT_MOCK_MODE = process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === "true";
 
 export function getMockPaymentMethodLabel(method: string, lang: PaymentMockLanguage) {
   const normalized = method.toLowerCase();
 
   if (normalized.includes("card")) {
-    return lang === "th" ? "บัตรจำลอง" : "Mock card";
+    return lang === "th" ? "ชำระด้วยบัตร" : "Pay by Card";
   }
 
   if (normalized.includes("truemoney")) {
-    return lang === "th" ? "TrueMoney จำลอง" : "Mock TrueMoney";
+    return lang === "th" ? "TrueMoney Wallet" : "TrueMoney Wallet";
   }
 
-  return lang === "th" ? "PromptPay จำลอง" : "Mock PromptPay";
+  return lang === "th" ? "PromptPay QR" : "PromptPay QR";
 }
 
 export function getMockPaymentNotice(lang: PaymentMockLanguage) {

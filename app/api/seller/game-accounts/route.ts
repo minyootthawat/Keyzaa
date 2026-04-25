@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBearerPayload } from "@/lib/auth/jwt";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import { MOCK_GAME_ACCOUNTS } from "@/lib/mock-data";
 
 async function getSellerIdFromUserId(userId: string): Promise<string | null> {
   const supabase = createServiceRoleClient();
@@ -28,9 +27,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Seller not found" }, { status: 404 });
   }
 
-  // Mock mode — return mock data filtered by sellerId
-  const accounts = MOCK_GAME_ACCOUNTS.filter((a) => a.seller_id === sellerId);
-  return NextResponse.json({ accounts });
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("game_accounts")
+    .select("*")
+    .eq("seller_id", sellerId);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ accounts: data });
 }
 
 export async function POST(req: NextRequest) {
@@ -46,8 +52,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Seller not found" }, { status: 404 });
   }
 
-  // Mock mode — accept but don't persist
+  const supabase = createServiceRoleClient();
   const body = await req.json().catch(() => ({}));
-  const newAccount = { id: `ga_${Date.now()}`, seller_id: sellerId, is_active: true, ...body };
-  return NextResponse.json({ account: newAccount }, { status: 201 });
+  const { data, error } = await supabase
+    .from("game_accounts")
+    .insert({ seller_id: sellerId, is_active: true, ...body })
+    .select()
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ account: data }, { status: 201 });
 }

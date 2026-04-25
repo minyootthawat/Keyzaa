@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import CTAButton from "@/app/components/CTAButton";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { getStoredToken } from "@/app/lib/auth-client";
-import { MOCK_SETTINGS, MOCK_SELLER } from "@/lib/mock-data";
+
 
 interface SellerProfile {
   shopName: string;
@@ -62,8 +62,6 @@ export default function SellerSettingsPage() {
   useEffect(() => {
     const token = getStoredToken();
     if (!token) {
-      setForm({ shopName: MOCK_SETTINGS.store_name, shopDescription: MOCK_SETTINGS.description, avatarUrl: MOCK_SETTINGS.id_card_url, phone: MOCK_SETTINGS.phone, bankName: "", bankAccountNumber: "", accountHolderName: "" });
-      setStats({ rating: MOCK_SELLER.rating, salesCount: MOCK_SELLER.sales_count, balance: MOCK_SELLER.balance, verificationStatus: MOCK_SELLER.verified ? "verified" : "pending" });
       setLoading(false);
       return;
     }
@@ -94,8 +92,7 @@ export default function SellerSettingsPage() {
         });
       })
       .catch(() => {
-        setForm({ shopName: MOCK_SETTINGS.store_name, shopDescription: MOCK_SETTINGS.description, avatarUrl: MOCK_SETTINGS.id_card_url, phone: MOCK_SETTINGS.phone, bankName: "", bankAccountNumber: "", accountHolderName: "" });
-        setStats({ rating: MOCK_SELLER.rating, salesCount: MOCK_SELLER.sales_count, balance: MOCK_SELLER.balance, verificationStatus: MOCK_SELLER.verified ? "verified" : "pending" });
+        // error — form/stats stay as initial values
       })
       .finally(() => {
         setLoading(false);

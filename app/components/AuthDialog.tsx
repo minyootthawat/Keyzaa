@@ -310,7 +310,7 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
             <p className="text-xs text-danger font-semibold">{error}</p>
           )}
 
-          <CTAButton type="submit" fullWidth className="h-11" disabled={loading}>
+          <CTAButton type="submit" fullWidth className="h-11" disabled={loading} data-testid="auth-submit-btn">
             {loading ? "..." : mode === "login" ? t("auth_login") : t("register_submit")}
           </CTAButton>
         </form>

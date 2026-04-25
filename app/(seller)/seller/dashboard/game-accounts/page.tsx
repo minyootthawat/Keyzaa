@@ -6,7 +6,6 @@ import { getStoredToken } from "@/app/lib/auth-client";
 import { formatThaiBaht } from "@/app/lib/marketplace";
 import CTAButton from "@/app/components/CTAButton";
 import type { GameAccount } from "@/types/database";
-import { MOCK_GAME_ACCOUNTS } from "@/lib/mock-data";
 
 interface AddModalProps {
   onClose: () => void;
@@ -136,11 +135,10 @@ export default function GameAccountsPage() {
 
   useEffect(() => {
     const token = getStoredToken();
-    if (!token) { setAccounts(MOCK_GAME_ACCOUNTS); setLoading(false); return; }
     fetch("/api/seller/game-accounts", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
-      .then((d) => { setAccounts(d.accounts ?? MOCK_GAME_ACCOUNTS); setLoading(false); })
-      .catch(() => { setAccounts(MOCK_GAME_ACCOUNTS); setLoading(false); });
+      .then((d) => { setAccounts(d.accounts ?? []); setLoading(false); })
+      .catch(() => { setLoading(false); });
   }, []);
 
   const handleDelete = async (id: string) => {
