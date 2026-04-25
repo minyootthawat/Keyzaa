@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBearerPayload } from "@/lib/auth/jwt";
+import { getSellerAccessFromRequest } from "@/lib/auth/seller";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import type { Product } from "@/app/types";
 
@@ -36,43 +36,14 @@ function mapRowToProduct(row: ProductRow): Partial<Product> {
   };
 }
 
-async function getSellerIdFromUserId(userId: string): Promise<string | null> {
-  const supabase = createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("sellers")
-    .select("id, verified")
-    .eq("user_id", userId)
-    .single();
-
-  if (error || !data) return null;
-  return data.id;
-}
-
-async function getSellerVerificationStatus(sellerId: string): Promise<boolean> {
-  const supabase = createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("sellers")
-    .select("verified")
-    .eq("id", sellerId)
-    .single();
-
-  if (error || !data) return false;
-  return data.verified === true;
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const payload = await getBearerPayload(req);
-    const userId = payload?.userId as string | undefined;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const authResult = await getSellerAccessFromRequest(req);
+    if (authResult.status !== 200) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
 
-    const sellerId = await getSellerIdFromUserId(userId);
-    if (!sellerId) {
-      return NextResponse.json({ error: "Seller not found" }, { status: 404 });
-    }
+    const { sellerId } = authResult.access!;
 
     const supabase = createServiceRoleClient();
     const { data, error } = await supabase
@@ -96,19 +67,13 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const payload = await getBearerPayload(req);
-    const userId = payload?.userId as string | undefined;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const authResult = await getSellerAccessFromRequest(req);
+    if (authResult.status !== 200) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
 
-    const sellerId = await getSellerIdFromUserId(userId);
-    if (!sellerId) {
-      return NextResponse.json({ error: "Seller not found" }, { status: 404 });
-    }
+    const { sellerId, isVerified } = authResult.access!;
 
-    const isVerified = await getSellerVerificationStatus(sellerId);
     if (!isVerified) {
       return NextResponse.json({ error: "Seller not verified" }, { status: 403 });
     }

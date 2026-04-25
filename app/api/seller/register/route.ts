@@ -11,8 +11,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { storeName, phone } = await req.json();
-    if (!storeName || typeof storeName !== "string" || storeName.trim() === "") {
+    const { shopName, phone } = await req.json();
+    if (!shopName || typeof shopName !== "string" || shopName.trim() === "") {
       return NextResponse.json({ error: "Store name is required" }, { status: 400 });
     }
     if (!phone || typeof phone !== "string" || phone.trim() === "") {
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       .from("sellers")
       .insert({
         user_id: userId,
-        store_name: storeName.trim(),
+        store_name: shopName.trim(),
         phone: phone.trim(),
         verified: false,
       })
@@ -49,10 +49,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to register seller" }, { status: 500 });
     }
 
-    // Update user role to 'seller'
+    // Get current user role to decide whether to set 'seller' or 'both'
+    const { data: userData } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", userId)
+      .single();
+
+    const currentRole = userData?.role;
+    const newRole = currentRole === "buyer" ? "both" : "seller";
+
+    // Update user role to 'seller' (or 'both' if already a buyer)
     const { error: userError } = await supabase
       .from("users")
-      .update({ role: "seller" })
+      .update({ role: newRole })
       .eq("id", userId);
 
     if (userError) {
@@ -69,7 +79,7 @@ export async function POST(req: NextRequest) {
         verified: seller.verified,
         createdAt: seller.created_at,
       },
-      user: { id: userId, role: "seller" },
+      user: { id: userId, role: newRole },
     }, { status: 201 });
   } catch (error) {
     console.error("Seller register error:", error);

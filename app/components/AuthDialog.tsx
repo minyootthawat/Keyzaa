@@ -11,7 +11,7 @@ interface AuthDialogProps {
 }
 
 export default function AuthDialog({ onClose }: AuthDialogProps) {
-  const { user, isRegisteredSeller, isAdmin, login, register, logout } = useAuth();
+  const { user, role, isRegisteredSeller, isAdmin, login, register, logout } = useAuth();
   const { t, lang } = useLanguage();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
@@ -162,6 +162,14 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
                   className="flex h-11 items-center justify-center rounded-xl border border-border-subtle bg-bg-surface text-sm font-semibold text-text-main transition-colors hover:border-border-main"
                 >
                   {lang === "th" ? "ไปหน้าแดชบอร์ดผู้ขาย" : "Open seller dashboard"}
+                </a>
+              ) : null}
+              {(role === "seller" || role === "both") && !isRegisteredSeller ? (
+                <a
+                  href="/seller/onboarding"
+                  className="flex h-11 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-sm font-semibold text-accent transition-colors hover:bg-accent/15"
+                >
+                  {lang === "th" ? "สมัครเป็นผู้ขาย" : "Become a seller"}
                 </a>
               ) : null}
               {isAdmin ? (

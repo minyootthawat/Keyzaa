@@ -25,43 +25,47 @@ vi.mock("@/lib/auth/admin", () => ({
 // ---------------------------------------------------------------------
 vi.mock("@/lib/supabase/supabase", () => ({
   createServiceRoleClient: vi.fn().mockImplementation(() => {
-    function makeQueryResult(count: number, data: unknown[] = []) {
-      return {
-        count: count as unknown,
-        data: data as unknown[],
-        error: null,
-      };
+    function makeResult(count: number, data: unknown[] = []) {
+      return { count, data, error: null };
     }
 
     return {
-      from: vi.fn().mockImplementation((table: string) => {
-        // Revenue query (orders with status/payment_status = paid)
-        if (table === "orders" && false) {
-          // placeholder — not actually called this way in the route
-        }
+      from: vi.fn((table: string) => {
+        const tableCounts: Record<string, number> = {
+          users: 10,
+          sellers: 5,
+          products: 25,
+          orders: 100,
+        };
+
         return {
-          select: vi.fn().mockImplementation((columns: string, opts?: { count?: string }) => {
-            if (opts?.count === "exact" && columns === "*") {
-              // Count query — returns { count, data: [], error }
-              return vi.fn().mockReturnValue(makeQueryResult(0));
+          select: vi.fn((_columns: string, opts?: { count?: string }) => {
+            // Return raw result synchronously-like via resolved promise
+            // (route destructures { count } directly, no .then() chain needed)
+            const baseResult = makeResult(tableCounts[table] ?? 0, []);
+
+            // If opts.count is set, this is a head=true count query
+            // Return the count result directly (route destructures { count })
+            if (opts?.count) {
+              return Promise.resolve({ count: tableCounts[table] ?? 0, data: [], error: null });
             }
-            if (columns === "gross_amount") {
-              // Revenue query
-              return {
-                eq: vi.fn().mockReturnThis(),
-                data: [],
-                error: null,
-                count: 0,
-              };
+
+            // For revenue query: select("gross_amount").eq("status", "paid").eq("payment_status", "paid")
+            // Returns data array with gross_amount values
+            if (table === "orders" && opts === undefined) {
+              // This is the revenue query — return data with gross_amount
+              return Promise.resolve(
+                makeResult(0, [
+                  { gross_amount: 1000 },
+                  { gross_amount: 2500 },
+                  { gross_amount: 750 },
+                ])
+              );
             }
-            return {
-              eq: vi.fn().mockReturnThis(),
-              data: [],
-              error: null,
-              count: 0,
-            };
+
+            return Promise.resolve(baseResult);
           }),
-          insert: vi.fn().mockReturnValue({ error: null }),
+          insert: vi.fn(() => ({ error: null })),
         };
       }),
     };

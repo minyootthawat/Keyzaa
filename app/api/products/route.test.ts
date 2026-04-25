@@ -12,73 +12,52 @@ const mockState = {
   throwError: null as Error | null,
 };
 
-// Mock Supabase client chain
-function makeQueryBuilder() {
-  const state = {
-    filters: [] as Record<string, unknown>[],
-    sortField: "created_at" as string,
-    sortAsc: false,
-    rangeStart: 0,
-    rangeEnd: 19,
-    selectResult: null as Record<string, unknown>[] | null,
-    countResult: 0,
-  };
-
-  return {
-    select: vi.fn().mockReturnThis(),
-    and: vi.fn().mockImplementation(function (this: typeof state, filters: Record<string, unknown>[]) {
-      this.filters = filters;
-      return this;
-    }),
-    order: vi.fn().mockImplementation(function (
-      this: typeof state,
-      field: string,
-      opts?: { ascending: boolean }
-    ) {
-      this.sortField = field;
-      this.sortAsc = opts?.ascending ?? false;
-      return this;
-    }),
-    range: vi.fn().mockImplementation(function (this: typeof state, start: number, end: number) {
-      this.rangeStart = start;
-      this.rangeEnd = end;
-      return this;
-    }),
-    // For count query
-    then: vi.fn().mockImplementation(function (this: typeof state, resolve: (val: unknown) => unknown) {
-      return Promise.resolve(resolve({ count: mockState.count, error: null }));
-    }),
-  };
-}
+// ---------------------------------------------------------------------------
+// Mock Supabase client — supports .select("*", { count: "exact" }).eq().order().range()
+// ---------------------------------------------------------------------------
 
 function createMockSupabaseClient() {
+  function attachThen(obj: Record<string, unknown>, dataRef: () => unknown) {
+    Object.defineProperty(obj, "then", {
+      value: (resolve: (val: unknown) => unknown) =>
+        Promise.resolve(resolve({ data: dataRef(), error: null })),
+      writable: true,
+      configurable: true,
+    });
+    return obj;
+  }
+
+  function makeChain(dataRef: () => unknown, headCount?: () => unknown) {
+    const chain: Record<string, unknown> = {};
+    // For head queries (count), return { count } not { data }
+    // For data queries, return { data }
+    Object.defineProperty(chain, "then", {
+      value: (resolve: (val: unknown) => unknown) => {
+        const result = headCount ? { count: mockState.count, error: null } : { data: dataRef(), error: null };
+        Promise.resolve(resolve(result));
+      },
+      writable: true,
+      configurable: true,
+    });
+    const methods: Record<string, unknown> = {
+      select: (_fields?: string, opts?: { count: string; head?: boolean }) => {
+        if (opts?.head === true) {
+          // head count query: returns { count, error } — do NOT pass headCount to next chain
+          return makeChain(dataRef, () => ({ count: mockState.count }));
+        }
+        return makeChain(dataRef);
+      },
+      eq: () => makeChain(dataRef, headCount), // preserve headCount through eq
+      order: () => makeChain(dataRef, headCount), // preserve for .order().range() chain
+      range: () => makeChain(dataRef, headCount),
+      and: () => makeChain(dataRef, undefined),
+    };
+    Object.assign(chain, methods);
+    return chain;
+  }
+
   return {
-    from: vi.fn().mockImplementation(() => ({
-      select: vi.fn().mockImplementation(() => ({
-        then: vi.fn().mockImplementation((resolve: (val: unknown) => unknown) => {
-          return Promise.resolve(
-            resolve({
-              data: mockState.products,
-              error: null,
-            })
-          );
-        }),
-      })),
-      and: vi.fn().mockImplementation(() => ({
-        select: vi.fn().mockImplementation(() => ({
-          then: vi.fn().mockImplementation((resolve: (val: unknown) => unknown) => {
-            return Promise.resolve(
-              resolve({
-                data: mockState.products,
-                error: null,
-              })
-            );
-          }),
-        })),
-        order: vi.fn().mockReturnThis(),
-        range: vi.fn().mockReturnThis(),
-      })),
-    })),
+    from: vi.fn().mockImplementation(() => makeChain(() => mockState.products)),
   };
 }
 
@@ -116,6 +95,7 @@ const baseProductRow = {
 // ---------------------------------------------------------------------------
 // GET /api/products
 // ---------------------------------------------------------------------------
+
 describe("GET /api/products", () => {
   beforeEach(() => {
     vi.clearAllMocks();

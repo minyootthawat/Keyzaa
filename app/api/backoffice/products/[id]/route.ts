@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import { getBearerPayload } from "@/lib/auth/jwt";
+import { getAdminAccessFromRequest } from "@/lib/auth/admin";
 
 interface DbProduct {
   id: string;
@@ -28,28 +28,10 @@ interface ProductResponse {
 }
 
 async function verifyAdmin(req: NextRequest): Promise<{ authorized: boolean; error?: string; status?: number }> {
-  const payload = await getBearerPayload(req);
-  const userId = payload?.userId as string | undefined;
-
-  if (!userId) {
-    return { authorized: false, error: "Unauthorized", status: 401 };
+  const access = await getAdminAccessFromRequest(req);
+  if (access.status !== 200) {
+    return { authorized: false, error: access.error, status: access.status };
   }
-
-  const supabase = createServiceRoleClient();
-  const { data: user, error } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", userId)
-    .single();
-
-  if (error || !user) {
-    return { authorized: false, error: "User not found", status: 404 };
-  }
-
-  if (user.role !== "both") {
-    return { authorized: false, error: "Forbidden", status: 403 };
-  }
-
   return { authorized: true };
 }
 

@@ -31,10 +31,10 @@ export function createServerClientSupabase(): SupabaseClient {
 
 export function createServiceRoleClient(): SupabaseClient {
   const raw = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  // Remove all non-printable characters (newlines, carriage returns, etc.)
   const serviceRoleKey = raw.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim();
-  if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set or empty");
+  if (!serviceRoleKey || serviceRoleKey === 'mock_key' || !supabaseUrl || supabaseUrl.includes('mock.supabase.co')) {
+    // Return a dummy client for mock/demo mode — API routes should fallback to mock data
+    return createClient('https://mock.supabase.co', 'mock_key');
   }
   if (!supabaseUrl) {
     throw new Error("NEXT_PUBLIC_SUPABASE_URL must be set");

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBearerPayload } from "@/lib/auth/jwt";
+import { getSellerAccessFromRequest } from "@/lib/auth/seller";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
 interface SellerRow {
@@ -31,38 +31,33 @@ interface LedgerRow {
   created_at: string;
 }
 
-async function getSellerFromUserId(userId: string): Promise<SellerRow | null> {
-  const supabase = createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("sellers")
-    .select("*")
-    .eq("user_id", userId)
-    .single();
-
-  if (error || !data) return null;
-  return data as SellerRow;
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const payload = await getBearerPayload(req);
-    const userId = typeof payload?.userId === "string" ? payload.userId : null;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const authResult = await getSellerAccessFromRequest(req);
+    if (authResult.status !== 200) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
 
-    const seller = await getSellerFromUserId(userId);
-    if (!seller) {
+    const { sellerId } = authResult.access!;
+
+    const supabase = createServiceRoleClient();
+
+    const { data: seller, error: sellerError } = await supabase
+      .from("sellers")
+      .select("*")
+      .eq("id", sellerId)
+      .single();
+
+    if (sellerError || !seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const supabase = createServiceRoleClient();
+    const sellerRow = seller as SellerRow;
 
     const { data: ledgerData, error: ledgerError } = await supabase
       .from("seller_ledger_entries")
       .select("*")
-      .eq("seller_id", seller.id)
+      .eq("seller_id", sellerId)
       .order("created_at", { ascending: false });
 
     if (ledgerError) {
@@ -91,20 +86,20 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       seller: {
-        id: seller.id,
-        userId: seller.user_id,
-        shopName: seller.store_name,
-        phone: seller.phone ?? "",
-        rating: Number(seller.rating ?? 0),
-        salesCount: seller.sales_count ?? 0,
-        balance: Number(seller.balance ?? 0),
-        pendingBalance: Number(seller.pending_balance ?? 0),
-        verificationStatus: seller.verified ? "verified" : "new",
-        payoutStatus: seller.payout_status ?? "manual",
-        responseTimeMinutes: seller.response_time_minutes ?? 5,
-        fulfillmentRate: Number(seller.fulfillment_rate ?? 100),
-        disputeRate: Number(seller.dispute_rate ?? 0),
-        createdAt: seller.created_at,
+        id: sellerRow.id,
+        userId: sellerRow.user_id,
+        shopName: sellerRow.store_name,
+        phone: sellerRow.phone ?? "",
+        rating: Number(sellerRow.rating ?? 0),
+        salesCount: sellerRow.sales_count ?? 0,
+        balance: Number(sellerRow.balance ?? 0),
+        pendingBalance: Number(sellerRow.pending_balance ?? 0),
+        verificationStatus: sellerRow.verified ? "verified" : "new",
+        payoutStatus: sellerRow.payout_status ?? "manual",
+        responseTimeMinutes: sellerRow.response_time_minutes ?? 5,
+        fulfillmentRate: Number(sellerRow.fulfillment_rate ?? 100),
+        disputeRate: Number(sellerRow.dispute_rate ?? 0),
+        createdAt: sellerRow.created_at,
         totalGrossSales: grossSales,
         totalNetEarnings: netEarnings,
         totalCommissionPaid: totalCommission,
@@ -112,6 +107,56 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("Seller me error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const authResult = await getSellerAccessFromRequest(req);
+    if (authResult.status !== 200) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+
+    const { sellerId } = authResult.access!;
+
+    const supabase = createServiceRoleClient();
+
+    const { data: seller, error: sellerError } = await supabase
+      .from("sellers")
+      .select("*")
+      .eq("id", sellerId)
+      .single();
+
+    if (sellerError || !seller) {
+      return NextResponse.json({ error: "Seller not found" }, { status: 404 });
+    }
+
+    const body = await req.json();
+    const updates: Record<string, unknown> = {};
+
+    if (body.shopName !== undefined) updates.store_name = body.shopName.trim();
+    if (body.phone !== undefined) updates.phone = body.phone.trim();
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+    }
+
+    const { data, error } = await supabase
+      .from("sellers")
+      .update(updates)
+      .eq("id", sellerId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Seller PATCH error:", error);
+      return NextResponse.json({ error: "Failed to update seller" }, { status: 500 });
+    }
+
+    return NextResponse.json({ seller: { id: data.id, shopName: data.store_name, phone: data.phone } });
+  } catch (error) {
+    console.error("Seller PATCH error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

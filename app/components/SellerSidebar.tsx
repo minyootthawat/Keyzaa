@@ -19,6 +19,7 @@ export default function SellerSidebar() {
     { label: t("seller_overview"), href: "/seller/dashboard" },
     { label: t("sellerOrders_title"), href: "/seller/dashboard/orders" },
     { label: t("sellerProducts_title"), href: "/seller/dashboard/products" },
+    { label: "🎮 บัญชีเกม", href: "/seller/dashboard/game-accounts" },
     { label: t("wallet_title"), href: "/seller/dashboard/wallet" },
     { label: t("settings_title"), href: "/seller/dashboard/settings" },
   ];

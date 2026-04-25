@@ -6,6 +6,7 @@ import type { User, Seller } from "@/app/types";
 
 interface AuthContextType {
   user: User | null;
+  role: User["role"];
   seller: Seller | null;
   isRegisteredSeller: boolean;
   isAdmin: boolean;
@@ -51,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { data: session, status, update: updateSession } = useSession();
   const sellerIdRef = useRef<string | null>(null);
   const [seller, setSeller] = useState<Seller | null>(null);
+  const [role, setRole] = useState<User["role"]>("buyer");
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminRole, setAdminRole] = useState<User["adminRole"]>(null);
   const [adminPermissions, setAdminPermissions] = useState<NonNullable<User["adminPermissions"]>>([]);
@@ -64,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const token = getToken();
     if (!token) {
+      setRole("buyer");
       setIsAdmin(false);
       setAdminRole(null);
       setAdminPermissions([]);
@@ -78,6 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (res.ok) {
         const data = await res.json();
+        setRole((data.user?.role as User["role"]) || "buyer");
         setIsAdmin(Boolean(data.user?.isAdmin));
         setAdminRole(data.user?.adminRole ?? null);
         setAdminPermissions(Array.isArray(data.user?.adminPermissions) ? data.user.adminPermissions : []);
@@ -88,6 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // ignore
     }
 
+    setRole("buyer");
     setIsAdmin(false);
     setAdminRole(null);
     setAdminPermissions([]);
@@ -116,6 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Clearing account state is required when switching to an anonymous session.
       queueMicrotask(() => {
         setSeller(null);
+        setRole("buyer");
         setIsAdmin(false);
         setAdminRole(null);
         setAdminPermissions([]);
@@ -175,6 +181,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await updateSession();
     // Force re-fetch of admin status with the new session
     setAccountResolved(false);
+
+    // Bootstrap seller state from the login response
+    // sellerId is stored in sellers table (not users.seller_id), so fetch it directly
+    const sellerRes = await fetch("/api/seller/me", {
+      headers: { Authorization: `Bearer ${loginData.token}` },
+    });
+    if (sellerRes.ok) {
+      const sellerData = await sellerRes.json();
+      if (sellerData.seller) {
+        setSeller(sellerData.seller);
+        sellerIdRef.current = sellerData.seller.id;
+      }
+    }
   };
 
   const register = async (name: string, email: string, password: string) => {
@@ -231,6 +250,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        role,
         seller,
         isRegisteredSeller: !!seller,
         isAdmin,

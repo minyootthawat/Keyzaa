@@ -75,12 +75,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // Get admin access
         const adminAccess = getAdminAccessForEmail(user.email);
 
+        // Fetch sellerId from sellers table
+        const sellerId = await (async () => {
+          const { createServiceRoleClient } = await import("@/lib/supabase/supabase");
+          const supabase = createServiceRoleClient();
+          const { data: seller } = await supabase
+            .from("sellers")
+            .select("id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          return seller?.id;
+        })();
+
         const result: User = {
           id: user.id,
           name: user.name,
           email: user.email,
           role: (user as { role?: UserRole }).role,
-          sellerId: (user as { sellerId?: string }).sellerId || undefined,
+          sellerId: sellerId || undefined,
           isAdmin: adminAccess.isAdmin,
           adminRole: (adminAccess.adminRole ?? undefined) as string | undefined,
           adminPermissions: adminAccess.permissions,

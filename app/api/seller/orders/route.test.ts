@@ -12,6 +12,7 @@ const mockState = {
   orderItems: [] as Record<string, unknown>[],
   buyers: [] as { id: string; name: string }[],
   authUserId: "test-user-id",
+  ordersError: null as unknown,
 };
 
 function buildThenable(data: unknown, error: unknown) {
@@ -35,7 +36,7 @@ function buildThenable(data: unknown, error: unknown) {
     "count",
   ];
   for (const m of methods) {
-    obj[m] = () => buildThenable(data, error);
+    obj[m] = () => obj;
   }
   return obj;
 }
@@ -62,14 +63,7 @@ vi.mock("@/lib/supabase/supabase", () => ({
         };
       }
       if (table === "orders") {
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            data: mockState.orders,
-            error: null,
-          }),
-        };
+        return buildThenable(mockState.orders, mockState.ordersError);
       }
       if (table === "users") {
         return {
@@ -158,6 +152,7 @@ describe("GET /api/seller/orders", () => {
     mockState.orderItems = [];
     mockState.buyers = [];
     mockState.authUserId = "test-user-id";
+    mockState.ordersError = null;
   });
 
   it("returns 200 with orders array", async () => {
@@ -187,7 +182,8 @@ describe("GET /api/seller/orders", () => {
   });
 
   it("returns 500 on DB error", async () => {
-    mockState.orders = [{ ...baseOrderRow, invalid: true }];
+    mockState.orders = [];
+    mockState.ordersError = new Error("Database connection failed");
 
     const res = await GET(buildReq());
     expect(res.status).toBe(500);

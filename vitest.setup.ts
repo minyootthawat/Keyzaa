@@ -18,38 +18,42 @@ vi.mock("jose", () => ({
   jwtVerify: vi.fn().mockResolvedValue({
     payload: { userId: "user-123", email: "test@keyzaa.com" },
   }),
+  SignJWT: class {
+    setProtectedHeader = vi.fn().mockReturnThis();
+    setIssuedAt = vi.fn().mockReturnThis();
+    setExpirationTime = vi.fn().mockReturnThis();
+    sign = vi.fn().mockResolvedValue("mock-jwt-token");
+  },
 }));
 
 // ---------------------------------------------------------------------------
-// Mock Supabase client — returns a thenable chain.
-// MSW intercepts the underlying fetch calls made by the real client.
+// Mock @/lib/supabase/supabase — global fallback + base mock for all tests.
+// Tests override per-call using vi.mocked(createServiceRoleClient).mockReturnValueOnce()
+// inside each test. The vi.fn() wrapper allows per-test mockReturnValueOnce() calls.
 // ---------------------------------------------------------------------------
 vi.mock("@/lib/supabase/supabase", () => ({
   createServiceRoleClient: vi.fn().mockReturnValue({
-    from: vi.fn().mockReturnValue(buildChain()),
+    from: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({ data: null, error: null }),
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+        }),
+      }),
+    }),
+  }),
+  createServerClientSupabase: vi.fn().mockReturnValue({
+    from: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({ data: null, error: null }),
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+        }),
+      }),
+    }),
   }),
 }));
 
-/** Builds a fully chainable thenable that Supabase query methods return. */
-function buildChain(data: unknown = null, error: unknown = null): Record<string, unknown> {
-  const chain: Record<string, unknown> = {};
-  const obj: Record<string, unknown> = {
-    then: (res: (v: { data: unknown; error: unknown }) => void) => {
-      // Small delay so await catches it properly
-      setTimeout(() => res({ data, error }), 0);
-      return obj;
-    },
-  };
-
-  const methods = ["select", "eq", "neq", "order", "limit", "in", "single", "maybeSingle"];
-  for (const method of methods) {
-    chain[method] = () => buildChain(data, error);
-  }
-
-  return Object.assign(obj, chain);
-}
-
-// ---------------------------------------------------------------------------
 // Default MSW handlers — tests override via server.use()
 // ---------------------------------------------------------------------------
 const defaultSellerRecord = { id: "seller-001", user_id: "user-123" };

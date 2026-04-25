@@ -1,4 +1,8 @@
 import { createBrowserClientSupabase, createServiceRoleClient } from "@/lib/supabase/supabase";
+
+// Re-export for backwards compatibility
+export { createServiceRoleClient };
+
 import type {
   User,
   Seller,

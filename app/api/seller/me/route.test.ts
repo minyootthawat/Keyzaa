@@ -21,7 +21,7 @@ function buildThenable(data: unknown, error: unknown) {
   };
   const methods = ["select", "eq", "neq", "order", "limit", "in", "single", "maybeSingle", "data", "error", "count"];
   for (const m of methods) {
-    obj[m] = () => buildThenable(data, error);
+    obj[m] = () => obj;
   }
   return obj;
 }
@@ -40,7 +40,7 @@ vi.mock("@/lib/supabase/supabase", () => ({
         return {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
-          maybeSingle: vi.fn().mockImplementation(() => buildThenable(mockState.sellerData, null)),
+          single: vi.fn().mockImplementation(() => buildThenable(mockState.sellerData, null)),
         };
       }
       if (table === "seller_ledger_entries") {

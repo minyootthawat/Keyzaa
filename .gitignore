@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+pw_*
+
 
 # next.js
 /.next/

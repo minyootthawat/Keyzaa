@@ -66,61 +66,88 @@ function buildQueryResolver(table: string, getData: () => unknown[]) {
 }
 
 function createQueryMock() {
-  const state: QueryState = { table: "", filters: [] };
+  // Separate state for each query to avoid race conditions in parallel execution
+  const sellerState: QueryState = { table: "", filters: [] };
+  const ordersState: QueryState = { table: "", filters: [] };
+  const productsState: QueryState = { table: "", filters: [] };
+  const ledgerState: QueryState = { table: "", filters: [] };
+  const orderItemsState: QueryState = { table: "", filters: [] };
 
-  const chain: Record<string, (...args: unknown[]) => unknown> = {
-    select: () => {
-      state.table = "select";
-      return chain;
-    },
-    eq: (field: string, value: unknown) => {
-      state.filters.push({ field, value });
-      return chain;
-    },
-    order: (field: string, options?: { ascending: boolean }) => {
-      state.orderField = field;
-      state.orderAsc = options?.ascending ?? false;
-      return chain;
-    },
-    limit: (n: number) => {
-      state.limitVal = n;
-      return chain;
-    },
-    in: (field: string, values: string[]) => {
-      state.inField = field;
-      state.inValues = values;
-      return chain;
-    },
-    single: () => {
-      const data = mockState.sellerData;
-      return { data, error: data ? null : { message: "No data" } };
-    },
-    then: (resolve: (val: { data: unknown; error: unknown }) => void) => {
-      setTimeout(() => {
-        if (state.table === "sellers") {
-          resolve({ data: mockState.sellerData, error: null });
-        } else if (state.table === "orders") {
-          resolve({ data: mockState.orders, error: null });
-        } else if (state.table === "products") {
-          resolve({ data: mockState.products, error: null });
-        } else if (state.table === "seller_ledger_entries") {
-          resolve({ data: mockState.ledgerEntries, error: null });
-        } else if (state.table === "order_items") {
-          resolve({ data: mockState.orderItems, error: null });
+  function makeChain(state: QueryState) {
+    const chain: Record<string, (...args: unknown[]) => unknown> = {
+      select: () => {
+        state.table = state.table || "select";
+        return makeChain(state);
+      },
+      eq: (field: string, value: unknown) => {
+        state.filters.push({ field, value });
+        return makeChain(state);
+      },
+      order: (field: string, options?: { ascending: boolean }) => {
+        state.orderField = field;
+        state.orderAsc = options?.ascending ?? false;
+        return makeChain(state);
+      },
+      limit: (n: number) => {
+        state.limitVal = n;
+        return makeChain(state);
+      },
+      in: (field: string, values: string[]) => {
+        state.inField = field;
+        state.inValues = values;
+        return makeChain(state);
+      },
+      single: () => {
+        const data = state === sellerState ? mockState.sellerData : null;
+        return { data, error: data ? null : { message: "No data" } };
+      },
+      then: (resolve: (val: { data: unknown; error: unknown }) => void, _reject: unknown) => {
+        let data: unknown;
+        if (state === sellerState) {
+          data = mockState.sellerData;
+        } else if (state === ordersState) {
+          const orders = [...mockState.orders];
+          if (state.orderField === "created_at") {
+            orders.sort((a, b) => {
+              const aTime = new Date((a as { created_at: string }).created_at).getTime();
+              const bTime = new Date((b as { created_at: string }).created_at).getTime();
+              return state.orderAsc ? aTime - bTime : bTime - aTime;
+            });
+          }
+          data = orders;
+        } else if (state === productsState) {
+          data = mockState.products;
+        } else if (state === ledgerState) {
+          data = mockState.ledgerEntries;
+        } else if (state === orderItemsState) {
+          data = mockState.orderItems;
         } else {
-          resolve({ data: [], error: null });
+          data = [];
         }
-      }, 0);
-      return {};
-    },
+        resolve({ data, error: null });
+        // Return a thenable so Promise.all works correctly
+        return {
+          then: (resolve2: (val: unknown) => void) => {
+            resolve2({ data, error: null });
+          },
+        };
+      },
+    };
+    return chain;
+  }
+
+  // Return a from() that dispatches to the right state based on table hint
+  return {
+    from: vi.fn().mockImplementation((table: string) => {
+      if (table === "sellers") return makeChain(sellerState);
+      if (table === "orders") return makeChain(ordersState);
+      if (table === "products") return makeChain(productsState);
+      if (table === "seller_ledger_entries") return makeChain(ledgerState);
+      if (table === "order_items") return makeChain(orderItemsState);
+      return makeChain({ table: "", filters: [] });
+    }),
   };
-
-  return chain;
 }
-
-// ---------------------------------------------------------------------------
-// Module mocks
-// ---------------------------------------------------------------------------
 
 vi.mock("@/lib/auth/jwt", () => ({
   getBearerPayload: vi.fn().mockImplementation(() => {
@@ -130,9 +157,7 @@ vi.mock("@/lib/auth/jwt", () => ({
 }));
 
 vi.mock("@/lib/supabase/supabase", () => ({
-  createServiceRoleClient: vi.fn().mockReturnValue({
-    from: vi.fn().mockImplementation(() => createQueryMock()),
-  }),
+  createServiceRoleClient: vi.fn().mockImplementation(() => createQueryMock()),
 }));
 
 // ---------------------------------------------------------------------------
@@ -205,7 +230,6 @@ const baseOrderItem = {
 
 describe("GET /api/seller/overview", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     mockState.authUserId = "test-user-id";
     mockState.sellerData = { id: "seller-001", user_id: "test-user-id" };
     mockState.orders = [];
