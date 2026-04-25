@@ -1,4 +1,8 @@
 import { createBrowserClientSupabase, createServiceRoleClient } from "@/lib/supabase/supabase";
+
+// Re-export for backwards compatibility
+export { createServiceRoleClient };
+
 import type {
   User,
   Seller,
@@ -24,7 +28,7 @@ export function connectAdminDB() {
 // ─── User helpers ──────────────────────────────────────────────────────────
 
 export async function findUserByEmail(email: string): Promise<UserRow | null> {
-  const supabase = connectDB();
+  const supabase = connectAdminDB();
   const { data, error } = await supabase
     .from("users")
     .select("*")
@@ -36,7 +40,7 @@ export async function findUserByEmail(email: string): Promise<UserRow | null> {
 }
 
 export async function findUserById(id: string): Promise<UserRow | null> {
-  const supabase = connectDB();
+  const supabase = connectAdminDB();
   const { data, error } = await supabase
     .from("users")
     .select("*")

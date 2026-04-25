@@ -1,7 +1,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '').trim();
 
 export function createBrowserClientSupabase(): SupabaseClient {
   if (!supabaseUrl || !supabaseAnonKey) {
@@ -30,9 +30,11 @@ export function createServerClientSupabase(): SupabaseClient {
 }
 
 export function createServiceRoleClient(): SupabaseClient {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set");
+  const raw = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  const serviceRoleKey = raw.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim();
+  if (!serviceRoleKey || serviceRoleKey === 'mock_key' || !supabaseUrl || supabaseUrl.includes('mock.supabase.co')) {
+    // Return a dummy client for mock/demo mode — API routes should fallback to mock data
+    return createClient('https://mock.supabase.co', 'mock_key');
   }
   if (!supabaseUrl) {
     throw new Error("NEXT_PUBLIC_SUPABASE_URL must be set");

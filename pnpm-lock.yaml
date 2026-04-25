@@ -11,6 +11,9 @@ importers:
       '@auth/supabase-adapter':
         specifier: ^1.11.2
         version: 1.11.2(@supabase/supabase-js@2.104.0)
+      '@stripe/stripe-js':
+        specifier: ^9.3.0
+        version: 9.3.1
       '@supabase/supabase-js':
         specifier: ^2.104.0
         version: 2.104.0
@@ -20,6 +23,9 @@ importers:
       jose:
         specifier: ^6.2.2
         version: 6.2.2
+      lucide-react:
+        specifier: ^1.9.0
+        version: 1.9.0(react@19.2.4)
       mongodb:
         specifier: ^7.1.1
         version: 7.2.0
@@ -41,6 +47,9 @@ importers:
       react-dom:
         specifier: 19.2.4
         version: 19.2.4(react@19.2.4)
+      stripe:
+        specifier: ^22.0.2
+        version: 22.0.2(@types/node@20.19.39)
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4
@@ -674,6 +683,10 @@ packages:
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
+
+  '@stripe/stripe-js@9.3.1':
+    resolution: {integrity: sha512-oWpAEENuVg8aw4W2OUAM9WxRDtIV2YTLr2nr6qHT+D8tHPW7bya61ufinPpUespyRNUVXqesnHo+jQdUNsGywA==}
+    engines: {node: '>=12.16'}
 
   '@supabase/auth-js@2.104.0':
     resolution: {integrity: sha512-Vs0ndL+s5an7rOmXtS/nbYnGXL8m+KXlCSrPIcw9bR96ma6qyLYILnE6syuM+rpDnf+Tg4PVNxNB2+oDwoy6mA==}
@@ -2019,6 +2032,11 @@ packages:
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
 
+  lucide-react@1.9.0:
+    resolution: {integrity: sha512-6qVAmbgCjcJz7sAGSPSSJ++RAwjlK2XCbRrZKv63Ciko1KT8jX0//CXxgI3jg2HlJu8tADqdYlNDebmYjeoruA==}
+    peerDependencies:
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
     hasBin: true
@@ -2532,6 +2550,15 @@ packages:
   strip-json-comments@3.1.1:
     resolution: {integrity: sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==}
     engines: {node: '>=8'}
+
+  stripe@22.0.2:
+    resolution: {integrity: sha512-2/BLrQ3oB1zlNfeL/LfHFjTGx6EQn0j+ztrrTJHuDjV5VVIpk92oSDaxyKLUr3pG3dnee2LZqhFUv2Bf0G1/3g==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@types/node': '>=18'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
 
   styled-jsx@5.1.6:
     resolution: {integrity: sha512-qSVyDTeMotdvQYoHWLNGwRFJHC+i+ZvdBRYosOFgC+Wg1vx4frN2/RG/NA7SYqqvKNLf39P2LSRA2pu6n0XYZA==}
@@ -3351,6 +3378,8 @@ snapshots:
   '@rtsao/scc@1.1.0': {}
 
   '@standard-schema/spec@1.1.0': {}
+
+  '@stripe/stripe-js@9.3.1': {}
 
   '@supabase/auth-js@2.104.0':
     dependencies:
@@ -4806,6 +4835,10 @@ snapshots:
     dependencies:
       yallist: 3.1.1
 
+  lucide-react@1.9.0(react@19.2.4):
+    dependencies:
+      react: 19.2.4
+
   lz-string@1.5.0: {}
 
   magic-string@0.30.21:
@@ -5379,6 +5412,10 @@ snapshots:
       min-indent: 1.0.1
 
   strip-json-comments@3.1.1: {}
+
+  stripe@22.0.2(@types/node@20.19.39):
+    optionalDependencies:
+      '@types/node': 20.19.39
 
   styled-jsx@5.1.6(@babel/core@7.29.0)(react@19.2.4):
     dependencies:

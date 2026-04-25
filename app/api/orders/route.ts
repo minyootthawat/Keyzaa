@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { buildLedgerEntries, calculateMarketplaceAmounts, deriveOrderState, mapOrderDocument } from "@/lib/marketplace-server";
 import type { Order, OrderItem, OrderStatus, PaymentStatus, FulfillmentStatus } from "@/app/types";
 
@@ -34,36 +34,72 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { db } = await connectDB();
-    const orders = db.collection("orders");
+    const supabase = createServiceRoleClient();
 
-    // Security: only return orders where buyer_id matches the authenticated user
-    const documents = await orders
-      .find({ buyer_id: userId })
-      .sort({ created_at: -1 })
-      .toArray();
+    const { data: orderRows, error: ordersError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("buyer_id", userId)
+      .order("created_at", { ascending: false });
 
-    return NextResponse.json({
-      orders: documents.map((document) =>
+    if (ordersError) {
+      console.error("Supabase orders fetch error:", ordersError);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+
+    const orders: Order[] = [];
+
+    for (const row of orderRows ?? []) {
+      const { data: itemRows, error: itemsError } = await supabase
+        .from("order_items")
+        .select("*")
+        .eq("order_id", row.id);
+
+      if (itemsError) {
+        console.error("Supabase order_items fetch error:", itemsError);
+        continue;
+      }
+
+      const items: OrderItem[] = (itemRows ?? []).map((item) => ({
+        id: item.id as string,
+        orderId: row.id as string,
+        productId: item.product_id as string,
+        title: item.title as string,
+        titleTh: item.title_th as string | undefined,
+        titleEn: item.title_en as string | undefined,
+        image: (item.image as string) || "",
+        price: Number(item.price ?? 0),
+        quantity: Number(item.quantity ?? 1),
+        sellerId: row.seller_id as string,
+        keys: [],
+        platform: (item.platform as string) || "",
+        regionCode: item.region_code as string | undefined,
+        activationMethodTh: item.activation_method_th as string | undefined,
+        activationMethodEn: item.activation_method_en as string | undefined,
+      }));
+
+      orders.push(
         mapOrderDocument({
-          orderId: document.order_id as string,
-          buyerId: document.buyer_id as string,
-          sellerId: document.seller_id as string,
-          date: document.created_at as string,
-          status: (document.status as OrderStatus) || "pending",
-          paymentStatus: (document.payment_status as PaymentStatus) || "pending",
-          fulfillmentStatus: (document.fulfillment_status as FulfillmentStatus) || "pending",
-          totalPrice: Number(document.total_price ?? 0),
-          grossAmount: Number(document.gross_amount ?? 0),
-          commissionAmount: Number(document.commission_amount ?? 0),
-          sellerNetAmount: Number(document.seller_net_amount ?? 0),
-          platformFeeRate: Number(document.platform_fee_rate ?? 0.12),
-          currency: (document.currency as string) || "THB",
-          paymentMethod: (document.payment_method as string) || "",
-          items: (document.items as OrderItem[]) || [],
+          orderId: row.id as string,
+          buyerId: row.buyer_id as string,
+          sellerId: row.seller_id as string,
+          date: (row.created_at as string) || new Date().toISOString(),
+          status: (row.status as OrderStatus) || "pending",
+          paymentStatus: (row.payment_status as PaymentStatus) || "pending",
+          fulfillmentStatus: (row.fulfillment_status as FulfillmentStatus) || "pending",
+          totalPrice: Number(row.total_price ?? 0),
+          grossAmount: Number(row.gross_amount ?? 0),
+          commissionAmount: Number(row.commission_amount ?? 0),
+          sellerNetAmount: Number(row.seller_net_amount ?? 0),
+          platformFeeRate: Number(row.platform_fee_rate ?? 0.12),
+          currency: (row.currency as string) || "THB",
+          paymentMethod: (row.payment_method as string) || "",
+          items,
         })
-      ),
-    });
+      );
+    }
+
+    return NextResponse.json({ orders });
   } catch (error) {
     console.error("Orders fetch error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -89,17 +125,15 @@ export async function POST(req: NextRequest) {
     const groupedItems = groupItemsBySeller(body.items);
     const createdAt = new Date().toISOString();
 
-    const { db } = await connectDB();
-    const orders = db.collection("orders");
-    const ledgerEntries = db.collection("seller_ledger_entries");
+    const supabase = createServiceRoleClient();
     const createdOrders: Order[] = [];
 
     for (const [sellerId, sellerItems] of groupedItems.entries()) {
-      const orderId = `ord_${Date.now()}_${sellerId.replace(/[^a-zA-Z0-9]/g, "").slice(-8)}`;
+      const orderUuid = randomUUID();
       const mappedItems = sellerItems.map((item, index) => ({
         ...item,
         id: item.id || `oi_${randomUUID()}`,
-        orderId,
+        orderId: orderUuid,
         keys: Array.isArray(item.keys) ? item.keys : [],
         quantity: item.quantity || 1,
         image: item.image,
@@ -114,8 +148,9 @@ export async function POST(req: NextRequest) {
       const financials = calculateMarketplaceAmounts(grossAmount);
       const state = deriveOrderState(status);
 
-      const orderDocument = {
-        order_id: orderId,
+      // Insert into orders table
+      const { error: orderError } = await supabase.from("orders").insert({
+        id: orderUuid,
         buyer_id: userId,
         seller_id: sellerId,
         product_id: mappedItems[0]?.productId ?? null,
@@ -130,37 +165,65 @@ export async function POST(req: NextRequest) {
         payment_status: state.paymentStatus,
         fulfillment_status: state.fulfillmentStatus,
         payment_method: body.paymentMethod,
-        stripe_session_id: body.stripeSessionId ?? null,
-        stripe_payment_intent: null,
-        paid_at: null,
-        items: mappedItems,
         created_at: createdAt,
         updated_at: createdAt,
-      };
-
-      await orders.insertOne(orderDocument);
-
-      const entries = buildLedgerEntries({
-        sellerId,
-        orderId,
-        grossAmount: financials.grossAmount,
-        commissionAmount: financials.commissionAmount,
-        sellerNetAmount: financials.sellerNetAmount,
-        createdAt,
       });
 
+      if (orderError) {
+        console.error("Supabase order insert error:", orderError);
+        return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
+      }
+
+      // Insert into order_items table
+      for (const item of mappedItems) {
+        const { error: itemError } = await supabase.from("order_items").insert({
+          id: item.id,
+          order_id: orderUuid,
+          product_id: item.productId,
+          title: item.title,
+          title_th: item.titleTh || null,
+          title_en: item.titleEn || null,
+          image: item.image || null,
+          price: item.price,
+          quantity: item.quantity,
+          platform: item.platform || null,
+          region_code: item.regionCode || null,
+          activation_method_th: item.activationMethodTh || null,
+          activation_method_en: item.activationMethodEn || null,
+        });
+
+        if (itemError) {
+          console.error("Supabase order_item insert error:", itemError);
+        }
+      }
+
+      // Insert ledger entries for paid orders
       if (state.paymentStatus === "paid") {
-        await ledgerEntries.insertMany(
-          entries.map((entry) => ({
-            ...entry,
-            entryId: `led_${randomUUID()}`,
-          }))
-        );
+        const entries = buildLedgerEntries({
+          sellerId,
+          orderId: orderUuid,
+          grossAmount: financials.grossAmount,
+          commissionAmount: financials.commissionAmount,
+          sellerNetAmount: financials.sellerNetAmount,
+          createdAt,
+        });
+
+        for (const entry of entries) {
+          await supabase.from("seller_ledger_entries").insert({
+            id: `led_${randomUUID()}`,
+            seller_id: sellerId,
+            order_id: orderUuid,
+            type: entry.type,
+            amount: entry.amount,
+            description: entry.description || null,
+            created_at: createdAt,
+          });
+        }
       }
 
       createdOrders.push(
         mapOrderDocument({
-          orderId,
+          orderId: orderUuid,
           buyerId: userId,
           sellerId,
           date: createdAt,
@@ -179,10 +242,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      order: createdOrders[0],
-      orders: createdOrders,
-    }, { status: 201 });
+    return NextResponse.json(
+      {
+        order: createdOrders[0],
+        orders: createdOrders,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("Order create error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

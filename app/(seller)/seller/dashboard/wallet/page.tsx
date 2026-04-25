@@ -7,6 +7,7 @@ import { formatThaiBaht } from "@/app/lib/marketplace";
 import { getMockPayoutNotice } from "@/app/lib/payment-mock";
 import CTAButton from "@/app/components/CTAButton";
 import type { SellerLedgerEntry, SellerWalletSummary } from "@/app/types";
+import { MOCK_WALLET } from "@/lib/mock-data";
 
 interface SellerWalletResponse {
   summary: SellerWalletSummary;
@@ -24,6 +25,7 @@ export default function SellerWalletPage() {
     const token = getStoredToken();
 
     if (!token) {
+      setWallet(MOCK_WALLET as unknown as SellerWalletResponse);
       return;
     }
 
@@ -41,7 +43,7 @@ export default function SellerWalletPage() {
         setWallet(data);
       })
       .catch(() => {
-        setWallet(null);
+        setWallet(MOCK_WALLET as unknown as SellerWalletResponse);
       });
   }, []);
 

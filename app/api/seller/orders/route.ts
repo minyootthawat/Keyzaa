@@ -1,25 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import type { OrderItem, OrderStatus, PaymentStatus, FulfillmentStatus } from "@/app/types";
+
+interface OrderRow {
+  id: string;
+  buyer_id: string;
+  seller_id: string;
+  created_at: string;
+  status: string;
+  payment_status: string;
+  fulfillment_status: string;
+  total_price: number;
+  gross_amount: number;
+  commission_amount: number;
+  seller_net_amount: number;
+  platform_fee_rate: number;
+  currency: string;
+  payment_method: string;
+}
 
 export async function GET(req: NextRequest) {
   try {
     const payload = await getBearerPayload(req);
-    const userId = typeof payload?.userId === "string" ? payload.userId : null;
+    const userId = payload?.userId as string | undefined;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get seller id from Supabase (seller table still in Supabase)
     const supabase = createServiceRoleClient();
+
+    // Get seller by user_id
     const { data: seller, error: sellerError } = await supabase
       .from("sellers")
       .select("id")
       .eq("user_id", userId)
-      .maybeSingle();
+      .single();
 
     if (sellerError || !seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
@@ -27,62 +44,100 @@ export async function GET(req: NextRequest) {
 
     const sellerId = seller.id;
 
-    // Fetch orders from MongoDB
-    const { db } = await connectDB();
-    const orders = db.collection("orders");
+    // Fetch orders for this seller
+    const { data: orders, error: ordersError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("seller_id", sellerId)
+      .order("created_at", { ascending: false });
 
-    const documents = await orders
-      .find({ seller_id: sellerId })
-      .sort({ created_at: -1 })
-      .toArray();
+    if (ordersError) {
+      console.error("Orders fetch error:", ordersError);
+      return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 });
+    }
 
-    // Fetch buyer names from Supabase
-    const buyerIds = [...new Set(documents.map((d) => d.buyer_id as string))];
-    const { data: buyerRows } = await supabase
+    if (!orders || orders.length === 0) {
+      return NextResponse.json({ orders: [] });
+    }
+
+    // Collect unique buyer IDs
+    const buyerIds = [...new Set(orders.map((o) => o.buyer_id))];
+
+    // Fetch buyer names
+    const { data: buyers, error: buyersError } = await supabase
       .from("users")
       .select("id, name")
       .in("id", buyerIds);
 
-    const buyerMap: Record<string, string> = {};
-    for (const u of buyerRows ?? []) {
-      buyerMap[u.id] = u.name;
+    if (buyersError) {
+      console.error("Buyers fetch error:", buyersError);
     }
 
-    const result = documents.map((doc) => {
-      const items = (doc.items ?? []).map((item: Record<string, unknown>) => ({
-        id: (item._id as { toString(): string })?.toString() ?? "",
-        orderId: doc.order_id as string,
-        productId: item.product_id as string,
-        title: item.title ?? "",
-        titleTh: item.title_th ?? undefined,
-        titleEn: item.title_en ?? undefined,
-        image: item.image ?? "",
-        price: Number(item.price),
-        quantity: Number(item.quantity),
-        sellerId,
-        keys: [],
-        platform: (item.platform as string) ?? "",
-        regionCode: item.region_code as string | undefined,
-        activationMethodTh: item.activation_method_th as string | undefined,
-        activationMethodEn: item.activation_method_en as string | undefined,
-      }));
+    const buyerMap = new Map<string, string>();
+    if (buyers) {
+      for (const buyer of buyers) {
+        buyerMap.set(buyer.id, buyer.name);
+      }
+    }
+
+    // Fetch order items for all orders
+    const orderIds = orders.map((o) => o.id);
+    const { data: allItems, error: itemsError } = await supabase
+      .from("order_items")
+      .select("*")
+      .in("order_id", orderIds);
+
+    if (itemsError) {
+      console.error("Order items fetch error:", itemsError);
+    }
+
+    // Group items by order_id
+    const itemsByOrder = new Map<string, OrderItem[]>();
+    if (allItems) {
+      for (const item of allItems) {
+        const mapped: OrderItem = {
+          id: item.id,
+          orderId: item.order_id,
+          productId: item.product_id,
+          title: item.title ?? "",
+          titleTh: item.title_th ?? undefined,
+          titleEn: item.title_en ?? undefined,
+          image: item.image ?? "",
+          price: Number(item.price),
+          quantity: Number(item.quantity),
+          sellerId: sellerId,
+          keys: [],
+          platform: item.platform ?? "",
+          regionCode: item.region_code ?? undefined,
+          activationMethodTh: item.activation_method_th ?? undefined,
+          activationMethodEn: item.activation_method_en ?? undefined,
+        };
+        const existing = itemsByOrder.get(item.order_id) ?? [];
+        existing.push(mapped);
+        itemsByOrder.set(item.order_id, existing);
+      }
+    }
+
+    // Build response
+    const result = orders.map((order: OrderRow) => {
+      const items = itemsByOrder.get(order.id) ?? [];
 
       return {
-        id: doc.order_id as string,
-        orderId: doc.order_id as string,
-        buyerId: doc.buyer_id as string,
-        buyerName: buyerMap[doc.buyer_id as string] ?? "Unknown",
-        date: doc.created_at as string,
-        status: doc.status as OrderStatus,
-        paymentStatus: doc.payment_status as PaymentStatus,
-        fulfillmentStatus: doc.fulfillment_status as FulfillmentStatus,
-        totalPrice: Number(doc.total_price),
-        grossAmount: Number(doc.gross_amount),
-        commissionAmount: Number(doc.commission_amount),
-        sellerNetAmount: Number(doc.seller_net_amount),
-        platformFeeRate: Number(doc.platform_fee_rate),
-        currency: (doc.currency as string) ?? "THB",
-        paymentMethod: (doc.payment_method as string) ?? "",
+        id: order.id,
+        orderId: order.id,
+        buyerId: order.buyer_id,
+        buyerName: buyerMap.get(order.buyer_id) ?? "Buyer",
+        date: order.created_at,
+        status: order.status as OrderStatus,
+        paymentStatus: order.payment_status as PaymentStatus,
+        fulfillmentStatus: order.fulfillment_status as FulfillmentStatus,
+        totalPrice: Number(order.total_price),
+        grossAmount: Number(order.gross_amount),
+        commissionAmount: Number(order.commission_amount),
+        sellerNetAmount: Number(order.seller_net_amount),
+        platformFeeRate: Number(order.platform_fee_rate),
+        currency: order.currency ?? "THB",
+        paymentMethod: order.payment_method ?? "",
         items,
       };
     });

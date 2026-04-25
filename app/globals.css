@@ -99,6 +99,7 @@ body {
 
 .section-container {
   width: 100%;
+  max-width: 80rem; /* 1280px */
   margin-left: auto;
   margin-right: auto;
   padding-left: 1.25rem;
@@ -109,6 +110,13 @@ body {
   .section-container {
     padding-left: 2rem;
     padding-right: 2rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .section-container {
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
   }
 }
 

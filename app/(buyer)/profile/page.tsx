@@ -199,7 +199,7 @@ export default function ProfilePage() {
               <h2 className="type-h2 mt-3">{t("profile_adminAccess")}</h2>
               <p className="mt-2 text-sm text-text-subtle">{t("profile_adminDesc")}</p>
               <Link
-                href="/admin/dashboard"
+                href="/backoffice/dashboard"
                 className="mt-5 inline-flex h-11 items-center justify-center rounded-xl border border-warning/20 bg-warning/10 px-4 text-sm font-semibold text-warning transition-colors hover:bg-warning/15"
               >
                 {t("profile_openAdmin")}

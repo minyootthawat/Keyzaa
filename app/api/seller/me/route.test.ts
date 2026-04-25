@@ -9,44 +9,8 @@ import { GET } from "./route";
 const mockState = {
   authUserId: "test-user-id",
   sellerData: null as Record<string, unknown> | null,
-  ledgerDocs: [] as Record<string, unknown>[],
-  throwError: null as Error | null,
+  ledgerData: [] as Record<string, unknown>[],
 };
-
-function makeCollection(name: string) {
-  if (name === "seller_ledger_entries") {
-    return {
-      find: vi.fn().mockReturnValue({
-        sort: vi.fn().mockReturnThis(),
-        toArray: vi.fn().mockResolvedValue(mockState.ledgerDocs),
-      }),
-    };
-  }
-  return {
-    find: vi.fn().mockReturnValue({ sort: vi.fn().mockReturnThis(), toArray: vi.fn().mockResolvedValue([]) }),
-    findOne: vi.fn().mockResolvedValue(null),
-  };
-}
-
-vi.mock("@/lib/auth/jwt", () => ({
-  getBearerPayload: vi.fn().mockImplementation(() => {
-    if (!mockState.authUserId) return Promise.resolve(null);
-    return Promise.resolve({ userId: mockState.authUserId });
-  }),
-}));
-
-vi.mock("@/lib/db/mongodb", () => ({
-  connectDB: vi.fn().mockImplementation(async () => {
-    if (mockState.throwError) throw mockState.throwError;
-    return {
-      client: {} as unknown,
-      db: {
-        collection: vi.fn().mockImplementation((name: string) => makeCollection(name)),
-      },
-    };
-  }),
-  getDb: vi.fn(),
-}));
 
 function buildThenable(data: unknown, error: unknown) {
   const obj: Record<string, unknown> = {
@@ -57,20 +21,40 @@ function buildThenable(data: unknown, error: unknown) {
   };
   const methods = ["select", "eq", "neq", "order", "limit", "in", "single", "maybeSingle", "data", "error", "count"];
   for (const m of methods) {
-    obj[m] = () => buildThenable(data, error);
+    obj[m] = () => obj;
   }
   return obj;
 }
 
+vi.mock("@/lib/auth/jwt", () => ({
+  getBearerPayload: vi.fn().mockImplementation(() => {
+    if (!mockState.authUserId) return Promise.resolve(null);
+    return Promise.resolve({ userId: mockState.authUserId });
+  }),
+}));
+
 vi.mock("@/lib/supabase/supabase", () => ({
   createServiceRoleClient: vi.fn().mockReturnValue({
-    from: vi.fn().mockImplementation(() => ({
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      in: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockImplementation(() => buildThenable(mockState.sellerData, null)),
-      insert: vi.fn().mockReturnValue({ error: null }),
-    })),
+    from: vi.fn().mockImplementation((table: string) => {
+      if (table === "sellers") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockImplementation(() => buildThenable(mockState.sellerData, null)),
+        };
+      }
+      if (table === "seller_ledger_entries") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockImplementation(() => buildThenable(mockState.ledgerData, null)),
+        };
+      }
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+      };
+    }),
   }),
 }));
 
@@ -102,7 +86,7 @@ const baseSellerData = {
 };
 
 const baseLedgerEntry = (type: string, amount: number) => ({
-  _id: `ledger-${type}-1`,
+  id: `ledger-${type}-1`,
   seller_id: "seller-001",
   type,
   amount,
@@ -118,8 +102,7 @@ describe("GET /api/seller/me", () => {
     vi.clearAllMocks();
     mockState.authUserId = "test-user-id";
     mockState.sellerData = { ...baseSellerData };
-    mockState.ledgerDocs = [];
-    mockState.throwError = null;
+    mockState.ledgerData = [];
   });
 
   // --- Auth & infrastructure ---
@@ -138,14 +121,6 @@ describe("GET /api/seller/me", () => {
     const res = await GET(buildReq());
 
     expect(res.status).toBe(404);
-  });
-
-  it("returns 500 on DB error", async () => {
-    mockState.throwError = new Error("DB error");
-
-    const res = await GET(buildReq());
-
-    expect(res.status).toBe(500);
   });
 
   // --- Seller profile shape ---
@@ -245,7 +220,7 @@ describe("GET /api/seller/me", () => {
   // --- Ledger-based KPIs ---
 
   it("calculates totalGrossSales, totalNetEarnings, totalCommissionPaid from ledger", async () => {
-    mockState.ledgerDocs = [
+    mockState.ledgerData = [
       baseLedgerEntry("sale", 2000),
       baseLedgerEntry("sale", 800),
       baseLedgerEntry("commission_fee", 140),

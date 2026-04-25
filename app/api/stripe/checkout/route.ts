@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-04-30.basil",
-});
+function getStripe(): Stripe {
+  return new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: "2026-03-25.dahlia",
+  });
+}
 
 export async function POST(req: NextRequest) {
   try {
     const { priceId, quantity = 1, buyerId, successUrl, cancelUrl } = await req.json();
+    const stripe = getStripe();
 
     if (!priceId) {
       return NextResponse.json({ error: "priceId is required" }, { status: 400 });

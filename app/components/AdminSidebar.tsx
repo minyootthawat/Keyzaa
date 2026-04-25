@@ -14,7 +14,7 @@ export default function AdminSidebar() {
   const { lang } = useLanguage();
 
   const navItems: NavItem[] = [
-    { label: lang === "th" ? "ภาพรวมแพลตฟอร์ม" : "Platform overview", href: "/admin/dashboard" },
+    { label: lang === "th" ? "ภาพรวมแพลตฟอร์ม" : "Platform overview", href: "/backoffice/dashboard" },
   ];
 
   return (

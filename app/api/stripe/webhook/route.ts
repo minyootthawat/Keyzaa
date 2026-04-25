@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { connectDB } from "@/lib/db/mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { buildLedgerEntries } from "@/lib/marketplace-server";
+import { randomUUID } from "node:crypto";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-04-30.basil",
-});
-
-const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+function getStripe(): Stripe {
+  return new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: "2026-03-25.dahlia",
+  });
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
   const sig = req.headers.get("stripe-signature") ?? "";
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+  const stripe = getStripe();
 
   let event: Stripe.Event;
 
@@ -47,101 +51,92 @@ export async function POST(req: NextRequest) {
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
-  const { db } = await connectDB();
-  const orders = db.collection("orders");
+  const supabase = createServiceRoleClient();
 
-  // Try multiple lookup strategies (handles orders created before stripeSessionId was added)
-  let result = await orders.findOneAndUpdate(
-    { stripe_session_id: session.id },
-    {
-      $set: {
-        status: "paid",
-        payment_status: "paid",
-        fulfillment_status: "pending",
-        paid_at: new Date().toISOString(),
-        stripe_payment_intent: session.payment_intent as string,
-        updated_at: new Date().toISOString(),
-      },
-    },
-    { returnDocument: "after" }
-  );
-
-  if (result) {
-    console.log(`[stripe/webhook] order ${result.order_id} marked paid via stripe_session_id`);
+  // Primary: look up order by ID stored in Stripe metadata
+  const orderId = session.metadata?.orderId;
+  if (!orderId) {
+    console.warn("[stripe/webhook] no orderId in session metadata for session:", session.id);
     return;
   }
 
-  // Fallback: try stripe_payment_intent
-  if (session.payment_intent) {
-    result = await orders.findOneAndUpdate(
-      { stripe_payment_intent: session.payment_intent as string },
-      {
-        $set: {
-          status: "paid",
-          payment_status: "paid",
-          fulfillment_status: "pending",
-          paid_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      },
-      { returnDocument: "after" }
-    );
+  const { data: existingOrder, error: fetchError } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", orderId)
+    .single();
 
-    if (result) {
-      console.log(`[stripe/webhook] order ${result.order_id} marked paid via payment_intent`);
-      return;
-    }
+  if (fetchError || !existingOrder) {
+    console.warn("[stripe/webhook] order not found:", orderId);
+    return;
   }
 
-  // Fallback: try buyerId from Stripe metadata
-  const buyerId = session.metadata?.buyerId;
-  if (buyerId) {
-    const pendingOrders = await orders
-      .find({ buyer_id: buyerId, payment_status: "pending", status: "pending_payment" })
-      .sort({ created_at: -1 })
-      .limit(1)
-      .toArray();
+  // Update order status to paid
+  const now = new Date().toISOString();
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update({
+      status: "paid",
+      payment_status: "paid",
+      fulfillment_status: "pending",
+      updated_at: now,
+    })
+    .eq("id", orderId);
 
-    if (pendingOrders.length > 0) {
-      const order = pendingOrders[0];
-      await orders.updateOne(
-        { _id: order._id },
-        {
-          $set: {
-            status: "paid",
-            payment_status: "paid",
-            fulfillment_status: "pending",
-            stripe_session_id: session.id,
-            stripe_payment_intent: session.payment_intent as string,
-            paid_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-        }
-      );
-      console.log(`[stripe/webhook] order ${order.order_id} marked paid via buyerId fallback`);
-      return;
-    }
+  if (updateError) {
+    console.error("[stripe/webhook] failed to update order:", updateError);
+    return;
   }
 
-  console.warn("[stripe/webhook] no matching order found for session:", session.id);
+  console.log(`[stripe/webhook] order ${orderId} marked paid`);
+
+  // Insert seller ledger entries (sale credit + commission fee)
+  const grossAmount = Number(existingOrder.gross_amount) || Number(existingOrder.total_price) || 0;
+  const commissionAmount = Number(existingOrder.commission_amount) || 0;
+  const sellerNetAmount = Number(existingOrder.seller_net_amount) || grossAmount;
+
+  const ledgerEntries = buildLedgerEntries({
+    sellerId: existingOrder.seller_id,
+    orderId,
+    grossAmount,
+    commissionAmount,
+    sellerNetAmount,
+    createdAt: now,
+  });
+
+  for (const entry of ledgerEntries) {
+    const entryType = entry.type === "sale_credit" ? "sale" : entry.type;
+    const { error: ledgerError } = await supabase.from("seller_ledger_entries").insert({
+      id: `led_${randomUUID()}`,
+      seller_id: entry.sellerId,
+      order_id: entry.orderId,
+      type: entryType,
+      amount: entry.amount,
+      description: entry.description || null,
+      created_at: entry.createdAt,
+    });
+
+    if (ledgerError) {
+      console.error("[stripe/webhook] failed to insert ledger entry:", ledgerError);
+    }
+  }
 }
 
 async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
-  const { db } = await connectDB();
-  const orders = db.collection("orders");
+  const supabase = createServiceRoleClient();
 
-  const result = await orders.updateMany(
-    { stripe_payment_intent: paymentIntent.id },
-    {
-      $set: {
-        status: "payment_failed",
-        payment_status: "failed",
-        updated_at: new Date().toISOString(),
-      },
-    }
-  );
+  const { error } = await supabase
+    .from("orders")
+    .update({
+      status: "cancelled",
+      payment_status: "failed",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("stripe_payment_intent", paymentIntent.id);
 
-  if (result.modifiedCount > 0) {
-    console.log(`[stripe/webhook] ${result.modifiedCount} order(s) marked payment_failed`);
+  if (error) {
+    console.error("[stripe/webhook] payment_failed update error:", error);
+  } else {
+    console.log(`[stripe/webhook] order(s) marked payment_failed for payment_intent: ${paymentIntent.id}`);
   }
 }

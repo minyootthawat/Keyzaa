@@ -92,6 +92,24 @@ export interface OrderItem {
 
 export type LedgerEntryType = "sale" | "commission_fee" | "withdrawal";
 
+export interface GameAccount {
+  id: string;
+  seller_id: string;
+  game_name: string;
+  game_name_th?: string | null;
+  account_username: string;
+  account_password: string;
+  description?: string | null;
+  price: number;
+  stock: number;
+  is_active: boolean;
+  platform?: string | null;
+  region?: string | null;
+  image_url?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SellerLedgerEntry {
   id: string;
   seller_id: string;
@@ -153,6 +171,15 @@ export interface Database {
           created_at?: string;
         };
         Update: Partial<Omit<SellerLedgerEntry, "id" | "created_at">>;
+      };
+      game_accounts: {
+        Row: GameAccount;
+        Insert: Omit<GameAccount, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<GameAccount, "id" | "created_at">>;
       };
     };
   };

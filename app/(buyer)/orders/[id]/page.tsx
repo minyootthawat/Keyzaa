@@ -143,7 +143,7 @@ export default function OrderDeliveryPage() {
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-6">
-            {order.items.map((item) => (
+            {order.items?.map((item) => (
               <div key={item.id} className="surface-card p-6">
                 <div className="flex flex-col gap-5 md:flex-row">
                   <div className="relative h-28 w-full overflow-hidden rounded-2xl md:w-40">

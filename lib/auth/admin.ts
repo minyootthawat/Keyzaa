@@ -1,7 +1,6 @@
-import { ObjectId } from "mongodb";
 import type { NextRequest } from "next/server";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
+import { findUserById } from "@/lib/db/supabase";
 
 export type AdminRole = "super_admin" | "ops_admin" | "support_admin" | "catalog_admin";
 
@@ -87,18 +86,12 @@ export async function getAdminAccessFromRequest(req: NextRequest): Promise<{
     return { status: 401, error: "Unauthorized" };
   }
 
-  const { db } = await connectDB();
-  const users = db.collection("users");
-  const user = await users.findOne(
-    { _id: new ObjectId(userId) },
-    { projection: { email: 1 } }
-  );
-
+  const user = await findUserById(userId);
   if (!user) {
     return { status: 404, error: "User not found" };
   }
 
-  const access = getAdminAccessForEmail(typeof user.email === "string" ? user.email : null);
+  const access = getAdminAccessForEmail(user.email);
   if (!access.isAdmin) {
     return { status: 403, error: "Forbidden" };
   }

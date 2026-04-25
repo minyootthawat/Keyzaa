@@ -73,7 +73,7 @@ export default function OrderCard({
         </span>
       </div>
       <div className="p-5 space-y-3">
-        {order.items.map((item) => (
+        {order.items?.map((item) => (
           <div key={item.id} className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-lg bg-bg-surface overflow-hidden relative shrink-0">
               <Image src={item.image} alt={item.title} fill className="object-cover" sizes="40px" />

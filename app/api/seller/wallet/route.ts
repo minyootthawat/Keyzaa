@@ -1,7 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { connectDB } from "@/lib/db/mongodb";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
+
+interface LedgerRow {
+  id: string;
+  seller_id: string;
+  type: string;
+  amount: number;
+  order_id: string | null;
+  description: string | null;
+  created_at: string;
+}
+
+async function getSellerIdFromUserId(userId: string): Promise<string | null> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("sellers")
+    .select("id")
+    .eq("user_id", userId)
+    .single();
+
+  if (error || !data) return null;
+  return data.id;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,49 +33,44 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = createServiceRoleClient();
-
-    // Get seller id from Supabase (seller table still in Supabase)
-    const { data: seller, error: sellerError } = await supabase
-      .from("sellers")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (sellerError || !seller) {
+    const sellerId = await getSellerIdFromUserId(userId);
+    if (!sellerId) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller.id;
+    const supabase = createServiceRoleClient();
+    const { data: ledgerData, error: ledgerError } = await supabase
+      .from("seller_ledger_entries")
+      .select("*")
+      .eq("seller_id", sellerId)
+      .order("created_at", { ascending: false });
 
-    // Fetch ledger entries from MongoDB
-    const { db } = await connectDB();
-    const entries = await db
-      .collection("seller_ledger_entries")
-      .find({ seller_id: sellerId })
-      .sort({ created_at: -1 })
-      .toArray();
+    if (ledgerError) {
+      console.error("Seller wallet ledger error:", ledgerError);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
 
-    // Map to API type
-    const mappedEntries = (entries ?? []).map((entry: Record<string, unknown>) => ({
-      id: (entry._id as { toString(): string }).toString(),
-      sellerId: entry.seller_id as string,
-      orderId: entry.order_id as string | undefined,
-      type: entry.type === "sale"
-        ? "sale_credit"
-        : entry.type === "commission_fee"
-        ? "commission_fee"
-        : entry.type === "withdrawal"
-        ? "withdrawal"
-        : "manual_adjustment",
+    const entries = (ledgerData ?? []) as LedgerRow[];
+
+    const mappedEntries = entries.map((entry) => ({
+      id: entry.id,
+      sellerId: entry.seller_id,
+      orderId: entry.order_id ?? undefined,
+      type:
+        entry.type === "sale"
+          ? "sale_credit"
+          : entry.type === "commission_fee"
+          ? "commission_fee"
+          : entry.type === "withdrawal"
+          ? "withdrawal"
+          : "manual_adjustment",
       amount: Number(entry.amount),
       currency: "THB",
-      createdAt: entry.created_at as string,
-      description: (entry.description as string) ?? "",
+      createdAt: entry.created_at,
+      description: entry.description ?? "",
       metadata: {},
     }));
 
-    // Calculate summary
     let grossSales = 0;
     let totalCommission = 0;
     let netEarnings = 0;

@@ -11,7 +11,7 @@ interface AuthDialogProps {
 }
 
 export default function AuthDialog({ onClose }: AuthDialogProps) {
-  const { user, isRegisteredSeller, isAdmin, login, register, logout } = useAuth();
+  const { user, role, isRegisteredSeller, isAdmin, login, register, logout } = useAuth();
   const { t, lang } = useLanguage();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
@@ -34,6 +34,13 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
       description: lang === "th" ? "ใช้เข้าหน้า seller register และ dashboard" : "Use for seller register and dashboard testing",
       email: process.env.NEXT_PUBLIC_DEMO_SELLER_EMAIL || "seller@demo.keyzaa.local",
       password: process.env.NEXT_PUBLIC_DEMO_SELLER_PASSWORD || "demo123",
+    },
+    {
+      id: "admin",
+      label: lang === "th" ? "บัญชีเดโมแอดมิน" : "Demo admin",
+      description: lang === "th" ? "ใช้เข้าหน้า admin dashboard" : "Use for admin dashboard testing",
+      email: process.env.NEXT_PUBLIC_DEMO_ADMIN_EMAIL || "admin@demo.keyzaa.local",
+      password: process.env.NEXT_PUBLIC_DEMO_ADMIN_PASSWORD || "demo123",
     },
   ] as const;
 
@@ -157,9 +164,17 @@ export default function AuthDialog({ onClose }: AuthDialogProps) {
                   {lang === "th" ? "ไปหน้าแดชบอร์ดผู้ขาย" : "Open seller dashboard"}
                 </a>
               ) : null}
+              {(role === "seller" || role === "both") && !isRegisteredSeller ? (
+                <a
+                  href="/seller/onboarding"
+                  className="flex h-11 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-sm font-semibold text-accent transition-colors hover:bg-accent/15"
+                >
+                  {lang === "th" ? "สมัครเป็นผู้ขาย" : "Become a seller"}
+                </a>
+              ) : null}
               {isAdmin ? (
                 <a
-                  href="/admin/dashboard"
+                  href="/backoffice/dashboard"
                   className="flex h-11 items-center justify-center rounded-xl border border-warning/20 bg-warning/10 text-sm font-semibold text-warning transition-colors hover:bg-warning/15"
                 >
                   {lang === "th" ? "ไปหน้าแอดมิน" : "Open admin dashboard"}

@@ -1,13 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import sellersData from "@/data/sellers.json";
 import { useCart } from "@/app/context/CartContext";
 import { useLanguage } from "@/app/context/LanguageContext";
-import { buildSellerSummary, getActivationMethod, getActivationSteps, getDeliveryLabel, getProductDescription, getProductTitle, getRegionLabel, getSellerTrustLabel, getSellerTrustTone, getTrustLabel } from "@/app/lib/marketplace";
+import {
+  buildSellerSummary,
+  getActivationMethod,
+  getActivationSteps,
+  getDeliveryLabel,
+  getProductDescription,
+  getProductTitle,
+  getRegionLabel,
+  getSellerTrustLabel,
+  getSellerTrustTone,
+  getTrustLabel,
+} from "@/app/lib/marketplace";
 import { getMockPaymentNotice } from "@/app/lib/payment-mock";
 import type { Product, Seller, SellerOption } from "@/app/types";
 import CTAButton from "@/app/components/CTAButton";
@@ -28,18 +39,28 @@ interface ProductDetail extends Product {
 }
 
 const MOCK_FETCH_DELAY = 300;
+const SKELETON_ARRAY = Array.from({ length: 1 });
+
+function SkeletonLoader() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-primary border-t-transparent" />
+    </div>
+  );
+}
 
 export default function ProductDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { addItem } = useCart();
   const { lang, t } = useLanguage();
+
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedSeller, setSelectedSeller] = useState<SellerOption | null>(null);
   const [activeTab, setActiveTab] = useState<"description" | "reviews">("description");
 
-  useEffect(() => {
+  useEffect(function fetchProductData() {
     const timer = setTimeout(() => {
       import("@/data/products.json").then((mod) => {
         const products = mod.default as Product[];
@@ -59,7 +80,7 @@ export default function ProductDetailPage() {
             price: Math.max(baseProduct.price - (index === 0 ? 0 : 0), baseProduct.price),
             rating: seller.rating,
             salesCount: seller.salesCount,
-            deliverySpeed: baseProduct.deliveryLabelTh || "ส่งทันที",
+            deliverySpeed: baseProduct.deliveryLabelTh || t("common_instantDelivery"),
             isOfficial: seller.id === baseProduct.sellerId,
             verificationStatus: seller.verificationStatus,
             fulfillmentRate: seller.fulfillmentRate,
@@ -71,21 +92,21 @@ export default function ProductDetailPage() {
             user: "Nok",
             rating: 5,
             comment: t("pdp_reviewMockCheckout"),
-            date: "2026-04-14"
+            date: "2026-04-14",
           },
           {
             id: "r2",
             user: "Mint",
             rating: 5,
             comment: t("pdp_reviewThailandCompat"),
-            date: "2026-04-09"
-          }
+            date: "2026-04-09",
+          },
         ];
 
         const detail: ProductDetail = {
           ...baseProduct,
           sellers,
-          reviews
+          reviews,
         };
 
         setProduct(detail);
@@ -94,7 +115,9 @@ export default function ProductDetailPage() {
       });
     }, MOCK_FETCH_DELAY);
 
-    return () => clearTimeout(timer);
+    return function cleanupFetch() {
+      clearTimeout(timer);
+    };
   }, [lang, params.id, router, t]);
 
   const sellerSummary = useMemo(() => {
@@ -103,22 +126,58 @@ export default function ProductDetailPage() {
     return seller ? buildSellerSummary(seller) : null;
   }, [selectedSeller]);
 
+  const buildCartItem = useCallback(
+    (seller: SellerOption) => ({
+      id: product!.id,
+      title: product!.title,
+      titleTh: product!.nameTh,
+      titleEn: product!.nameEn,
+      price: seller.price,
+      image: product!.image,
+      quantity: 1,
+      sellerId: seller.id,
+      sellerName: seller.name,
+      platform: product!.platform,
+      regionCode: product!.regionCode,
+      deliveryLabelTh: product!.deliveryLabelTh,
+      deliveryLabelEn: product!.deliveryLabelEn,
+      activationMethodTh: product!.activationMethodTh,
+      activationMethodEn: product!.activationMethodEn,
+    }),
+    [product],
+  );
+
+  const handleAddToCart = useCallback(() => {
+    if (!product || !selectedSeller) return;
+    addItem(buildCartItem(selectedSeller));
+  }, [product, selectedSeller, addItem, buildCartItem]);
+
+  const handleAddToCartAndCheckout = useCallback(() => {
+    if (!product || !selectedSeller) return;
+    addItem(buildCartItem(selectedSeller));
+    router.push("/checkout");
+  }, [product, selectedSeller, addItem, buildCartItem, router]);
+
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-primary border-t-transparent" />
-      </div>
-    );
+    return <SkeletonLoader />;
   }
 
   if (!product || !selectedSeller) {
     return null;
   }
 
+  const infoCards = [
+    { label: t("pdp_activation"), value: getActivationMethod(product, lang) },
+    { label: t("pdp_region"), value: getRegionLabel(product, lang) },
+    { label: t("pdp_delivery"), value: getDeliveryLabel(product, lang) },
+  ];
+
   return (
     <div className="min-h-screen pb-24 md:pb-12">
       <div className="section-container grid gap-8 py-8 lg:grid-cols-[minmax(0,1.1fr)_420px] lg:py-12">
+        {/* Left column */}
         <div className="space-y-6">
+          {/* Image */}
           <div className="surface-card overflow-hidden">
             <div className="relative aspect-[16/10] w-full">
               <Image
@@ -135,6 +194,7 @@ export default function ProductDetailPage() {
             </div>
           </div>
 
+          {/* Product info card */}
           <div className="surface-card space-y-5 p-6">
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
@@ -147,41 +207,36 @@ export default function ProductDetailPage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
-                <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{lang === "th" ? "การเปิดใช้งาน" : "Activation"}</p>
-                <p className="mt-2 text-sm font-semibold text-text-main">{getActivationMethod(product, lang)}</p>
-              </div>
-              <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
-                <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{lang === "th" ? "ภูมิภาค" : "Region"}</p>
-                <p className="mt-2 text-sm font-semibold text-text-main">{getRegionLabel(product, lang)}</p>
-              </div>
-              <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
-                <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{lang === "th" ? "เวลาจัดส่ง" : "Delivery"}</p>
-                <p className="mt-2 text-sm font-semibold text-text-main">{getDeliveryLabel(product, lang)}</p>
-              </div>
+              {infoCards.map((card) => (
+                <div key={card.label} className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
+                  <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{card.label}</p>
+                  <p className="mt-2 text-sm font-semibold text-text-main">{card.value}</p>
+                </div>
+              ))}
             </div>
           </div>
 
+          {/* Tabs: Description / Reviews */}
           <div className="surface-card p-6">
             <div className="flex gap-2">
               <button
                 className={`rounded-full px-4 py-2 text-sm font-semibold ${activeTab === "description" ? "bg-brand-primary text-white" : "bg-bg-surface text-text-subtle"}`}
                 onClick={() => setActiveTab("description")}
               >
-                {lang === "th" ? "รายละเอียด" : "Details"}
+                {t("pdp_details")}
               </button>
               <button
                 className={`rounded-full px-4 py-2 text-sm font-semibold ${activeTab === "reviews" ? "bg-brand-primary text-white" : "bg-bg-surface text-text-subtle"}`}
                 onClick={() => setActiveTab("reviews")}
               >
-                {lang === "th" ? "รีวิว" : "Reviews"}
+                {t("pdp_reviews")}
               </button>
             </div>
 
             {activeTab === "description" ? (
               <div className="mt-5 space-y-5">
                 <div>
-                  <h2 className="text-lg font-semibold text-text-main">{lang === "th" ? "วิธีใช้งาน" : "How it works"}</h2>
+                  <h2 className="text-lg font-semibold text-text-main">{t("pdp_howItWorks")}</h2>
                   <ol className="mt-3 list-inside list-decimal space-y-2 text-sm leading-7 text-text-subtle">
                     {getActivationSteps(product, lang).map((step) => (
                       <li key={step}>{step}</li>
@@ -208,16 +263,19 @@ export default function ProductDetailPage() {
           </div>
         </div>
 
+        {/* Right column: sticky aside */}
         <aside className="lg:sticky lg:top-[96px] lg:self-start">
           <div className="surface-card space-y-5 p-6">
+            {/* Price */}
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm text-text-muted">{lang === "th" ? "ราคาสุทธิ" : "Final price"}</p>
+                <p className="text-sm text-text-muted">{t("pdp_finalPrice")}</p>
                 <PriceTag price={selectedSeller.price} originalPrice={product.originalPrice} large />
               </div>
               <Badge label={`-${product.discount}%`} tone="promo" />
             </div>
 
+            {/* Seller selector */}
             <div className="space-y-3">
               <p className="text-sm font-semibold text-text-main">{t("pdp_chooseSeller")}</p>
               {product.sellers.map((seller) => (
@@ -233,12 +291,16 @@ export default function ProductDetailPage() {
                         ★ {seller.rating} • {seller.salesCount.toLocaleString()} {t("pdp_orderCountSuffix")}
                       </p>
                     </div>
-                    <Badge label={getSellerTrustLabel(seller.verificationStatus, lang)} tone={getSellerTrustTone(seller.verificationStatus)} />
+                    <Badge
+                      label={getSellerTrustLabel(seller.verificationStatus, lang)}
+                      tone={getSellerTrustTone(seller.verificationStatus)}
+                    />
                   </div>
                 </button>
               ))}
             </div>
 
+            {/* Seller stats */}
             {sellerSummary ? (
               <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
                 <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
@@ -247,7 +309,9 @@ export default function ProductDetailPage() {
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
                   <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("pdp_response")}</p>
-                  <p className="mt-2 text-lg font-semibold text-text-main">{sellerSummary.responseTimeMinutes} {lang === "th" ? "นาที" : "min"}</p>
+                  <p className="mt-2 text-lg font-semibold text-text-main">
+                    {sellerSummary.responseTimeMinutes} {t("pdp_minutes")}
+                  </p>
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
                   <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{t("pdp_disputeRate")}</p>
@@ -256,64 +320,20 @@ export default function ProductDetailPage() {
               </div>
             ) : null}
 
+            {/* CTA buttons */}
             <div className="space-y-3">
-              <CTAButton
-                fullWidth
-                onClick={() => {
-                  addItem({
-                    id: product.id,
-                    title: product.title,
-                    titleTh: product.nameTh,
-                    titleEn: product.nameEn,
-                    price: selectedSeller.price,
-                    image: product.image,
-                    quantity: 1,
-                    sellerId: selectedSeller.id,
-                    sellerName: selectedSeller.name,
-                    platform: product.platform,
-                    regionCode: product.regionCode,
-                    deliveryLabelTh: product.deliveryLabelTh,
-                    deliveryLabelEn: product.deliveryLabelEn,
-                    activationMethodTh: product.activationMethodTh,
-                    activationMethodEn: product.activationMethodEn,
-                  });
-                  router.push("/checkout");
-                }}
-              >
+              <CTAButton fullWidth onClick={handleAddToCartAndCheckout}>
                 {t("pdp_startMockCheckout")}
               </CTAButton>
-              <CTAButton
-                fullWidth
-                variant="secondary"
-                onClick={() => {
-                  addItem({
-                    id: product.id,
-                    title: product.title,
-                    titleTh: product.nameTh,
-                    titleEn: product.nameEn,
-                    price: selectedSeller.price,
-                    image: product.image,
-                    quantity: 1,
-                    sellerId: selectedSeller.id,
-                    sellerName: selectedSeller.name,
-                    platform: product.platform,
-                    regionCode: product.regionCode,
-                    deliveryLabelTh: product.deliveryLabelTh,
-                    deliveryLabelEn: product.deliveryLabelEn,
-                    activationMethodTh: product.activationMethodTh,
-                    activationMethodEn: product.activationMethodEn,
-                  });
-                }}
-              >
-                {lang === "th" ? "เพิ่มลงรถเข็น" : "Add to cart"}
+              <CTAButton fullWidth variant="secondary" onClick={handleAddToCart}>
+                {t("pdp_addToCart")}
               </CTAButton>
             </div>
 
+            {/* Notice */}
             <div className="rounded-2xl border border-accent/12 bg-accent/5 p-4 text-sm leading-7 text-text-subtle">
               <p className="font-semibold text-text-main">{t("pdp_afterDemo")}</p>
-              <p className="mt-1">
-                {getMockPaymentNotice(lang)}
-              </p>
+              <p className="mt-1">{getMockPaymentNotice(lang)}</p>
             </div>
 
             <Link href="/products" className="text-sm font-semibold text-brand-tertiary">

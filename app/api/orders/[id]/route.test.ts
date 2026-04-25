@@ -6,10 +6,12 @@ import { GET } from "./route";
 // Mock state — MUST be defined before vi.mock so factory can reference it
 // ---------------------------------------------------------------------------
 
-const mockDbState = vi.hoisted(() => ({
-  sellerDoc: null as Record<string, unknown> | null,
-  orderDoc: null as Record<string, unknown> | null,
-  findResult: [] as unknown[],
+const mockSupabaseState = vi.hoisted(() => ({
+  orderRow: null as Record<string, unknown> | null,
+  itemRows: [] as unknown[],
+  sellerRow: null as Record<string, unknown> | null,
+  orderError: null as Error | null,
+  itemsError: null as Error | null,
   throwError: null as Error | null,
 }));
 
@@ -35,46 +37,52 @@ vi.mock("@/lib/auth/jwt", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Mock: db/mongodb — proper collection() returning chainable mock
+// Mock: lib/supabase/supabase
 // ---------------------------------------------------------------------------
-vi.mock("@/lib/db/mongodb", () => {
-  function makeCollection() {
-    const findMock = vi.fn().mockReturnValue({
-      sort: vi.fn().mockReturnThis(),
-      skip: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockReturnThis(),
-      toArray: vi.fn().mockResolvedValue(mockDbState.findResult),
-    });
-    return {
-      find: findMock,
-      findOne: vi.fn().mockImplementation((query: Record<string, unknown>) => {
-        if (query?.seller_id) return Promise.resolve(mockDbState.sellerDoc);
-        return Promise.resolve(mockDbState.orderDoc);
-      }),
-      insertOne: vi.fn().mockResolvedValue({ insertedId: "mock-id" }),
-      countDocuments: vi.fn().mockResolvedValue(mockDbState.findResult.length),
-      aggregate: vi.fn().mockReturnValue({
-        toArray: vi.fn().mockResolvedValue([]),
-      }),
-    };
-  }
-
-  return {
-    connectDB: vi.fn().mockImplementation(async () => {
-      if (mockDbState.throwError) throw mockDbState.throwError;
+vi.mock("@/lib/supabase/supabase", () => ({
+  createServiceRoleClient: vi.fn().mockImplementation(() => ({
+    from: vi.fn().mockImplementation((table: string) => {
+      if (table === "orders") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockImplementation(async () => {
+            if (mockSupabaseState.throwError) throw mockSupabaseState.throwError;
+            if (mockSupabaseState.orderError) return { data: null, error: mockSupabaseState.orderError };
+            return { data: mockSupabaseState.orderRow, error: null };
+          }),
+        };
+      }
+      if (table === "order_items") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockResolvedValue({
+            data: mockSupabaseState.itemRows,
+            error: mockSupabaseState.itemsError,
+          }),
+        };
+      }
+      if (table === "sellers") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({
+            data: mockSupabaseState.sellerRow,
+            error: null,
+          }),
+        };
+      }
       return {
-        client: {} as unknown,
-        db: {
-          collection: vi.fn().mockImplementation(() => makeCollection()),
-        },
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
     }),
-    getDb: vi.fn(),
-  };
-});
+  })),
+}));
 
 // ---------------------------------------------------------------------------
-// Mock: marketplace-server (only used by mapOrderDocument)
+// Mock: marketplace-server
 // ---------------------------------------------------------------------------
 vi.mock("@/lib/marketplace-server", () => ({
   getStaticSellerSeedById: vi.fn().mockReturnValue(undefined),
@@ -111,9 +119,8 @@ function makeCtx(id = "ord_test_001") {
   return { params: Promise.resolve({ id }) };
 }
 
-const baseOrderDoc = {
-  _id: "oid1",
-  order_id: "ord_test_001",
+const baseOrderRow = {
+  id: "ord_test_001",
   buyer_id: "test-user-id",
   seller_id: "seller-001",
   status: "pending",
@@ -126,15 +133,30 @@ const baseOrderDoc = {
   platform_fee_rate: 0.12,
   currency: "THB",
   payment_method: "promptpay",
-  items: [],
   created_at: "2025-01-01T00:00:00Z",
 };
 
-const baseSellerDoc = {
-  _id: "sid1",
-  seller_id: "seller-001",
-  shop_name: "Test Shop",
-  verification_status: "verified",
+const baseItemRows = [
+  {
+    id: "item-1",
+    order_id: "ord_test_001",
+    product_id: "prod-001",
+    title: "Test Product",
+    title_th: "สินค้าทดสอบ",
+    title_en: "Test Product",
+    image: "https://example.com/image.png",
+    price: 100,
+    quantity: 1,
+    platform: "mobile",
+    region_code: "TH",
+    activation_method_th: "OTP",
+    activation_method_en: "OTP",
+  },
+];
+
+const baseSellerRow = {
+  store_name: "Test Shop",
+  verified: true,
   rating: 4.5,
   sales_count: 120,
 };
@@ -145,16 +167,19 @@ const baseSellerDoc = {
 describe("GET /api/orders/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDbState.orderDoc = null;
-    mockDbState.sellerDoc = null;
-    mockDbState.throwError = null;
-    mockDbState.findResult = [];
+    mockSupabaseState.orderRow = null;
+    mockSupabaseState.itemRows = [];
+    mockSupabaseState.sellerRow = null;
+    mockSupabaseState.orderError = null;
+    mockSupabaseState.itemsError = null;
+    mockSupabaseState.throwError = null;
     mockAuthState.authUserId = "test-user-id";
   });
 
   it("returns 200 with order and seller details", async () => {
-    mockDbState.orderDoc = baseOrderDoc;
-    mockDbState.sellerDoc = baseSellerDoc;
+    mockSupabaseState.orderRow = baseOrderRow;
+    mockSupabaseState.itemRows = baseItemRows;
+    mockSupabaseState.sellerRow = baseSellerRow;
 
     const res = await GET(buildReq(), makeCtx());
     const json = await res.json();
@@ -173,8 +198,7 @@ describe("GET /api/orders/[id]", () => {
   });
 
   it("returns 404 when order is not found", async () => {
-    mockDbState.orderDoc = null;
-    mockDbState.sellerDoc = null;
+    mockSupabaseState.orderRow = null;
 
     const res = await GET(
       buildReq("http://localhost/api/orders/ord_nonexistent"),
@@ -183,8 +207,8 @@ describe("GET /api/orders/[id]", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 500 on DB error", async () => {
-    mockDbState.throwError = new Error("DB error");
+  it("returns 500 on error", async () => {
+    mockSupabaseState.throwError = new Error("Supabase error");
 
     const res = await GET(buildReq(), makeCtx());
     expect(res.status).toBe(500);

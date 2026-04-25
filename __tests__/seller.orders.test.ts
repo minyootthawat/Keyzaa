@@ -1,26 +1,9 @@
 /**
  * Seller Orders API tests — GET /api/seller/orders
- *
- * Mock strategy: vi.hoisted for shared state, proper MongoDB collection()
- * mock with find().sort().toArray() chain.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
-
-// ---------------------------------------------------------------------------
-// Mock state — MUST be defined before vi.mock
-// ---------------------------------------------------------------------------
-
-const mockDbState = vi.hoisted(() => ({
-  sellerDoc: null as Record<string, unknown> | null,
-  findResult: [] as unknown[],
-  throwError: null as Error | null,
-}));
-
-// _coll must be hoisted so vi.mock factory can reference it
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _coll: any = null;
 
 // ---------------------------------------------------------------------------
 // Supabase thenable chain — reads callCount at resolution time
@@ -80,45 +63,6 @@ vi.mock("@/lib/auth/jwt", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Mock: db/mongodb — proper collection() chainable mock
-// ---------------------------------------------------------------------------
-vi.mock("@/lib/db/mongodb", () => {
-  function makeCollection() {
-    if (!_coll) {
-      _coll = {
-        find: vi.fn().mockReturnValue({
-          sort: vi.fn().mockReturnThis(),
-          skip: vi.fn().mockReturnThis(),
-          limit: vi.fn().mockReturnThis(),
-          toArray: vi.fn().mockImplementation(() => Promise.resolve(mockDbState.findResult)),
-        }),
-        findOne: vi.fn().mockResolvedValue(null),
-        insertOne: vi.fn().mockResolvedValue({ insertedId: "mock-id" }),
-        countDocuments: vi.fn().mockImplementation(() => Promise.resolve(mockDbState.findResult.length)),
-        aggregate: vi.fn().mockReturnValue({
-          toArray: vi.fn().mockResolvedValue([]),
-        }),
-      };
-    }
-    return _coll;
-  }
-
-  return {
-    connectDB: vi.fn().mockImplementation(async () => {
-      if (mockDbState.throwError) throw mockDbState.throwError;
-      _coll = null; // reset before each connect
-      return {
-        client: {} as unknown,
-        db: {
-          collection: vi.fn().mockImplementation(() => makeCollection()),
-        },
-      };
-    }),
-    getDb: vi.fn(),
-  };
-});
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -134,10 +78,6 @@ async function getResponse(path = "/api/seller/orders") {
 describe("GET /api/seller/orders", () => {
   beforeEach(() => {
     reset();
-    _coll = null;
-    mockDbState.findResult = [];
-    mockDbState.sellerDoc = null;
-    mockDbState.throwError = null;
   });
 
   it("returns 401 when no auth token is provided", async () => {
@@ -148,27 +88,31 @@ describe("GET /api/seller/orders", () => {
   });
 
   it("returns 404 when user is not registered as a seller", async () => {
-    enqueueAt(1, null, null); // sellers query → null
+    enqueueAt(1, null, { message: "not found" }); // sellers query → error
     const res = await getResponse();
     expect(res.status).toBe(404);
   });
 
   it("returns 200 with empty orders array when seller has no orders", async () => {
     enqueueAt(1, [{ id: "seller-001" }], null); // sellers
-    enqueueAt(2, [], null);                      // orders
+    enqueueAt(2, [], null);                     // orders
     enqueueAt(3, [], null);                      // users
+    enqueueAt(4, [], null);                      // order_items
     const res = await getResponse();
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ orders: [] });
   });
 
   it("returns 200 with orders and correct buyer names when orders exist", async () => {
-    const orderDocs = [{
-      _id: "oid1",
-      order_id: "order-001",
-      seller_id: "seller-001",
+    const orderRows = [{
+      id: "order-001",
       buyer_id: "buyer-001",
+      seller_id: "seller-001",
       total_price: 50000,
+      gross_amount: 50000,
+      commission_amount: 500,
+      seller_net_amount: 49500,
+      platform_fee_rate: 0.01,
       status: "pending",
       payment_status: "pending",
       fulfillment_status: "pending",
@@ -176,10 +120,10 @@ describe("GET /api/seller/orders", () => {
       payment_method: "promptpay",
       created_at: "2026-04-01T00:00:00Z",
     }];
-    mockDbState.findResult = orderDocs;
-    // Only 2 enqueues needed: sellers (1) and users (2)
     enqueueAt(1, [{ id: "seller-001" }], null);
-    enqueueAt(2, [{ id: "buyer-001", name: "สมชาย ใจดี" }], null);
+    enqueueAt(2, orderRows, null);
+    enqueueAt(3, [{ id: "buyer-001", name: "สมชาย ใจดี" }], null);
+    enqueueAt(4, [], null);
 
     const res = await getResponse();
     expect(res.status).toBe(200);
@@ -189,24 +133,22 @@ describe("GET /api/seller/orders", () => {
   });
 
   it("returns 500 when Supabase database query fails", async () => {
-    // The route code checks `!seller` (truthiness of data), not `sellerError`.
-    // The only way to get a 500 is for MongoDB or an uncaught exception to fire.
-    // Simulate a MongoDB error after the seller lookup succeeds.
-    enqueueAt(1, [{ id: "seller-001" }], null); // seller lookup succeeds
-    enqueueAt(2, null, { message: "Database error" }); // this won't trigger 500 in current route
-    // Force the route to throw by setting MongoDB throwError
-    mockDbState.throwError = new Error("Database error");
+    enqueueAt(1, [{ id: "seller-001" }], null);
+    enqueueAt(2, null, { message: "Database error" }); // orders query fails
     const res = await getResponse();
     expect(res.status).toBe(500);
   });
 
   it("maps embedded order_items correctly to API response shape", async () => {
-    const orderDocs = [{
-      _id: "oid2",
-      order_id: "order-002",
-      seller_id: "seller-001",
+    const orderRows = [{
+      id: "order-002",
       buyer_id: "buyer-002",
+      seller_id: "seller-001",
       total_price: 30000,
+      gross_amount: 30000,
+      commission_amount: 300,
+      seller_net_amount: 29700,
+      platform_fee_rate: 0.01,
       status: "paid",
       payment_status: "paid",
       fulfillment_status: "fulfilled",
@@ -214,10 +156,10 @@ describe("GET /api/seller/orders", () => {
       payment_method: "credit",
       created_at: "2026-04-02T00:00:00Z",
     }];
-    mockDbState.findResult = orderDocs;
-    // Only 2 enqueues needed: sellers (1) and users (2)
     enqueueAt(1, [{ id: "seller-001" }], null);
-    enqueueAt(2, [{ id: "buyer-002", name: "ผู้ซื้อ ทดสอบ" }], null);
+    enqueueAt(2, orderRows, null);
+    enqueueAt(3, [{ id: "buyer-002", name: "ผู้ซื้อ ทดสอบ" }], null);
+    enqueueAt(4, [], null);
 
     const res = await getResponse();
     expect(res.status).toBe(200);
@@ -225,7 +167,7 @@ describe("GET /api/seller/orders", () => {
     const [order] = orders;
 
     expect(order).toMatchObject({
-      id: "oid2",
+      id: "order-002",
       buyerName: "ผู้ซื้อ ทดสอบ",
       totalPrice: 30000,
       status: "paid",

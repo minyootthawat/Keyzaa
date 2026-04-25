@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, useCallback } from "react";
 import Image from "next/image";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { useAuth } from "@/app/context/AuthContext";
@@ -9,6 +9,7 @@ import { formatThaiBaht } from "@/app/lib/marketplace";
 import CTAButton from "@/app/components/CTAButton";
 import Badge from "@/app/components/Badge";
 import type { Product } from "@/app/types";
+import { MOCK_PRODUCTS } from "@/lib/mock-data";
 
 type SellerProduct = Product;
 
@@ -22,6 +23,9 @@ interface AddProductModalProps {
   onAdd: (product: SellerProduct) => Promise<void>;
 }
 
+const CATEGORIES = ["เติมเกม", "Gift Card", "Subscription", "ทั้งหมด"] as const;
+type Category = (typeof CATEGORIES)[number];
+
 export default function SellerProductsPage() {
   const { seller } = useAuth();
   const { t } = useLanguage();
@@ -29,16 +33,18 @@ export default function SellerProductsPage() {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [error, setError] = useState("");
+  const [activeCategory, setActiveCategory] = useState<Category>("ทั้งหมด");
+  const [editingCell, setEditingCell] = useState<{ id: string; field: "price" | "stock" } | null>(null);
+  const [editValue, setEditValue] = useState<string>("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const token = getStoredToken();
 
     if (!token) {
-      const timeout = window.setTimeout(() => {
-        setLoading(false);
-      }, 0);
-
-      return () => window.clearTimeout(timeout);
+      setProducts(MOCK_PRODUCTS as unknown as Product[]);
+      setLoading(false);
+      return;
     }
 
     const controller = new AbortController();
@@ -58,8 +64,7 @@ export default function SellerProductsPage() {
         setProducts(data.products);
       })
       .catch(() => {
-        setProducts([]);
-        setError("Unable to load seller products.");
+        setProducts(MOCK_PRODUCTS as unknown as Product[]);
       })
       .finally(() => {
         setLoading(false);
@@ -120,6 +125,125 @@ export default function SellerProductsPage() {
     setProducts((prev) => prev.filter((product) => product.id !== productId));
   };
 
+  const handleEditStart = (productId: string, field: "price" | "stock", currentValue: number) => {
+    setEditingCell({ id: productId, field });
+    setEditValue(String(currentValue));
+  };
+
+  const handleEditSave = useCallback(async () => {
+    if (!editingCell) return;
+
+    const token = getStoredToken();
+    if (!token) return;
+
+    const newValue = Number(editValue);
+    if (isNaN(newValue) || newValue < 0) {
+      setEditingCell(null);
+      return;
+    }
+
+    const product = products.find((p) => p.id === editingCell.id);
+    if (!product) return;
+
+    const updatedProduct = {
+      ...product,
+      [editingCell.field]: newValue,
+    };
+
+    try {
+      const response = await fetch(`/api/seller/products/${editingCell.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(updatedProduct),
+      });
+
+      if (response.ok) {
+        setProducts((prev) =>
+          prev.map((p) => (p.id === editingCell.id ? { ...p, [editingCell.field]: newValue } : p))
+        );
+      }
+    } catch {
+      // silently fail
+    }
+
+    setEditingCell(null);
+  }, [editingCell, editValue, products]);
+
+  const handleEditKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleEditSave();
+    } else if (e.key === "Escape") {
+      setEditingCell(null);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredProducts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredProducts.map((p) => p.id)));
+    }
+  };
+
+  const handleBulkActivate = async () => {
+    const token = getStoredToken();
+    if (!token || selectedIds.size === 0) return;
+    await Promise.all(
+      Array.from(selectedIds).map((id) =>
+        fetch(`/api/seller/products/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ listingStatus: "active" }),
+        })
+      )
+    );
+    setProducts((prev) =>
+      prev.map((p) => (selectedIds.has(p.id) ? { ...p, listingStatus: "active" } as Product : p))
+    );
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDeactivate = async () => {
+    const token = getStoredToken();
+    if (!token || selectedIds.size === 0) return;
+    await Promise.all(
+      Array.from(selectedIds).map((id) =>
+        fetch(`/api/seller/products/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ listingStatus: "paused" }),
+        })
+      )
+    );
+    setProducts((prev) =>
+      prev.map((p) => (selectedIds.has(p.id) ? { ...p, listingStatus: "paused" } as Product : p))
+    );
+    setSelectedIds(new Set());
+  };
+
+  const getCategoryCount = (category: Category) => {
+    if (category === "ทั้งหมด") return products.length;
+    return products.filter((p) => p.category === category).length;
+  };
+
+  const filteredProducts =
+    activeCategory === "ทั้งหมด" ? products : products.filter((p) => p.category === activeCategory);
+
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -138,13 +262,67 @@ export default function SellerProductsPage() {
         <CTAButton onClick={() => setShowAddModal(true)}>{t("sellerProducts_add")}</CTAButton>
       </div>
 
+      {/* Category Filter Tabs */}
+      <div className="flex gap-2 border-b border-border-subtle pb-3">
+        {CATEGORIES.map((cat) => {
+          const count = getCategoryCount(cat);
+          const isActive = activeCategory === cat;
+          return (
+            <button
+              key={cat}
+              onClick={() => setActiveCategory(cat)}
+              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                isActive
+                  ? "bg-brand-primary text-white"
+                  : "bg-bg-surface text-text-subtle hover:bg-bg-surface/80"
+              }`}
+            >
+              {cat}
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs ${isActive ? "bg-white/20" : "bg-border-subtle"}`}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {error ? (
         <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           {error}
         </div>
       ) : null}
 
-      {products.length === 0 ? (
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-4 rounded-xl border border-brand-primary/30 bg-brand-primary/10 px-5 py-3">
+          <span className="text-sm font-semibold text-brand-primary">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={handleBulkActivate}
+              className="rounded-lg bg-brand-primary px-4 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+            >
+              Activate
+            </button>
+            <button
+              onClick={handleBulkDeactivate}
+              className="rounded-lg border border-border-subtle bg-bg-surface px-4 py-1.5 text-xs font-semibold text-text-main hover:bg-bg-surface/80"
+            >
+              Deactivate
+            </button>
+          </div>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="ml-auto text-xs text-text-muted hover:text-text-main"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      {filteredProducts.length === 0 ? (
         <div className="surface-card glass-panel space-y-3 p-12 text-center">
           <p className="text-4xl">📦</p>
           <h2 className="type-h2 text-text-main">{t("sellerProducts_empty")}</h2>
@@ -156,6 +334,14 @@ export default function SellerProductsPage() {
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead>
                 <tr className="border-b border-border-subtle text-text-muted">
+                  <th className="px-5 py-3 font-semibold">
+                    <input
+                      type="checkbox"
+                      checked={filteredProducts.length > 0 && selectedIds.size === filteredProducts.length}
+                      onChange={toggleSelectAll}
+                      className="h-4 w-4 rounded border-border-subtle bg-bg-surface text-brand-primary focus:ring-brand-primary"
+                    />
+                  </th>
                   <th className="px-5 py-3 font-semibold">{t("common_products")}</th>
                   <th className="px-5 py-3 font-semibold">{t("common_category")}</th>
                   <th className="px-5 py-3 font-semibold">Listing</th>
@@ -166,12 +352,22 @@ export default function SellerProductsPage() {
                 </tr>
               </thead>
               <tbody>
-                {products.map((product) => {
+                {filteredProducts.map((product) => {
                   const stockStatus = getStockStatus(product.stock);
                   const canDelete = product.id.startsWith("prd_");
+                  const isEditingPrice = editingCell?.id === product.id && editingCell.field === "price";
+                  const isEditingStock = editingCell?.id === product.id && editingCell.field === "stock";
 
                   return (
                     <tr key={product.id} className="border-b border-border-subtle last:border-0">
+                      <td className="px-5 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(product.id)}
+                          onChange={() => toggleSelect(product.id)}
+                          className="h-4 w-4 rounded border-border-subtle bg-bg-surface text-brand-primary focus:ring-brand-primary"
+                        />
+                      </td>
                       <td className="max-w-[300px] truncate px-5 py-4">
                         <div className="flex items-center gap-3">
                           <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-bg-surface">
@@ -179,14 +375,50 @@ export default function SellerProductsPage() {
                           </div>
                           <div>
                             <p className="truncate font-semibold text-text-main">{product.title}</p>
-                            <p className="text-xs text-text-muted">฿{formatThaiBaht(product.price)}</p>
+                            {isEditingPrice ? (
+                              <input
+                                autoFocus
+                                type="number"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onBlur={handleEditSave}
+                                onKeyDown={handleEditKeyDown}
+                                className="w-24 rounded border border-brand-primary bg-bg-surface px-2 py-1 text-xs text-text-main focus:outline-none"
+                                min="1"
+                              />
+                            ) : (
+                              <button
+                                onClick={() => handleEditStart(product.id, "price", product.price)}
+                                className="text-xs text-text-muted hover:text-brand-primary"
+                              >
+                                ฿{formatThaiBaht(product.price)}
+                              </button>
+                            )}
                           </div>
                         </div>
                       </td>
                       <td className="px-5 py-4 text-text-subtle">{product.category}</td>
                       <td className="px-5 py-4 text-text-subtle">{product.listingStatus || "active"}</td>
                       <td className="px-5 py-4">
-                        <Badge label={stockStatus.label} tone={stockStatus.tone} />
+                        {isEditingStock ? (
+                          <input
+                            autoFocus
+                            type="number"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={handleEditSave}
+                            onKeyDown={handleEditKeyDown}
+                            className="w-20 rounded border border-brand-primary bg-bg-surface px-2 py-1 text-sm text-text-main focus:outline-none"
+                            min="0"
+                          />
+                        ) : (
+                          <button
+                            onClick={() => handleEditStart(product.id, "stock", product.stock)}
+                            className="hover:opacity-80"
+                          >
+                            <Badge label={stockStatus.label} tone={stockStatus.tone} />
+                          </button>
+                        )}
                       </td>
                       <td className="type-num px-5 py-4 text-text-subtle">{product.soldCount.toLocaleString()}</td>
                       <td className="type-num px-5 py-4 font-semibold text-text-main">

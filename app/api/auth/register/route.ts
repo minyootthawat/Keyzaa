@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
-import { connectDB } from "@/lib/db/mongodb";
+import { createUser, findUserByEmail } from "@/lib/db/supabase";
+import { getAdminAccessForEmail } from "@/lib/auth/admin";
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
 
@@ -23,11 +24,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { db } = await connectDB();
-    const users = db.collection("users");
-
-    const existingUser = await users.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
+    // Check if already registered
+    const existing = await findUserByEmail(email);
+    if (existing) {
       return NextResponse.json(
         { error: "Email already registered" },
         { status: 409 }
@@ -35,20 +34,28 @@ export async function POST(req: NextRequest) {
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
-    const now = new Date().toISOString();
 
-    const user = {
+    const user = await createUser({
+      email,
       name,
-      email: email.toLowerCase(),
       passwordHash,
-      role: "buyer" as const,
-      createdAt: now,
-    };
+      role: "buyer",
+    });
 
-    const result = await users.insertOne(user);
-    const userId = result.insertedId.toString();
+    if (!user) {
+      return NextResponse.json(
+        { error: "Failed to create account" },
+        { status: 500 }
+      );
+    }
 
-    const token = await new SignJWT({ userId, email: email.toLowerCase() })
+    const userId = user.id;
+    const adminAccess = getAdminAccessForEmail(user.email);
+
+    const token = await new SignJWT({
+      userId,
+      email: user.email,
+    })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
       .setExpirationTime("7d")
@@ -56,7 +63,17 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       token,
-      user: { id: userId, name, email: email.toLowerCase(), role: "buyer", createdAt: now },
+      user: {
+        id: userId,
+        name: user.name,
+        email: user.email,
+        role: (user as unknown as { role?: string }).role ?? "buyer",
+        sellerId: null,
+        isAdmin: adminAccess.isAdmin,
+        adminRole: adminAccess.adminRole,
+        adminPermissions: adminAccess.permissions,
+        createdAt: user.created_at,
+      },
     });
   } catch (error) {
     console.error("Register error:", error);
