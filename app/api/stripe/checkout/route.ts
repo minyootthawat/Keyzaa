@@ -9,7 +9,7 @@ function getStripe(): Stripe {
 
 export async function POST(req: NextRequest) {
   try {
-    const { priceId, quantity = 1, buyerId, successUrl, cancelUrl } = await req.json();
+    const { priceId, quantity = 1, buyerId, orderId, successUrl, cancelUrl } = await req.json();
     const stripe = getStripe();
 
     if (!priceId) {
@@ -20,9 +20,10 @@ export async function POST(req: NextRequest) {
       mode: "payment",
       line_items: [{ price: priceId, quantity }],
       success_url: successUrl ?? `${req.nextUrl.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: cancelUrl ?? `${req.nextUrl.origin}/checkout`,
+      cancel_url: cancelUrl ?? `${req.nextUrl.origin}/checkout?session_id={CHECKOUT_SESSION_ID}`,
       metadata: {
         buyerId: buyerId ?? "",
+        orderId: orderId ?? "",
       },
     });
 

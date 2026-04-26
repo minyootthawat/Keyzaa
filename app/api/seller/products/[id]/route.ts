@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBearerPayload } from "@/lib/auth/jwt";
+import { auth } from "@/auth";
 import { createServiceRoleClient } from "@/lib/db/supabase";
 import type { Product } from "@/app/types";
 
@@ -40,37 +40,32 @@ function mapRowToProduct(row: ProductRow): Product {
   };
 }
 
-async function getSellerIdFromUserId(userId: string): Promise<string | null> {
-  const supabase = createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("sellers")
-    .select("id")
-    .eq("user_id", userId)
-    .single();
-
-  if (error || !data) return null;
-  return data.id;
-}
-
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const payload = await getBearerPayload(req);
-    const userId = payload?.userId as string | undefined;
+    const session = await auth();
+    const userId = session?.user?.id ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const sellerId = await getSellerIdFromUserId(userId);
-    if (!sellerId) {
+    const supabase = createServiceRoleClient();
+    const { data: seller, error: sellerError } = await supabase
+      .from("sellers")
+      .select("id")
+      .eq("user_id", userId)
+      .single();
+
+    if (sellerError || !seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const supabase = createServiceRoleClient();
+    const sellerId = seller.id;
+
     const { data, error } = await supabase
       .from("products")
       .select("*")
@@ -99,19 +94,26 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const payload = await getBearerPayload(req);
-    const userId = payload?.userId as string | undefined;
+    const session = await auth();
+    const userId = session?.user?.id ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const sellerId = await getSellerIdFromUserId(userId);
-    if (!sellerId) {
+    const supabase = createServiceRoleClient();
+    const { data: seller, error: sellerError } = await supabase
+      .from("sellers")
+      .select("id")
+      .eq("user_id", userId)
+      .single();
+
+    if (sellerError || !seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const supabase = createServiceRoleClient();
+    const sellerId = seller.id;
+
     const { data: existing, error: fetchError } = await supabase
       .from("products")
       .select("*")
@@ -202,19 +204,26 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const payload = await getBearerPayload(req);
-    const userId = payload?.userId as string | undefined;
+    const session = await auth();
+    const userId = session?.user?.id ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const sellerId = await getSellerIdFromUserId(userId);
-    if (!sellerId) {
+    const supabase = createServiceRoleClient();
+    const { data: seller, error: sellerError } = await supabase
+      .from("sellers")
+      .select("id")
+      .eq("user_id", userId)
+      .single();
+
+    if (sellerError || !seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const supabase = createServiceRoleClient();
+    const sellerId = seller.id;
+
     const { data: existing, error: fetchError } = await supabase
       .from("products")
       .select("seller_id")

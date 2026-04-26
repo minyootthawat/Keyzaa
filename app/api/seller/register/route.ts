@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import { getBearerPayload } from "@/lib/auth/jwt";
+import { auth } from "@/auth";
 
 export async function POST(req: NextRequest) {
   try {
-    const payload = await getBearerPayload(req);
-    const userId = typeof payload?.userId === "string" ? payload.userId : null;
+    const session = await auth();
+    const userId = session?.user?.id ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

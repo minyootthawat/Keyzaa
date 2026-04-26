@@ -1,39 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBearerPayload } from "@/lib/auth/jwt";
+import { auth } from "@/auth";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
-async function getSellerIdFromUserId(userId: string): Promise<string | null> {
-  const supabase = createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("sellers")
-    .select("id")
-    .eq("user_id", userId)
-    .single();
-
-  if (error || !data) return null;
-  return data.id;
-}
-
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const payload = await getBearerPayload(req);
-  const userId = typeof payload?.userId === "string" ? payload.userId : null;
+  const session = await auth();
+  const userId = session?.user?.id ?? null;
 
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const sellerId = await getSellerIdFromUserId(userId);
-  if (!sellerId) {
+  const supabase = createServiceRoleClient();
+  const { data: seller, error: sellerError } = await supabase
+    .from("sellers")
+    .select("id")
+    .eq("user_id", userId)
+    .single();
+
+  if (sellerError || !seller) {
     return NextResponse.json({ error: "Seller not found" }, { status: 404 });
   }
 
   const { id } = await params;
-  const supabase = createServiceRoleClient();
   const { data, error } = await supabase
     .from("game_accounts")
     .select("*")
     .eq("id", id)
-    .eq("seller_id", sellerId)
+    .eq("seller_id", seller.id)
     .single();
 
   if (error || !data) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -41,25 +34,30 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const payload = await getBearerPayload(req);
-  const userId = typeof payload?.userId === "string" ? payload.userId : null;
+  const session = await auth();
+  const userId = session?.user?.id ?? null;
 
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const sellerId = await getSellerIdFromUserId(userId);
-  if (!sellerId) {
+  const supabase = createServiceRoleClient();
+  const { data: seller, error: sellerError } = await supabase
+    .from("sellers")
+    .select("id")
+    .eq("user_id", userId)
+    .single();
+
+  if (sellerError || !seller) {
     return NextResponse.json({ error: "Seller not found" }, { status: 404 });
   }
 
   const { id } = await params;
-  const supabase = createServiceRoleClient();
   const { data: existing, error: fetchError } = await supabase
     .from("game_accounts")
     .select("*")
     .eq("id", id)
-    .eq("seller_id", sellerId)
+    .eq("seller_id", seller.id)
     .single();
 
   if (fetchError || !existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -79,25 +77,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const payload = await getBearerPayload(req);
-  const userId = typeof payload?.userId === "string" ? payload.userId : null;
+  const session = await auth();
+  const userId = session?.user?.id ?? null;
 
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const sellerId = await getSellerIdFromUserId(userId);
-  if (!sellerId) {
+  const supabase = createServiceRoleClient();
+  const { data: seller, error: sellerError } = await supabase
+    .from("sellers")
+    .select("id")
+    .eq("user_id", userId)
+    .single();
+
+  if (sellerError || !seller) {
     return NextResponse.json({ error: "Seller not found" }, { status: 404 });
   }
 
   const { id } = await params;
-  const supabase = createServiceRoleClient();
   const { error } = await supabase
     .from("game_accounts")
     .delete()
     .eq("id", id)
-    .eq("seller_id", sellerId);
+    .eq("seller_id", seller.id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

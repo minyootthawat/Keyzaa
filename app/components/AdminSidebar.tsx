@@ -15,6 +15,7 @@ export default function AdminSidebar() {
 
   const navItems: NavItem[] = [
     { label: lang === "th" ? "ภาพรวมแพลตฟอร์ม" : "Platform overview", href: "/backoffice/dashboard" },
+    { label: lang === "th" ? "จัดการร้านค้า" : "Manage sellers", href: "/backoffice/sellers" },
   ];
 
   return (

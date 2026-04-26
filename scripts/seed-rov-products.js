@@ -102,8 +102,7 @@ async function main() {
   console.log(`Using seller: ${sellerId}`);
 
   // Insert 50 ROV products
-  const products = rovProducts.map((p, i) => {
-    const discount = p.originalPrice > 0 ? Math.round((1 - p.price / p.originalPrice) * 100) : 0;
+  const products = rovProducts.map((p) => {
     return {
       seller_id: sellerId,
       name: `ROV ${p.diamonds.toLocaleString()} เพชร / ${p.diamonds.toLocaleString()} Diamonds`,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAccessFromRequest } from "@/lib/auth/admin";
+import { getAdminAccessFromSession } from "@/lib/auth/admin";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
 interface SellerWithUser {
@@ -23,7 +23,7 @@ interface SellerWithUser {
 
 export async function GET(req: NextRequest) {
   try {
-    const access = await getAdminAccessFromRequest(req);
+    const access = await getAdminAccessFromSession();
     if (access.status !== 200) {
       return NextResponse.json({ error: access.error }, { status: access.status });
     }

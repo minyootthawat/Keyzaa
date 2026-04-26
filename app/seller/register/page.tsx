@@ -11,8 +11,6 @@ import {
   CreditCard,
   Store,
   TrendingUp,
-  Clock,
-  CheckCircle2,
   ArrowRight,
   Loader2,
 } from "lucide-react";
@@ -234,7 +232,13 @@ function FormSection() {
       await registerSeller({ shopName: shopName.trim(), phone: phone.trim() });
       router.push("/seller/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("register_required"));
+      const msg = err instanceof Error ? err.message : t("register_required");
+      // Already registered as seller (409) → redirect to dashboard
+      if (msg.includes("Already registered") || (err as { status?: number }).status === 409) {
+        await router.push("/seller/dashboard");
+        return;
+      }
+      setError(msg);
     } finally {
       setSubmitting(false);
     }

@@ -5,13 +5,8 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import {
   LucideIcon,
-  ShieldCheck,
   Zap,
-  Headphones,
-  Store,
-  Clock,
   CreditCard,
-  ThumbsUp,
   RefreshCw,
 } from "lucide-react";
 import Badge from "@/app/components/Badge";
@@ -47,8 +42,6 @@ const categoryIcons: Record<string, LucideIcon> = {
   โปร: Zap,
 };
 
-const trustIcons: LucideIcon[] = [ShieldCheck, Zap, Headphones, Store];
-
 interface HomeProduct {
   id: string;
   title: string;
@@ -68,7 +61,7 @@ interface HomeProduct {
 }
 
 export default function HomeClient() {
-  const { t, lang } = useLanguage();
+  const { t } = useLanguage();
   const [products, setProducts] = useState<HomeProduct[]>([]);
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>(
     {},
@@ -93,12 +86,14 @@ export default function HomeClient() {
   }
 
   useEffect(() => {
-    fetchHome();
+    const doFetch = async () => {
+      fetchHome();
+    };
+    doFetch();
   }, []);
 
   const bestDeals = products.slice(0, 4);
   const hotDeals = products.slice(4, 8);
-  const spotlightProducts = products.slice(0, 3);
 
   // Build categories from dynamic API counts — all labels in Thai
   const displayCategories = [
@@ -117,19 +112,6 @@ export default function HomeClient() {
       .filter(([apiCat]) => CATEGORY_MAP[apiCat] === cat.key)
       .reduce((sum, [, n]) => sum + n, 0),
   }));
-
-  const trustItems = [
-    { icon: Clock, text: t("home_trustVerified") },
-    { icon: ShieldCheck, text: t("home_trustProtected") },
-    { icon: CreditCard, text: t("home_trustPayments") },
-    { icon: ThumbsUp, text: t("home_trustSla") },
-  ];
-
-  const trustStats = [
-    { value: "12,000+", label: t("home_trustStatOrders") },
-    { value: "230+", label: t("home_trustStatVendors") },
-    { value: "09:00-24:00", label: t("home_trustStatSupport") },
-  ];
 
   return (
     <div className="relative overflow-hidden pb-16">

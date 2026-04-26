@@ -64,10 +64,11 @@ async function runTests() {
     if (!loginRes.ok) throw new Error(`Login failed: ${loginRes.status}`);
 
     // Set token in localStorage
-    const tokenData = JSON.parse(loginRes.token);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+const tokenData = JSON.parse(loginRes.token);
     await page.evaluate((token) => {
       localStorage.setItem('keyzaa_token', token.token || token);
-    }, loginRes.token);
+    }, loginRes.token as string);
 
     // Navigate to dashboard
     await page.goto(`${BASE}/seller/dashboard`, { waitUntil: 'networkidle' });

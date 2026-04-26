@@ -8,12 +8,18 @@ import { getStoredToken } from "@/app/lib/auth-client";
 import { formatThaiBaht } from "@/app/lib/marketplace";
 import CTAButton from "@/app/components/CTAButton";
 import Badge from "@/app/components/Badge";
+import StatCard from "@/app/components/StatCard";
+import SectionHeader from "@/app/components/SectionHeader";
 import type { Product } from "@/app/types";
 
 type SellerProduct = Product;
 
 interface SellerProductsResponse {
   products: SellerProduct[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 interface AddProductModalProps {
@@ -25,9 +31,15 @@ interface AddProductModalProps {
 const CATEGORIES = ["เติมเกม", "Gift Card", "Subscription", "ทั้งหมด"] as const;
 type Category = (typeof CATEGORIES)[number];
 
+// Sparkline data for KPI cards
+const SPARKLINE_TOTAL = [55, 70, 60, 85, 75, 90, 95];
+const SPARKLINE_LOW = [30, 45, 60, 40, 55, 35, 50];
+const SPARKLINE_REVENUE = [80, 65, 90, 70, 85, 95, 100];
+const SPARKLINE_STOCK = [90, 75, 85, 60, 70, 80, 65];
+
 export default function SellerProductsPage() {
   const { seller } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [products, setProducts] = useState<SellerProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -36,40 +48,82 @@ export default function SellerProductsPage() {
   const [editingCell, setEditingCell] = useState<{ id: string; field: "price" | "stock" } | null>(null);
   const [editValue, setEditValue] = useState<string>("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalProducts, setTotalProducts] = useState(0);
 
-  useEffect(() => {
+  const PAGE_SIZE = 20;
+
+  const fetchProducts = useCallback(async (page: number, category: Category) => {
     const token = getStoredToken();
-
     if (!token) {
       setLoading(false);
       return;
     }
 
     const controller = new AbortController();
+    const categoryParam = category === "ทั้งหมด" ? "" : category;
+    const url = `/api/seller/products?page=${page}&limit=${PAGE_SIZE}${categoryParam ? `&category=${encodeURIComponent(categoryParam)}` : ""}`;
 
-    fetch("/api/seller/products", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      signal: controller.signal,
-    })
-      .then(async (response) => {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error("Failed to load products");
+      }
+      const data = (await response.json()) as SellerProductsResponse;
+      setProducts(data.products);
+      setTotalPages(data.totalPages);
+      setTotalProducts(data.total);
+      setCurrentPage(data.page);
+    } catch {
+      // API failed, leave products as empty
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const token = getStoredToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const categoryParam = activeCategory === "ทั้งหมด" ? "" : activeCategory;
+    const url = `/api/seller/products?page=1&limit=${PAGE_SIZE}${categoryParam ? `&category=${encodeURIComponent(categoryParam)}` : ""}`;
+
+    const doFetch = async () => {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          signal: controller.signal,
+        });
         if (!response.ok) {
           throw new Error("Failed to load products");
         }
-
         const data = (await response.json()) as SellerProductsResponse;
         setProducts(data.products);
-      })
-      .catch(() => {
+        setTotalPages(data.totalPages);
+        setTotalProducts(data.total);
+        setCurrentPage(data.page);
+      } catch {
         // API failed, leave products as empty
-      })
-      .finally(() => {
+      } finally {
         setLoading(false);
-      });
+      }
+    };
+    doFetch();
 
     return () => controller.abort();
-  }, []);
+  }, [activeCategory]);
 
   const getStockStatus = (stock: number) => {
     if (stock === 0) return { label: t("sellerProducts_outOfStock"), tone: "default" as const };
@@ -234,30 +288,118 @@ export default function SellerProductsPage() {
     setSelectedIds(new Set());
   };
 
-  const getCategoryCount = (category: Category) => {
-    if (category === "ทั้งหมด") return products.length;
-    return products.filter((p) => p.category === category).length;
+  const handleCategoryChange = (cat: Category) => {
+    setActiveCategory(cat);
+    setCurrentPage(1);
+    setLoading(true);
+    fetchProducts(1, cat);
   };
 
-  const filteredProducts =
-    activeCategory === "ทั้งหมด" ? products : products.filter((p) => p.category === activeCategory);
+  const getCategoryCount = (_category: Category) => {
+    return products.filter((p) => p.category === _category).length;
+  };
+
+  const filteredProducts = products;
+
+  // KPI cards
+  const totalListings = totalProducts;
+  const lowStockCount = filteredProducts.filter((p) => p.stock > 0 && p.stock < 20).length;
+  const outOfStockCount = filteredProducts.filter((p) => p.stock === 0).length;
+  const totalRevenue = filteredProducts.reduce((sum, p) => sum + p.price * p.soldCount, 0);
+
+  const statCards = [
+    {
+      label: lang === "th" ? "สินค้าทั้งหมด" : "Total Listings",
+      value: String(totalListings),
+      delta: totalListings > 0 ? "↑ 5%" : "—",
+      deltaColor: "text-accent" as const,
+      sparklineData: SPARKLINE_TOTAL,
+    },
+    {
+      label: lang === "th" ? "ใกล้หมดสต็อก" : "Low Stock",
+      value: String(lowStockCount),
+      delta: lowStockCount > 0 ? "⚠️" : "—",
+      deltaColor: lowStockCount > 0 ? "text-warning" as const : "text-text-muted" as const,
+      sparklineData: SPARKLINE_LOW,
+    },
+    {
+      label: lang === "th" ? "มูลค่ารวม" : "Total Revenue",
+      value: `฿${formatThaiBaht(totalRevenue)}`,
+      delta: "↑ 12%",
+      deltaColor: "text-accent" as const,
+      sparklineData: SPARKLINE_REVENUE,
+    },
+    {
+      label: lang === "th" ? "สินค้าหมด" : "Out of Stock",
+      value: String(outOfStockCount),
+      delta: outOfStockCount > 0 ? "⚠️" : "—",
+      deltaColor: outOfStockCount > 0 ? "text-danger" as const : "text-text-muted" as const,
+      sparklineData: SPARKLINE_STOCK,
+    },
+  ];
 
   if (loading) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-primary border-t-transparent" />
+      <div className="space-y-6 md:space-y-7">
+        <div className="h-28 w-full rounded-2xl bg-bg-surface/60 animate-pulse" />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="surface-card p-5">
+              <div className="h-3 w-20 rounded bg-bg-surface/80 animate-pulse" />
+              <div className="mt-3 h-8 w-28 rounded bg-bg-surface/80 animate-pulse" />
+              <div className="mt-3 h-10 w-full rounded bg-bg-surface/60 animate-pulse" />
+            </div>
+          ))}
+        </div>
+        <div className="h-48 w-full rounded-2xl bg-bg-surface/60 animate-pulse" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="type-h1">{t("sellerProducts_title")}</h1>
-          <p className="type-body mt-1 text-text-subtle">{seller?.shopName}</p>
+    <div className="space-y-6 md:space-y-7">
+      {/* Page header */}
+      <SectionHeader
+        title={t("sellerProducts_title")}
+        subtitle={
+          lang === "th"
+            ? `ร้าน ${seller?.shopName ?? ""} · ${totalProducts} รายการ`
+            : `${seller?.shopName ?? ""} · ${totalProducts} listings`
+        }
+        cta={{
+          label: t("sellerProducts_add"),
+          onClick: () => setShowAddModal(true),
+          disabled: seller?.verificationStatus !== "verified",
+        }}
+      />
+
+      {/* Verification pending banner */}
+      {seller?.verificationStatus === "new" && (
+        <div className="flex items-start gap-3 rounded-2xl border border-warning/40 bg-warning/10 px-5 py-4">
+          <svg className="mt-0.5 shrink-0" width="20" height="20" fill="none" viewBox="0 0 20 20">
+            <circle cx="10" cy="10" r="9" stroke="#F59E0B" strokeWidth="1.5" />
+            <path d="M10 6v5M10 13.5h.01" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <div>
+            <p className="font-semibold text-warning">
+              {lang === "th"
+                ? "ร้านค้าของคุณกำลังรอการตรวจสอบ"
+                : "Your store is pending review"}
+            </p>
+            <p className="mt-1 text-sm text-text-subtle">
+              {lang === "th"
+                ? "ทีมงานกำลังตรวจสอบร้านค้าของคุณ คุณจะสามารถเพิ่มสินค้าได้หลังผ่านการอนุมัติ"
+                : "Our team is reviewing your store. You'll be able to list products once approved."}
+            </p>
+          </div>
         </div>
-        <CTAButton onClick={() => setShowAddModal(true)}>{t("sellerProducts_add")}</CTAButton>
+      )}
+
+      {/* KPI row */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {statCards.map((card) => (
+          <StatCard key={card.label} {...card} />
+        ))}
       </div>
 
       {/* Category Filter Tabs */}
@@ -268,7 +410,7 @@ export default function SellerProductsPage() {
           return (
             <button
               key={cat}
-              onClick={() => setActiveCategory(cat)}
+              onClick={() => handleCategoryChange(cat)}
               className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
                 isActive
                   ? "bg-brand-primary text-white"
@@ -322,7 +464,10 @@ export default function SellerProductsPage() {
 
       {filteredProducts.length === 0 ? (
         <div className="surface-card glass-panel space-y-3 p-12 text-center">
-          <p className="text-4xl">📦</p>
+          <svg width="48" height="48" fill="none" viewBox="0 0 48 48" className="text-text-muted mx-auto">
+            <rect x="8" y="14" width="32" height="24" rx="4" stroke="currentColor" strokeWidth="2" />
+            <path d="M16 22h16M16 28h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
           <h2 className="type-h2 text-text-main">{t("sellerProducts_empty")}</h2>
           <p className="type-body text-text-subtle">{t("sellerProducts_emptyDesc")}</p>
         </div>
@@ -343,10 +488,10 @@ export default function SellerProductsPage() {
                   <th className="px-5 py-3 font-semibold">{t("common_products")}</th>
                   <th className="px-5 py-3 font-semibold">{t("common_category")}</th>
                   <th className="px-5 py-3 font-semibold">Listing</th>
-                  <th className="px-5 py-3 font-semibold">{t("seller_stock")}</th>
+                  <th className="px-5 py-3 font-semibold">{lang === "th" ? "สต็อก" : "Stock"}</th>
                   <th className="px-5 py-3 font-semibold">{t("seller_sold")}</th>
-                  <th className="px-5 py-3 font-semibold">Gross sales</th>
-                  <th className="px-5 py-3 font-semibold">{t("seller_manage")}</th>
+                  <th className="px-5 py-3 font-semibold">{lang === "th" ? "ยอดขาย" : "Gross Sales"}</th>
+                  <th className="px-5 py-3 font-semibold">{lang === "th" ? "จัดการ" : "Manage"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -357,7 +502,7 @@ export default function SellerProductsPage() {
                   const isEditingStock = editingCell?.id === product.id && editingCell.field === "stock";
 
                   return (
-                    <tr key={product.id} className="border-b border-border-subtle last:border-0">
+                    <tr key={product.id} className="border-b border-border-subtle last:border-0 hover:bg-bg-surface/40 transition-colors">
                       <td className="px-5 py-4">
                         <input
                           type="checkbox"
@@ -440,6 +585,50 @@ export default function SellerProductsPage() {
         </div>
       )}
 
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => {
+              const prevPage = Math.max(1, currentPage - 1);
+              setLoading(true);
+              fetchProducts(prevPage, activeCategory);
+            }}
+            disabled={currentPage <= 1}
+            className="rounded-lg border border-border-subtle bg-bg-surface px-4 py-2 text-sm font-semibold text-text-main hover:bg-bg-surface/80 disabled:cursor-not-allowed disabled:opacity-40 transition-all"
+          >
+            {lang === "th" ? "ก่อนหน้า" : "Previous"}
+          </button>
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+            <button
+              key={page}
+              onClick={() => {
+                setLoading(true);
+                fetchProducts(page, activeCategory);
+              }}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
+                page === currentPage
+                  ? "bg-brand-primary text-white"
+                  : "border border-border-subtle bg-bg-surface text-text-subtle hover:bg-bg-surface/80"
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+          <button
+            onClick={() => {
+              const nextPage = Math.min(totalPages, currentPage + 1);
+              setLoading(true);
+              fetchProducts(nextPage, activeCategory);
+            }}
+            disabled={currentPage >= totalPages}
+            className="rounded-lg border border-border-subtle bg-bg-surface px-4 py-2 text-sm font-semibold text-text-main hover:bg-bg-surface/80 disabled:cursor-not-allowed disabled:opacity-40 transition-all"
+          >
+            {lang === "th" ? "ถัดไป" : "Next"}
+          </button>
+        </div>
+      )}
+
       {showAddModal ? (
         <AddProductModal
           sellerId={seller?.id || ""}
@@ -455,7 +644,7 @@ export default function SellerProductsPage() {
 }
 
 function AddProductModal({ sellerId, onClose, onAdd }: AddProductModalProps) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("");
   const [originalPrice, setOriginalPrice] = useState("");
@@ -518,36 +707,36 @@ function AddProductModal({ sellerId, onClose, onAdd }: AddProductModalProps) {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-text-subtle">Product Title</label>
+            <label className="text-sm font-semibold text-text-subtle">{lang === "th" ? "ชื่อสินค้า" : "Product Title"}</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
-              className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main focus:border-brand-primary focus:outline-none"
+              className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:border-brand-primary focus:outline-none"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-text-subtle">Price (฿)</label>
+              <label className="text-sm font-semibold text-text-subtle">{lang === "th" ? "ราคา (฿)" : "Price (฿)"}</label>
               <input
                 type="number"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
                 required
                 min="1"
-                className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main focus:border-brand-primary focus:outline-none"
+                className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:border-brand-primary focus:outline-none"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-text-subtle">Original Price (฿)</label>
+              <label className="text-sm font-semibold text-text-subtle">{lang === "th" ? "ราคาเดิม (฿)" : "Original Price (฿)"}</label>
               <input
                 type="number"
                 value={originalPrice}
                 onChange={(e) => setOriginalPrice(e.target.value)}
                 required
                 min="1"
-                className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main focus:border-brand-primary focus:outline-none"
+                className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:border-brand-primary focus:outline-none"
               />
             </div>
           </div>
@@ -557,7 +746,7 @@ function AddProductModal({ sellerId, onClose, onAdd }: AddProductModalProps) {
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main focus:border-brand-primary focus:outline-none"
+                className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:border-brand-primary focus:outline-none"
               >
                 <option value="เติมเกม">เติมเกม</option>
                 <option value="Gift Card">Gift Card</option>
@@ -570,7 +759,7 @@ function AddProductModal({ sellerId, onClose, onAdd }: AddProductModalProps) {
               <select
                 value={platform}
                 onChange={(e) => setPlatform(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main focus:border-brand-primary focus:outline-none"
+                className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:border-brand-primary focus:outline-none"
               >
                 <option value="Mobile">Mobile</option>
                 <option value="PC">PC</option>
@@ -586,7 +775,7 @@ function AddProductModal({ sellerId, onClose, onAdd }: AddProductModalProps) {
               onChange={(e) => setStock(e.target.value)}
               required
               min="0"
-              className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main focus:border-brand-primary focus:outline-none"
+              className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:border-brand-primary focus:outline-none"
             />
           </div>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
@@ -595,7 +784,7 @@ function AddProductModal({ sellerId, onClose, onAdd }: AddProductModalProps) {
               {t("common_back")}
             </CTAButton>
             <CTAButton type="submit" fullWidth disabled={submitting}>
-              {submitting ? "Saving..." : t("sellerProducts_add")}
+              {submitting ? (lang === "th" ? "กำลังบันทึก..." : "Saving...") : t("sellerProducts_add")}
             </CTAButton>
           </div>
         </form>

@@ -5,12 +5,11 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 
 export default function SellerRouteGuard({ children }: { children: React.ReactNode }) {
-  const { user, isRegisteredSeller } = useAuth();
+  const { isRegisteredSeller } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   const isRegisterPage = pathname === "/seller/register";
-  const isAuthenticated = !!user;
 
   useEffect(() => {
     if (isRegisterPage) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import { getBearerPayload } from "@/lib/auth/jwt";
+import { auth } from "@/auth";
 
 interface DbPortfolio {
   id: string;
@@ -56,8 +56,8 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const payload = await getBearerPayload(req);
-    const userId = payload?.userId as string | undefined;
+    const session = await auth();
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -90,8 +90,8 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const payload = await getBearerPayload(req);
-    const userId = payload?.userId as string | undefined;
+    const session = await auth();
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -174,8 +174,8 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const payload = await getBearerPayload(req);
-    const userId = payload?.userId as string | undefined;
+    const session = await auth();
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

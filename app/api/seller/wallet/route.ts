@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getBearerPayload } from "@/lib/auth/jwt";
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
 interface LedgerRow {
@@ -12,33 +12,28 @@ interface LedgerRow {
   created_at: string;
 }
 
-async function getSellerIdFromUserId(userId: string): Promise<string | null> {
-  const supabase = createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("sellers")
-    .select("id")
-    .eq("user_id", userId)
-    .single();
-
-  if (error || !data) return null;
-  return data.id;
-}
-
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const payload = await getBearerPayload(req);
-    const userId = typeof payload?.userId === "string" ? payload.userId : null;
+    const session = await auth();
+    const userId = session?.user?.id ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const sellerId = await getSellerIdFromUserId(userId);
-    if (!sellerId) {
+    const supabase = createServiceRoleClient();
+    const { data: seller, error: sellerError } = await supabase
+      .from("sellers")
+      .select("id")
+      .eq("user_id", userId)
+      .single();
+
+    if (sellerError || !seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const supabase = createServiceRoleClient();
+    const sellerId = seller.id;
+
     const { data: ledgerData, error: ledgerError } = await supabase
       .from("seller_ledger_entries")
       .select("*")
@@ -98,8 +93,8 @@ export async function GET(req: NextRequest) {
       },
       entries: mappedEntries,
     });
-  } catch (error) {
-    console.error("Seller wallet error:", error);
+} catch {
+      console.error("Seller wallet error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

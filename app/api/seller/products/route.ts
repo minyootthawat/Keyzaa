@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSellerAccessFromRequest } from "@/lib/auth/seller";
+import { getSellerAccessFromSession } from "@/lib/auth/seller";
 import { createServiceRoleClient } from "@/lib/db/supabase";
 import type { Product } from "@/app/types";
 
@@ -38,7 +38,7 @@ function mapRowToProduct(row: ProductRow): Partial<Product> {
 
 export async function GET(req: NextRequest) {
   try {
-    const authResult = await getSellerAccessFromRequest(req);
+    const authResult = await getSellerAccessFromSession();
     if (authResult.status !== 200) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
@@ -46,19 +46,35 @@ export async function GET(req: NextRequest) {
     const { sellerId } = authResult.access!;
 
     const supabase = createServiceRoleClient();
-    const { data, error } = await supabase
+    const searchParams = req.nextUrl.searchParams;
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20", 10)));
+    const category = searchParams.get("category") || "";
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    let query = supabase
       .from("products")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("seller_id", sellerId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (category && category !== "ทั้งหมด") {
+      query = query.eq("category", category);
+    }
+
+    const { data, error, count } = await query;
 
     if (error) {
       console.error("Seller products list error:", error);
       return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
+    const total = count ?? 0;
+    const totalPages = Math.ceil(total / limit);
     const mapped = (data as ProductRow[]).map(mapRowToProduct);
-    return NextResponse.json({ products: mapped });
+    return NextResponse.json({ products: mapped, total, page, limit, totalPages });
   } catch (error) {
     console.error("Seller products list error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -67,7 +83,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const authResult = await getSellerAccessFromRequest(req);
+    const authResult = await getSellerAccessFromSession();
     if (authResult.status !== 200) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }

@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
+import { ShoppingBag, LogOut } from "lucide-react";
 import { useCart } from "@/app/context/CartContext";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { useAuth } from "@/app/context/AuthContext";
@@ -95,17 +96,20 @@ export default function StickyHeader() {
 
   // Check if we were redirected here because auth was required on /seller/register
   useEffect(function openAuthDialogIfRequired() {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("auth_required") === "1") {
-      // Remove the param from URL without a full navigation
-      const url = new URL(window.location.href);
-      url.searchParams.delete("auth_required");
-      window.history.replaceState({}, "", url.pathname);
-      setShowAuthDialog(true);
-    }
+    const doCheck = () => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("auth_required") === "1") {
+        // Remove the param from URL without a full navigation
+        const url = new URL(window.location.href);
+        url.searchParams.delete("auth_required");
+        window.history.replaceState({}, "", url.pathname);
+        setShowAuthDialog(true);
+      }
+    };
+    doCheck();
   }, []);
 
-  const { user, role, isAdmin, isRegisteredSeller, logout } = useAuth();
+  const { user, isAdmin, isRegisteredSeller, logout } = useAuth();
   const { lang, toggleLang, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const isClient = useSyncExternalStore(
@@ -128,7 +132,10 @@ export default function StickyHeader() {
 
   // Load recent searches on mount
   useEffect(function loadRecentSearches() {
-    setRecentSearches(getRecentSearches());
+    const doLoad = () => {
+      setRecentSearches(getRecentSearches());
+    };
+    doLoad();
   }, []);
 
   // Close panel on click outside
@@ -183,9 +190,7 @@ export default function StickyHeader() {
   const openAuthDialog = useCallback(() => setShowAuthDialog(true), []);
   const closeAuthDialog = useCallback(() => setShowAuthDialog(false), []);
 
-  const isSeller = role === "seller" || role === "both";
   const isRegistered = isRegisteredSeller;
-  const isDashboardLinkVisible = isSeller && isRegistered;
   const isOnSellerRoute = pathname.startsWith("/seller");
   const showSwitchToBuyer = isRegistered && isOnSellerRoute;
   const showSwitchToSeller = isRegistered && !isOnSellerRoute;
@@ -233,7 +238,6 @@ export default function StickyHeader() {
                 type="search"
                 placeholder={t("common_searchLong")}
                 aria-label={t("common_searchAria")}
-                aria-expanded={showSearchPanel}
                 aria-autocomplete="list"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -419,7 +423,7 @@ export default function StickyHeader() {
                         className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-text-subtle hover:bg-bg-surface-hover hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
                         onClick={() => setProfileMenuOpen(false)}
                       >
-                        <UserLucide className="h-4 w-4 shrink-0 text-text-muted" />
+                        <UserIcon className="h-4 w-4 shrink-0 text-text-muted" />
                         {t("common_profile") || "Profile"}
                       </Link>
                       
@@ -429,7 +433,7 @@ export default function StickyHeader() {
                         onClick={() => setProfileMenuOpen(false)}
                       >
                         <ShoppingBag className="h-4 w-4 shrink-0 text-text-muted" />
-                        {t("common_orders") || "Orders"}
+                        {t("profile_openOrders")}
                       </Link>
 
                       <div className="my-1 h-px bg-border-subtle" />
@@ -442,7 +446,7 @@ export default function StickyHeader() {
                         className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-danger hover:bg-danger/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/45"
                       >
                         <LogOut className="h-4 w-4 shrink-0 text-danger/80" />
-                        {t("common_logout") || "Logout"}
+                        {t("auth_logout")}
                       </button>
                     </div>
                   </div>

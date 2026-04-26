@@ -21,19 +21,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   });
 
   useEffect(() => {
-    const root = document.documentElement;
-
-    // Remove old class
-    root.classList.remove("light");
-
-    if (theme === "light") {
-      root.classList.add("light");
-    }
-
-    // Sync localStorage
     try {
+      const root = document.documentElement;
+      root.classList.remove("light");
+      if (theme === "light") {
+        root.classList.add("light");
+      }
       localStorage.setItem(STORAGE_KEY, theme);
-    } catch (e) {}
+    } catch {
+      // localStorage unavailable — persist silently
+    }
   }, [theme]);
 
   const setTheme = (t: Theme) => setThemeState(t);

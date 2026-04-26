@@ -51,7 +51,7 @@ function ProductsPageLoading() {
 function ProductsPageContent() {
   const searchParams = useSearchParams();
   const { t, lang } = useLanguage();
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   // Initialize from URL params (set by header search)
   const [allProducts, setAllProducts] = useState<Product[]>([]);
@@ -66,23 +66,23 @@ function ProductsPageContent() {
   // Fetch products
   useEffect(function fetchProducts() {
     let cancelled = false;
-    setLoading(true);
+    const doFetch = async () => {
+      setLoading(true);
 
-    fetch("/api/products")
-      .then((res) => {
+      try {
+        const res = await fetch("/api/products");
         if (!res.ok) throw new Error("Failed to fetch");
-        return res.json();
-      })
-      .then((data) => {
+        const data = await res.json();
         if (cancelled) return;
         setAllProducts((data.products ?? []) as Product[]);
-        setLoading(false);
-      })
-      .catch(() => {
+      } catch {
         if (cancelled) return;
         setAllProducts([]);
-        setLoading(false);
-      });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    doFetch();
 
     return function cancelFetch() {
       cancelled = true;
@@ -92,7 +92,10 @@ function ProductsPageContent() {
   // Reset pagination when filters change
   useEffect(
     function resetPagination() {
-      setVisibleCount(PAGE_SIZE);
+      const doReset = () => {
+        setVisibleCount(PAGE_SIZE);
+      };
+      doReset();
     },
     [category, platform, priceRange, sort, search]
   );
@@ -181,7 +184,6 @@ function ProductsPageContent() {
 
   const visibleProducts = filtered.slice(0, visibleCount);
   const hasMore = visibleCount < filtered.length;
-  const isFiltered = search || category !== "all" || platform !== "all" || priceRange !== "all";
 
   return (
     <SectionContainer>

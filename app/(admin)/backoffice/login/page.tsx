@@ -11,10 +11,8 @@ export default function AdminLoginPage() {
   const { user, isAdmin, adminRole, adminPermissions, loading, login, logout } = useAuth();
   const { lang, t } = useLanguage();
   const router = useRouter();
-  const demoAdminEmail = process.env.NEXT_PUBLIC_DEMO_ADMIN_EMAIL || "admin@demo.keyzaa.local";
-  const demoAdminPassword = process.env.NEXT_PUBLIC_DEMO_ADMIN_PASSWORD || "demo123";
-  const [email, setEmail] = useState(demoAdminEmail);
-  const [password, setPassword] = useState(demoAdminPassword);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -113,16 +111,6 @@ export default function AdminLoginPage() {
                   </p>
                 </div>
               ) : null}
-              <div className="mb-4 rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                  {lang === "th" ? "บัญชีแอดมินเดโม" : "Demo admin account"}
-                </p>
-                <div className="mt-3 space-y-1 text-sm text-text-subtle">
-                  <p>{demoAdminEmail}</p>
-                  <p>{demoAdminPassword}</p>
-                </div>
-              </div>
-
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-text-subtle">{t("auth_email")}</label>
