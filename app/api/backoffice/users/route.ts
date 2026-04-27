@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireAdminPermission } from "@/lib/auth/admin";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { getServerAdminAccess } from "@/lib/auth/server";
+import { listUsers, createUser } from "@/lib/db/collections/users";
 
 export async function GET(req: Request) {
   try {
-    const access = await requireAdminPermission("admin:users:read");
-    if (access.status !== 200) {
-      return NextResponse.json({ error: access.error }, { status: access.status });
+    const result = await getServerAdminAccess();
+    if (result.status !== 200) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
     const { searchParams } = new URL(req.url);
@@ -16,39 +16,61 @@ export async function GET(req: Request) {
     const role = searchParams.get("role");
     const status = searchParams.get("status");
 
-    const supabase = createServiceRoleClient();
-    let query = supabase
-      .from("users")
-      .select("id, email, name, phone, role, status, created_at", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
+    const { users, total } = await listUsers({
+      search: search || undefined,
+      role: role || undefined,
+      status: status || undefined,
+      limit,
+      offset: (page - 1) * limit,
+    });
 
-    if (search) {
-      query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
-    }
-    if (role) query = query.eq("role", role);
-    if (status) query = query.eq("status", status);
-
-    const { data, error, count } = await query;
-
-    if (error) {
-      console.error("Supabase users error:", error);
-      return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 });
-    }
-
-    const users = (data ?? []).map((u: Record<string, unknown>) => ({
-      id: u.id,
+    const mapped = users.map((u) => ({
+      id: u._id?.toString() ?? "",
       email: u.email ?? "",
       name: u.name ?? "",
-      phone: u.phone ?? "",
+      phone: (u as unknown as Record<string, unknown>).phone ?? "",
       role: u.role ?? "buyer",
-      status: u.status ?? "active",
+      status: (u as unknown as Record<string, unknown>).status ?? "active",
       createdAt: u.created_at,
     }));
 
-    return NextResponse.json({ users, total: count ?? 0, page, limit });
+    return NextResponse.json({ users: mapped, total, page, limit });
   } catch (error) {
     console.error("Admin users GET error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const result = await getServerAdminAccess();
+    if (result.status !== 200) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+
+    const body = await req.json();
+    const { email, name, phone, role } = body;
+
+    if (!email || !name) {
+      return NextResponse.json({ error: "email and name are required" }, { status: 400 });
+    }
+
+    const user = await createUser({
+      email,
+      name,
+      role: role ?? "buyer",
+    });
+
+    return NextResponse.json({
+      user: {
+        id: user._id?.toString() ?? "",
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+    }, { status: 201 });
+  } catch (error) {
+    console.error("Admin users POST error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

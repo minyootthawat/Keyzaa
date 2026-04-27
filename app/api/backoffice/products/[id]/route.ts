@@ -1,48 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminPermission } from "@/lib/auth/admin";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { getServerAdminAccess } from "@/lib/auth/server";
+import { getProductById, updateProduct, deleteProduct } from "@/lib/db/collections/products";
+import { getDB } from "@/lib/mongodb";
 
-interface DbProduct {
-  id: string;
-  seller_id: string;
-  name: string;
-  description: string | null;
-  category: string;
-  price: number;
-  stock: number;
-  image_url: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const result = await getServerAdminAccess();
+    if (result.status !== 200) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
 
-interface ProductResponse {
-  id: string;
-  sellerId: string;
-  name: string;
-  price: number;
-  isActive: boolean;
-  stockQuantity: number;
-  createdAt: string;
-}
+    const { id } = await params;
+    const product = await getProductById(id);
 
-function mapDbToProduct(row: DbProduct): ProductResponse {
-  return {
-    id: row.id,
-    sellerId: row.seller_id,
-    name: row.name,
-    price: Number(row.price),
-    isActive: row.is_active,
-    stockQuantity: row.stock ?? 0,
-    createdAt: row.created_at,
-  };
+    if (!product) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      product: {
+        id: product._id?.toString() ?? "",
+        sellerId: product.seller_id,
+        name: product.name,
+        price: Number(product.price),
+        isActive: product.is_active,
+        stockQuantity: product.stock ?? 0,
+        createdAt: product.created_at,
+      },
+    });
+  } catch (error) {
+    console.error("Admin product GET error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const access = await requireAdminPermission("admin:products:write");
-    if (access.status !== 200) {
-      return NextResponse.json({ error: access.error }, { status: access.status });
+    const result = await getServerAdminAccess();
+    if (result.status !== 200) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
     const { id } = await params;
@@ -72,24 +71,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
-    const supabase = createServiceRoleClient();
-    const { data, error } = await supabase
-      .from("products")
-      .update(updates)
-      .eq("id", id)
-      .select()
-      .single();
+    const updated = await updateProduct(id, updates);
 
-    if (error) {
-      console.error("Supabase PATCH error:", error);
-      return NextResponse.json({ error: "Failed to update product" }, { status: 500 });
-    }
-
-    if (!data) {
+    if (!updated) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ product: mapDbToProduct(data as DbProduct) });
+    return NextResponse.json({
+      product: {
+        id: updated._id?.toString() ?? "",
+        sellerId: updated.seller_id,
+        name: updated.name,
+        price: Number(updated.price),
+        isActive: updated.is_active,
+        stockQuantity: updated.stock ?? 0,
+        createdAt: updated.created_at,
+      },
+    });
   } catch (error) {
     console.error("Admin product PATCH error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -98,12 +96,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const access = await requireAdminPermission("admin:products:write");
-    if (access.status !== 200) {
-      return NextResponse.json({ error: access.error }, { status: access.status });
+    const result = await getServerAdminAccess();
+    if (result.status !== 200) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    if (access.access?.adminRole !== "super_admin") {
+    if (result.access?.adminRole !== "super_admin") {
       return NextResponse.json(
         { error: "Only super_admin can delete products" },
         { status: 403 }
@@ -111,26 +109,21 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
 
     const { id } = await params;
+    const db = getDB();
 
-    const supabase = createServiceRoleClient();
+    const orderCount = await db.collection("orders").countDocuments({ "items.product_id": id });
 
-    const { count: orderCount } = await supabase
-      .from("orders")
-      .select("*", { count: "exact", head: true })
-      .eq("product_id", id);
-
-    if (orderCount && orderCount > 0) {
+    if (orderCount > 0) {
       return NextResponse.json(
         { error: `Product has ${orderCount} existing order(s). Cannot delete.`, orderCount },
         { status: 409 }
       );
     }
 
-    const { error } = await supabase.from("products").delete().eq("id", id);
+    const deleted = await deleteProduct(id);
 
-    if (error) {
-      console.error("Supabase DELETE error:", error);
-      return NextResponse.json({ error: "Failed to delete product" }, { status: 500 });
+    if (!deleted) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, id });

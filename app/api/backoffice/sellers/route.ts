@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { requireAdminPermission } from "@/lib/auth/admin";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { getServerAdminAccess } from "@/lib/auth/server";
+import { listSellers } from "@/lib/db/collections/sellers";
+import { getDB } from "@/lib/mongodb";
 
 export async function GET(req: Request) {
   try {
-    const access = await requireAdminPermission("admin:sellers:read");
-    if (access.status !== 200) {
-      return NextResponse.json({ error: access.error }, { status: access.status });
+    const result = await getServerAdminAccess();
+    if (result.status !== 200) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
     const { searchParams } = new URL(req.url);
@@ -14,39 +15,23 @@ export async function GET(req: Request) {
     const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "20", 10));
     const verified = searchParams.get("verified");
 
-    const supabase = createServiceRoleClient();
-    let query = supabase
-      .from("sellers")
-      .select(
-        `
-        id,
-        store_name,
-        phone,
-        verified,
-        balance,
-        pending_balance,
-        sales_count,
-        rating,
-        created_at,
-        user:users!sellers_user_id_fkey(id, email, name)
-      `,
-        { count: "exact" }
-      )
-      .order("created_at", { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
+    const { sellers, total } = await listSellers({
+      status: verified === "true" ? "verified" : verified === "false" ? "unverified" : undefined,
+      limit,
+      offset: (page - 1) * limit,
+    });
 
-    if (verified === "true") query = query.eq("verified", true);
-    else if (verified === "false") query = query.eq("verified", false);
-
-    const { data, error, count } = await query;
-
-    if (error) {
-      console.error("Supabase sellers error:", error);
-      return NextResponse.json({ error: "Failed to fetch sellers" }, { status: 500 });
+    // Fetch user info for each seller
+    const db = getDB();
+    const userIds = [...new Set(sellers.map((s) => s.user_id))];
+    const users = await db.collection("users").find({ _id: { $in: userIds.map((id) => new (require("mongodb").ObjectId)(id)) } }).toArray();
+    const userMap: Record<string, Record<string, unknown>> = {};
+    for (const u of users) {
+      userMap[u._id.toString()] = u;
     }
 
-    const sellers = (data ?? []).map((s: Record<string, unknown>) => ({
-      id: s.id,
+    const mapped = sellers.map((s) => ({
+      id: s._id?.toString() ?? "",
       storeName: s.store_name,
       phone: s.phone ?? "",
       verified: s.verified,
@@ -56,13 +41,13 @@ export async function GET(req: Request) {
       rating: s.rating ?? 0,
       createdAt: s.created_at,
       user: {
-        id: (s.user as Record<string, unknown>)?.id ?? "",
-        email: (s.user as Record<string, unknown>)?.email ?? "",
-        name: (s.user as Record<string, unknown>)?.name ?? "",
+        id: s.user_id,
+        email: (userMap[s.user_id] as Record<string, unknown> | undefined)?.email ?? "",
+        name: (userMap[s.user_id] as Record<string, unknown> | undefined)?.name ?? "",
       },
     }));
 
-    return NextResponse.json({ sellers, total: count ?? 0, page, limit });
+    return NextResponse.json({ sellers: mapped, total, page, limit });
   } catch (error) {
     console.error("Admin sellers GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

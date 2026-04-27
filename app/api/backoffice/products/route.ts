@@ -1,69 +1,61 @@
 import { NextResponse } from "next/server";
-import { requireAdminPermission } from "@/lib/auth/admin";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { getServerAdminAccess } from "@/lib/auth/server";
+import { getDB } from "@/lib/mongodb";
 
 export async function GET(req: Request) {
   try {
-    const access = await requireAdminPermission("admin:products:read");
-    if (access.status !== 200) {
-      return NextResponse.json({ error: access.error }, { status: access.status });
+    const result = await getServerAdminAccess();
+    if (result.status !== 200) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
     const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "20", 10));
-    const filter = searchParams.get("filter") ?? "all";
+    const filterParam = searchParams.get("filter") ?? "all";
     const search = searchParams.get("search") ?? "";
 
-    const supabase = createServiceRoleClient();
+    const db = getDB();
+    const query: Record<string, unknown> = {};
 
-    let query = supabase
-      .from("products")
-      .select(
-        `
-        id,
-        name,
-        price,
-        is_active,
-        stock,
-        created_at,
-        seller:sellers!products_seller_id_fkey(id, store_name)
-      `,
-        { count: "exact" }
-      )
-      .order("created_at", { ascending: false });
-
-    if (filter === "active") {
-      query = query.eq("is_active", true);
-    } else if (filter === "inactive") {
-      query = query.eq("is_active", false);
+    if (filterParam === "active") {
+      query.is_active = true;
+    } else if (filterParam === "inactive") {
+      query.is_active = false;
     }
 
     if (search.trim()) {
-      query = query.ilike("name", `%${search.trim()}%`);
+      query.name = { $regex: search.trim(), $options: "i" };
     }
 
-    const { data, error, count } = await query.range((page - 1) * limit, page * limit - 1);
+    const skip = (page - 1) * limit;
+    const [products, total] = await Promise.all([
+      db.collection("products").find(query).sort({ created_at: -1 }).skip(skip).limit(limit).toArray(),
+      db.collection("products").countDocuments(query),
+    ]);
 
-    if (error) {
-      console.error("Supabase products error:", error);
-      return NextResponse.json({ error: "Failed to fetch products" }, { status: 500 });
+    // Fetch seller store names
+    const sellerIds = [...new Set(products.map((p) => p.seller_id))];
+    const sellers = await db.collection("sellers").find({ _id: { $in: sellerIds.map((id) => new (require("mongodb")).ObjectId(id)) } }).toArray();
+    const sellerMap: Record<string, Record<string, unknown>> = {};
+    for (const s of sellers) {
+      sellerMap[s._id.toString()] = s;
     }
 
-    const products = (data ?? []).map((p: Record<string, unknown>) => ({
-      id: p.id,
+    const mapped = products.map((p) => ({
+      id: p._id?.toString() ?? "",
       name: p.name,
       price: p.price ?? 0,
       isActive: p.is_active,
       stockQuantity: p.stock ?? 0,
       createdAt: p.created_at,
       seller: {
-        id: (p.seller as Record<string, unknown>)?.id ?? "",
-        storeName: (p.seller as Record<string, unknown>)?.store_name ?? "",
+        id: p.seller_id,
+        storeName: (sellerMap[p.seller_id] as Record<string, unknown> | undefined)?.store_name ?? "",
       },
     }));
 
-    return NextResponse.json({ products, total: count ?? 0, page, limit });
+    return NextResponse.json({ products: mapped, total, page, limit });
   } catch (error) {
     console.error("Admin products GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

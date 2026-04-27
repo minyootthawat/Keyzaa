@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { requireAdminPermission } from "@/lib/auth/admin";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { getServerAdminAccess } from "@/lib/auth/server";
+import { listOrders } from "@/lib/db/collections/orders";
+import { getDB } from "@/lib/mongodb";
 
 export async function GET(req: Request) {
   try {
-    const access = await requireAdminPermission("admin:orders:read");
-    if (access.status !== 200) {
-      return NextResponse.json({ error: access.error }, { status: access.status });
+    const result = await getServerAdminAccess();
+    if (result.status !== 200) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
     const { searchParams } = new URL(req.url);
@@ -14,53 +15,50 @@ export async function GET(req: Request) {
     const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "20", 10));
     const status = searchParams.get("status");
 
-    const supabase = createServiceRoleClient();
-    let query = supabase
-      .from("orders")
-      .select(
-        `
-        id,
-        order_number,
-        status,
-        payment_status,
-        gross_amount,
-        created_at,
-        user:users!orders_user_id_fkey(id, email, full_name),
-        seller:sellers!orders_seller_id_fkey(id, store_name)
-      `,
-        { count: "exact" }
-      )
-      .order("created_at", { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
+    const { orders, total } = await listOrders({
+      status: status || undefined,
+      limit,
+      offset: (page - 1) * limit,
+    });
 
-    if (status) query = query.eq("status", status);
+    // Fetch user and seller info
+    const db = getDB();
+    const buyerIds = [...new Set(orders.map((o) => o.buyer_id))];
+    const sellerIds = [...new Set(orders.map((o) => o.seller_id))];
 
-    const { data, error, count } = await query;
+    const [buyers, sellers] = await Promise.all([
+      buyerIds.length > 0 ? db.collection("users").find({ _id: { $in: buyerIds.map((id) => new (require("mongodb")).ObjectId(id)) } }).toArray() : [],
+      sellerIds.length > 0 ? db.collection("sellers").find({ _id: { $in: sellerIds.map((id) => new (require("mongodb")).ObjectId(id)) } }).toArray() : [],
+    ]);
 
-    if (error) {
-      console.error("Supabase orders error:", error);
-      return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 });
+    const buyerMap: Record<string, Record<string, unknown>> = {};
+    for (const u of buyers) {
+      buyerMap[u._id.toString()] = u;
+    }
+    const sellerMap: Record<string, Record<string, unknown>> = {};
+    for (const s of sellers) {
+      sellerMap[s._id.toString()] = s;
     }
 
-    const orders = (data ?? []).map((o: Record<string, unknown>) => ({
-      id: o.id,
-      orderNumber: o.order_number,
+    const mapped = orders.map((o) => ({
+      id: o._id?.toString() ?? "",
+      orderNumber: (o as unknown as Record<string, unknown>).order_number ?? "",
       status: o.status,
       paymentStatus: o.payment_status,
       grossAmount: o.gross_amount ?? 0,
       createdAt: o.created_at,
       user: {
-        id: (o.user as Record<string, unknown>)?.id ?? "",
-        email: (o.user as Record<string, unknown>)?.email ?? "",
-        name: (o.user as Record<string, unknown>)?.full_name ?? "",
+        id: o.buyer_id,
+        email: (buyerMap[o.buyer_id] as Record<string, unknown> | undefined)?.email ?? "",
+        name: (buyerMap[o.buyer_id] as Record<string, unknown> | undefined)?.name ?? "",
       },
       seller: {
-        id: (o.seller as Record<string, unknown>)?.id ?? "",
-        storeName: (o.seller as Record<string, unknown>)?.store_name ?? "",
+        id: o.seller_id,
+        storeName: (sellerMap[o.seller_id] as Record<string, unknown> | undefined)?.store_name ?? "",
       },
     }));
 
-    return NextResponse.json({ orders, total: count ?? 0, page, limit });
+    return NextResponse.json({ orders: mapped, total, page, limit });
   } catch (error) {
     console.error("Admin orders GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

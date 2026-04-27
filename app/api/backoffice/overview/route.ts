@@ -1,37 +1,31 @@
 import { NextResponse } from "next/server";
-import { requireAdminPermission } from "@/lib/auth/admin";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { getServerAdminAccess } from "@/lib/auth/server";
+import { getDB } from "@/lib/mongodb";
+import { listUsers } from "@/lib/db/collections/users";
+import { listSellers } from "@/lib/db/collections/sellers";
+import { listProducts } from "@/lib/db/collections/products";
+import { listOrders } from "@/lib/db/collections/orders";
 
 export async function GET() {
   try {
-    const access = await requireAdminPermission("admin:overview:read");
-    if (access.status !== 200) {
-      return NextResponse.json({ error: access.error }, { status: access.status });
+    const result = await getServerAdminAccess();
+    if (result.status !== 200) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    const supabase = createServiceRoleClient();
+    const db = getDB();
 
-    const [
-      { count: usersCount },
-      { count: sellersCount },
-      { count: productsCount },
-      { count: ordersCount },
-      { count: activeListingsCount },
-      { data: revenueData },
-    ] = await Promise.all([
-      supabase.from("users").select("*", { count: "exact", head: true }),
-      supabase.from("sellers").select("*", { count: "exact", head: true }),
-      supabase.from("products").select("*", { count: "exact", head: true }),
-      supabase.from("orders").select("*", { count: "exact", head: true }),
-      supabase.from("products").select("*", { count: "exact", head: true }).eq("is_active", true),
-      supabase
-        .from("orders")
-        .select("gross_amount")
-        .eq("status", "paid")
-        .eq("payment_status", "paid"),
-    ]);
+    const [{ total: usersCount }, { total: sellersCount }, { total: productsCount }, { total: ordersCount, orders: paidOrders }] =
+      await Promise.all([
+        listUsers({ limit: 0 }),
+        listSellers({ limit: 0 }),
+        listProducts({ limit: 0 }),
+        listOrders({ status: "paid" }),
+      ]);
 
-    const totalRevenue = (revenueData ?? []).reduce(
+    const activeListingsCount = await db.collection("products").countDocuments({ is_active: true });
+
+    const totalRevenue = (paidOrders ?? []).reduce(
       (sum: number, o: { gross_amount?: number }) => sum + (o.gross_amount ?? 0),
       0
     );

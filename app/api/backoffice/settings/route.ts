@@ -1,31 +1,22 @@
 import { NextResponse } from "next/server";
-import { requireAdminPermission } from "@/lib/auth/admin";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { getServerAdminAccess } from "@/lib/auth/server";
+import { listPlatformSettings, setPlatformSetting } from "@/lib/db/collections/admins";
 
 export async function GET() {
   try {
-    const access = await requireAdminPermission("admin:settings:write");
-    if (access.status !== 200) {
-      return NextResponse.json({ error: access.error }, { status: access.status });
+    const result = await getServerAdminAccess();
+    if (result.status !== 200) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    const supabase = createServiceRoleClient();
-    const { data, error } = await supabase
-      .from("platform_settings")
-      .select("key, value")
-      .order("key");
+    const settings = await listPlatformSettings();
 
-    if (error) {
-      console.error("Settings GET error:", error);
-      return NextResponse.json({ error: "Failed to load settings" }, { status: 500 });
+    const settingsMap: Record<string, Record<string, unknown>> = {};
+    for (const row of settings) {
+      settingsMap[row.key] = row.value as Record<string, unknown>;
     }
 
-    const settings: Record<string, Record<string, unknown>> = {};
-    for (const row of data ?? []) {
-      settings[row.key] = row.value;
-    }
-
-    return NextResponse.json(settings);
+    return NextResponse.json(settingsMap);
   } catch (error) {
     console.error("Admin settings GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -34,9 +25,9 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   try {
-    const access = await requireAdminPermission("admin:settings:write");
-    if (access.status !== 200) {
-      return NextResponse.json({ error: access.error }, { status: access.status });
+    const result = await getServerAdminAccess();
+    if (result.status !== 200) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
     const body = await req.json();
@@ -51,26 +42,13 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Invalid settings key" }, { status: 400 });
     }
 
-    const supabase = createServiceRoleClient();
+    // Fetch current value and merge
+    const { getPlatformSetting } = await import("@/lib/db/collections/admins");
+    const current = await getPlatformSetting(key);
+    const currentValue = (current?.value as Record<string, unknown>) ?? {};
+    const mergedValue = { ...currentValue, ...updates };
 
-    // Fetch current value
-    const { data: current } = await supabase
-      .from("platform_settings")
-      .select("value")
-      .eq("key", key)
-      .single();
-
-    const mergedValue = { ...(current?.value ?? {}), ...updates };
-
-    const { error } = await supabase
-      .from("platform_settings")
-      .update({ value: mergedValue, updated_at: new Date().toISOString() })
-      .eq("key", key);
-
-    if (error) {
-      console.error("Settings PATCH error:", error);
-      return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
-    }
+    await setPlatformSetting(key, mergedValue);
 
     return NextResponse.json({ success: true });
   } catch (error) {
