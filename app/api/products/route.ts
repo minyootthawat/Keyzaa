@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { listProducts } from "@/lib/db/collections/products";
+import { getSellerById } from "@/lib/db/collections/sellers";
 
 interface ProductWithSeller {
   id: string;
@@ -24,6 +25,7 @@ export async function GET(req: NextRequest) {
     // Pagination
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20", 10)));
+    const offset = (page - 1) * limit;
 
     // Filters
     const category = searchParams.get("category") || "";
@@ -39,64 +41,56 @@ export async function GET(req: NextRequest) {
     const actualSortBy = validSortColumns.includes(sortBy) ? sortBy : "created_at";
     const actualSortOrder = validSortOrders.includes(sortOrder) ? sortOrder : "desc";
 
-    const supabase = createServiceRoleClient();
+    const { products, total } = await listProducts({
+      search: undefined,
+      category: category || undefined,
+      limit,
+      offset,
+    });
 
-    // Count query (with all filters applied)
-    let countQuery = supabase
-      .from("products")
-      .select("*", { count: "exact", head: true })
-      .eq("is_active", true);
-
-    if (category) {
-      countQuery = countQuery.eq("category", category);
+    // Fetch seller info for each product
+    const sellerIds = [...new Set(products.map((p) => p.seller_id))];
+    const sellerResults = await Promise.all(sellerIds.map((id) => getSellerById(id)));
+    const sellerMap = new Map<string, { id: string; store_name: string; verified: boolean }>();
+    for (const seller of sellerResults) {
+      if (seller) {
+        sellerMap.set(seller._id!.toString(), {
+          id: seller._id!.toString(),
+          store_name: seller.store_name,
+          verified: seller.verified,
+        });
+      }
     }
 
-    if (sellerId) {
-      countQuery = countQuery.eq("seller_id", sellerId);
-    }
+    // Sort in memory (MongoDB doesn't support multi-field sort by arbitrary columns)
+    const sortedProducts = [...products].sort((a, b) => {
+      let aVal: string | number = "";
+      let bVal: string | number = "";
 
-    const { count, error: countError } = await countQuery;
+      if (actualSortBy === "price") {
+        aVal = a.price;
+        bVal = b.price;
+      } else if (actualSortBy === "name") {
+        aVal = a.name;
+        bVal = b.name;
+      } else {
+        aVal = a.created_at;
+        bVal = b.created_at;
+      }
 
-    if (countError) {
-      console.error("Products count error:", countError);
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-    }
+      if (aVal < bVal) return actualSortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return actualSortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
 
-    // Main query with seller join
-    let productsQuery = supabase
-      .from("products")
-      .select(`
-        *,
-        sellers:seller_id(id, store_name, verified)
-      `)
-      .eq("is_active", true);
-
-    if (category) {
-      productsQuery = productsQuery.eq("category", category);
-    }
-
-    if (sellerId) {
-      productsQuery = productsQuery.eq("seller_id", sellerId);
-    }
-
-    const { data: products, error: productsError } = await productsQuery
-      .order(actualSortBy as "created_at" | "price" | "name", { ascending: actualSortOrder === "asc" })
-      .range((page - 1) * limit, page * limit - 1);
-
-    if (productsError) {
-      console.error("Products list error:", productsError);
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-    }
-
-    const total = count ?? 0;
     const totalPages = Math.ceil(total / limit);
 
-    // Map to response shape (handle both array result and potential single seller object)
-    const result: ProductWithSeller[] = (products ?? []).map((row) => {
-      const sellerData = row.sellers as unknown as { id: string; store_name: string; verified: boolean } | null;
+    const result: ProductWithSeller[] = sortedProducts.map((row) => {
+      const sid = row.seller_id;
+      const sellerData = sellerMap.get(sid);
       return {
-        id: row.id,
-        sellerId: row.seller_id,
+        id: row._id!.toString(),
+        sellerId: sid,
         title: row.name,
         category: row.category,
         price: Number(row.price),
@@ -104,7 +98,7 @@ export async function GET(req: NextRequest) {
         image: row.image_url || "",
         isActive: row.is_active,
         seller: {
-          id: sellerData?.id || row.seller_id,
+          id: sellerData?.id || sid,
           storeName: sellerData?.store_name || "",
           verified: sellerData?.verified || false,
         },

@@ -9,7 +9,7 @@
 import { auth } from "@/auth";
 import { getAdminAccessForEmail } from "@/lib/auth/admin";
 import type { AdminAccess } from "@/lib/auth/admin";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { getSellerByUserId } from "@/lib/db/collections/sellers";
 
 export type { AdminAccess };
 
@@ -39,7 +39,7 @@ export async function getServerAdminAccess(): Promise<{
     return { status: 401, error: "Unauthorized" };
   }
 
-  const access = getAdminAccessForEmail(user.email);
+  const access = await getAdminAccessForEmail(user.email);
   if (!access.isAdmin) {
     return { status: 403, error: "Forbidden" };
   }
@@ -69,14 +69,8 @@ export async function getServerSellerAccess(): Promise<{
     return { status: 404, error: "Seller not found" };
   }
 
-  const supabase = createServiceRoleClient();
-  const { data: seller, error: sellerError } = await supabase
-    .from("sellers")
-    .select("id, user_id, verified")
-    .eq("user_id", user.id)
-    .single();
-
-  if (sellerError || !seller) {
+  const seller = await getSellerByUserId(user.id);
+  if (!seller) {
     return { status: 404, error: "Seller not found" };
   }
 
@@ -84,8 +78,8 @@ export async function getServerSellerAccess(): Promise<{
     status: 200,
     access: {
       userId: user.id,
-      sellerId: seller.id,
-      isVerified: seller.verified === true,
+      sellerId: seller._id!.toString(),
+      isVerified: seller.verified,
     },
   };
 }

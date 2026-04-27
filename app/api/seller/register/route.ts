@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import { auth } from "@/auth";
+import { getServerUser } from "@/lib/auth/server";
+import { getSellerByUserId, createSeller } from "@/lib/db/collections/sellers";
+import { updateUser } from "@/lib/db/collections/users";
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth();
-    const userId = session?.user?.id ?? null;
+    const user = await getServerUser();
+    const userId = user?.id ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -19,60 +20,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Phone is required" }, { status: 400 });
     }
 
-    const supabase = createServiceRoleClient();
-
     // Check if already registered as seller
-    const { data: existingSeller } = await supabase
-      .from("sellers")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle();
-
+    const existingSeller = await getSellerByUserId(userId);
     if (existingSeller) {
       return NextResponse.json({ error: "Already registered as a seller" }, { status: 409 });
     }
 
     // Create seller record
-    const { data: seller, error: sellerError } = await supabase
-      .from("sellers")
-      .insert({
-        user_id: userId,
-        store_name: shopName.trim(),
-        phone: phone.trim(),
-        verified: false,
-      })
-      .select()
-      .single();
+    const seller = await createSeller({
+      userId,
+      storeName: shopName.trim(),
+      phone: phone.trim(),
+    });
 
-    if (sellerError) {
-      console.error("Supabase seller insert error:", sellerError);
-      return NextResponse.json({ error: "Failed to register seller" }, { status: 500 });
-    }
-
-    // Get current user role to decide whether to set 'seller' or 'both'
-    const { data: userData } = await supabase
-      .from("users")
-      .select("role")
-      .eq("id", userId)
-      .single();
-
-    const currentRole = userData?.role;
+    // Get current user to decide whether to set 'seller' or 'both'
+    const { findUserById } = await import("@/lib/db/collections/users");
+    const currentUser = await findUserById(userId);
+    const currentRole = currentUser?.role;
     const newRole = currentRole === "buyer" ? "both" : "seller";
 
     // Update user role to 'seller' (or 'both' if already a buyer)
-    const { error: userError } = await supabase
-      .from("users")
-      .update({ role: newRole })
-      .eq("id", userId);
-
-    if (userError) {
-      console.error("Supabase user update error:", userError);
-      return NextResponse.json({ error: "Failed to update user role" }, { status: 500 });
-    }
+    await updateUser(userId, { role: newRole });
 
     return NextResponse.json({
       seller: {
-        id: seller.id,
+        id: seller._id!.toString(),
         userId: seller.user_id,
         shopName: seller.store_name,
         phone: seller.phone,

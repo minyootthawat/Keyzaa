@@ -1,25 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { createServiceRoleClient } from "@/lib/db/supabase";
-import type { Product } from "@/app/types";
+import { getServerUser } from "@/lib/auth/server";
+import { getSellerByUserId } from "@/lib/db/collections/sellers";
+import { getProductById, updateProduct, deleteProduct } from "@/lib/db/collections/products";
 
-interface ProductRow {
-  id: string;
-  seller_id: string;
-  name: string;
-  description: string | null;
-  category: string;
-  price: number;
-  stock: number;
-  image_url: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-function mapRowToProduct(row: ProductRow): Product {
+function mapRowToProduct(row: { _id?: { toString(): string }; seller_id: string; name: string; description?: string; category: string; price: number; stock: number; image_url?: string; is_active: boolean }) {
   return {
-    id: row.id,
+    id: row._id?.toString() ?? "",
     sellerId: row.seller_id,
     title: row.name,
     nameTh: row.name,
@@ -46,37 +32,26 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const session = await auth();
-    const userId = session?.user?.id ?? null;
+    const user = await getServerUser();
+    const userId = user?.id ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = createServiceRoleClient();
-    const { data: seller, error: sellerError } = await supabase
-      .from("sellers")
-      .select("id")
-      .eq("user_id", userId)
-      .single();
-
-    if (sellerError || !seller) {
+    const seller = await getSellerByUserId(userId);
+    if (!seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller.id;
+    const sellerId = seller._id!.toString();
 
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("id", id)
-      .single();
+    const product = await getProductById(id);
 
-    if (error || !data) {
+    if (!product) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
 
-    const product = data as ProductRow;
     if (product.seller_id !== sellerId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -94,37 +69,26 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const session = await auth();
-    const userId = session?.user?.id ?? null;
+    const user = await getServerUser();
+    const userId = user?.id ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = createServiceRoleClient();
-    const { data: seller, error: sellerError } = await supabase
-      .from("sellers")
-      .select("id")
-      .eq("user_id", userId)
-      .single();
-
-    if (sellerError || !seller) {
+    const seller = await getSellerByUserId(userId);
+    if (!seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller.id;
+    const sellerId = seller._id!.toString();
 
-    const { data: existing, error: fetchError } = await supabase
-      .from("products")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existing) {
+    const existing = await getProductById(id);
+    if (!existing) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
 
-    if ((existing as ProductRow).seller_id !== sellerId) {
+    if (existing.seller_id !== sellerId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -139,7 +103,7 @@ export async function PATCH(
     }
 
     if (body.description !== undefined) {
-      updates.description = body.description === "" ? null : body.description;
+      updates.description = body.description === "" ? undefined : body.description;
     }
 
     if (body.category !== undefined) {
@@ -164,7 +128,7 @@ export async function PATCH(
     }
 
     if (body.image !== undefined) {
-      updates.image_url = body.image === "" ? null : body.image;
+      updates.image_url = body.image === "" ? undefined : body.image;
     }
 
     if (body.isActive !== undefined) {
@@ -179,19 +143,13 @@ export async function PATCH(
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
-    const { data, error } = await supabase
-      .from("products")
-      .update(updates)
-      .eq("id", id)
-      .select()
-      .single();
+    const updated = await updateProduct(id, updates);
 
-    if (error) {
-      console.error("Seller product update error:", error);
+    if (!updated) {
       return NextResponse.json({ error: "Failed to update product" }, { status: 500 });
     }
 
-    return NextResponse.json({ product: mapRowToProduct(data as ProductRow) });
+    return NextResponse.json({ product: mapRowToProduct(updated) });
   } catch (error) {
     console.error("Seller product update error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -204,44 +162,31 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const session = await auth();
-    const userId = session?.user?.id ?? null;
+    const user = await getServerUser();
+    const userId = user?.id ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = createServiceRoleClient();
-    const { data: seller, error: sellerError } = await supabase
-      .from("sellers")
-      .select("id")
-      .eq("user_id", userId)
-      .single();
-
-    if (sellerError || !seller) {
+    const seller = await getSellerByUserId(userId);
+    if (!seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller.id;
+    const sellerId = seller._id!.toString();
 
-    const { data: existing, error: fetchError } = await supabase
-      .from("products")
-      .select("seller_id")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existing) {
+    const existing = await getProductById(id);
+    if (!existing) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
 
-    if ((existing as ProductRow).seller_id !== sellerId) {
+    if (existing.seller_id !== sellerId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    await supabase
-      .from("products")
-      .update({ is_active: false })
-      .eq("id", id);
+    // Soft delete by setting is_active to false
+    await updateProduct(id, { is_active: false });
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {

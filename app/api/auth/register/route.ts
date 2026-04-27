@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
-import { createUser, findUserByEmail } from "@/lib/db/supabase";
+import { createUser, findUserByEmail } from "@/lib/db/collections/users";
 import { getAdminAccessForEmail } from "@/lib/auth/admin";
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
+const JWT_SECRET = new TextEncoder().encode(
+  (process.env.JWT_SECRET || "").replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim() || "fallback-dev-secret"
+);
 
 export async function POST(req: NextRequest) {
   try {
@@ -49,8 +51,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const userId = user.id;
-    const adminAccess = getAdminAccessForEmail(user.email);
+    const userId = user._id!.toString();
+    const adminAccess = await getAdminAccessForEmail(user.email);
 
     const token = await new SignJWT({
       userId,
@@ -67,7 +69,7 @@ export async function POST(req: NextRequest) {
         id: userId,
         name: user.name,
         email: user.email,
-        role: (user as unknown as { role?: string }).role ?? "buyer",
+        role: user.role,
         sellerId: null,
         isAdmin: adminAccess.isAdmin,
         adminRole: adminAccess.adminRole,

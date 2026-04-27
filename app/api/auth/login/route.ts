@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
-import { findUserByEmail, createServiceRoleClient } from "@/lib/db/supabase";
+import { findUserByEmail } from "@/lib/db/collections/users";
+import { getSellerByUserId } from "@/lib/db/collections/sellers";
 import { getAdminAccessForEmail } from "@/lib/auth/admin";
 
 const JWT_SECRET = new TextEncoder().encode(
-  (process.env.JWT_SECRET || '').replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim() || 'fallback-dev-secret'
+  (process.env.JWT_SECRET || "").replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim() || "fallback-dev-secret"
 );
 
 export async function POST(req: NextRequest) {
@@ -19,7 +20,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Real Supabase auth ─────────────────────────────────────────────────────
     const user = await findUserByEmail(email);
     if (!user) {
       return NextResponse.json(
@@ -28,16 +28,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if user has a password (social users may not)
-    const passwordHash = (user as unknown as { password_hash?: string }).password_hash;
-    if (!passwordHash) {
+    if (!user.password_hash) {
       return NextResponse.json(
         { error: "This account uses social login. Please sign in with Google, Facebook, or LINE." },
         { status: 401 }
       );
     }
 
-    const validPassword = await bcrypt.compare(password, passwordHash);
+    const validPassword = await bcrypt.compare(password, user.password_hash);
     if (!validPassword) {
       return NextResponse.json(
         { error: "Invalid email or password" },
@@ -45,16 +43,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const userId = user.id;
-    const adminAccess = getAdminAccessForEmail(user.email);
+    const userId = user._id!.toString();
+    const adminAccess = await getAdminAccessForEmail(user.email);
 
-    // Get sellerId from sellers table (users table has no seller_id column)
-    const supabase = createServiceRoleClient();
-    const { data: sellerRow } = await supabase
-      .from("sellers")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle();
+    // Get sellerId from MongoDB
+    const seller = await getSellerByUserId(userId);
+    const sellerId = seller?._id?.toString();
 
     const token = await new SignJWT({
       userId,
@@ -68,22 +62,18 @@ export async function POST(req: NextRequest) {
       .setExpirationTime("7d")
       .sign(JWT_SECRET);
 
-    return NextResponse.json({
-      token,
-      user: {
-        id: userId,
-        name: user.name,
-        email: user.email,
-        role: (user as unknown as { role?: string }).role ?? "buyer",
-        sellerId: sellerRow?.id ?? null,
-        isAdmin: adminAccess.isAdmin,
-        adminRole: adminAccess.adminRole,
-        adminPermissions: adminAccess.permissions,
-        createdAt: user.created_at,
-      },
+    const response = NextResponse.json({ success: true, token });
+    response.cookies.set("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7,
+      path: "/",
     });
-  } catch (error) {
-    console.error("Login error:", error);
+
+    return response;
+  } catch (err) {
+    console.error("[login]", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

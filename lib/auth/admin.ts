@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { getBearerPayload } from "@/lib/auth/jwt";
-import { findUserById } from "@/lib/db/supabase";
+import { findUserById } from "@/lib/db/collections/users";
+import { getAdminByEmail } from "@/lib/db/collections/admins";
 import { auth } from "@/auth";
 
 export type AdminRole = "super_admin" | "ops_admin" | "support_admin" | "catalog_admin";
@@ -90,12 +91,28 @@ function parseEmailRoleMap() {
     .filter((entry): entry is { email: string; role: AdminRole } => Boolean(entry));
 }
 
-export function getAdminAccessForEmail(email: string | null | undefined): AdminAccess {
+export async function getAdminAccessForEmail(email: string | null | undefined): Promise<AdminAccess> {
   if (!email) {
     return { isAdmin: false, adminRole: null, permissions: [] };
   }
 
   const normalizedEmail = email.trim().toLowerCase();
+
+  // 1. Check MongoDB admins collection first
+  try {
+    const dbAdmin = await getAdminByEmail(normalizedEmail);
+    if (dbAdmin) {
+      return {
+        isAdmin: true,
+        adminRole: dbAdmin.role as AdminRole,
+        permissions: dbAdmin.permissions as AdminPermission[],
+      };
+    }
+  } catch {
+    // MongoDB not available, fall through to env check
+  }
+
+  // 2. Fallback: check ADMIN_EMAILS env var
   const configuredAdmin = parseEmailRoleMap().find((entry) => entry.email === normalizedEmail);
 
   if (!configuredAdmin) {
@@ -148,7 +165,7 @@ export async function getAdminAccessFromRequest(req: NextRequest): Promise<{
     return { status: 404, error: "User not found" };
   }
 
-  const access = getAdminAccessForEmail(user.email);
+  const access = await getAdminAccessForEmail(user.email);
   if (!access.isAdmin) {
     return { status: 403, error: "Forbidden" };
   }
@@ -177,7 +194,7 @@ export async function getAdminAccessFromSession(): Promise<{
     return { status: 401, error: "Unauthorized" };
   }
 
-  const access = getAdminAccessForEmail(user.email);
+  const access = await getAdminAccessForEmail(user.email);
   if (!access.isAdmin) {
     return { status: 403, error: "Forbidden" };
   }

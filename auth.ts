@@ -3,36 +3,21 @@ import Google from "next-auth/providers/google";
 import Facebook from "next-auth/providers/facebook";
 import LineProvider from "next-auth/providers/line";
 import Credentials from "next-auth/providers/credentials";
-import { SupabaseAdapter } from "@auth/supabase-adapter";
 import bcrypt from "bcryptjs";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import {
   findUserByEmail,
   createUser,
   updateUser,
   updateUserLastLogin,
-} from "@/lib/db/supabase";
+} from "@/lib/db/collections/users";
+import { getSellerByUserId } from "@/lib/db/collections/sellers";
 import { getAdminAccessForEmail } from "@/lib/auth/admin";
-import type { Adapter } from "next-auth/adapters";
 
 type UserRole = "buyer" | "seller" | "both";
 
-// Lazy adapter — only created when env vars are available (not at module load)
-function getAdapter(): Adapter | undefined {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) {
-    return undefined;
-  }
-  return SupabaseAdapter({
-    url: supabaseUrl,
-    secret: serviceRoleKey,
-  }) as Adapter;
-}
-
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
-  adapter: getAdapter(),
+  // No adapter needed — JWT strategy stores session in token, not a DB
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -58,39 +43,30 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const user = await findUserByEmail(credentials.email as string);
         if (!user) return null;
 
-        // Check if user has a password set (social users may not)
-        const passwordHash = (user as unknown as { password_hash?: string }).password_hash;
-        if (!passwordHash) return null;
+        if (!user.password_hash) return null;
 
         const validPassword = await bcrypt.compare(
           credentials.password as string,
-          passwordHash
+          user.password_hash
         );
         if (!validPassword) return null;
 
         // Update last login
-        await updateUserLastLogin(user.id);
+        const userId = user._id!.toString();
+        await updateUserLastLogin(userId);
 
-        // Get admin access
-        const adminAccess = getAdminAccessForEmail(user.email);
+        // Get admin access from MongoDB
+        const adminAccess = await getAdminAccessForEmail(user.email);
 
-        // Fetch sellerId from sellers table
-        const sellerId = await (async () => {
-          const { createServiceRoleClient } = await import("@/lib/supabase/supabase");
-          const supabase = createServiceRoleClient();
-          const { data: seller } = await supabase
-            .from("sellers")
-            .select("id")
-            .eq("user_id", user.id)
-            .maybeSingle();
-          return seller?.id;
-        })();
+        // Fetch sellerId from MongoDB
+        const seller = await getSellerByUserId(userId);
+        const sellerId = seller?._id?.toString();
 
         const result: User = {
-          id: user.id,
+          id: userId,
           name: user.name,
           email: user.email,
-          role: (user as { role?: UserRole }).role,
+          role: user.role,
           sellerId: sellerId || undefined,
           isAdmin: adminAccess.isAdmin,
           adminRole: (adminAccess.adminRole ?? undefined) as string | undefined,
@@ -110,33 +86,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       )
         return true;
 
-      const supabaseAdmin = createServiceRoleClient();
       const email = socialUser.email.toLowerCase();
 
-      // Upsert user into auth.users via Admin API
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const adminApi = supabaseAdmin.auth.admin as any;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { data: authUser, error: authError } = await adminApi.createUser({
-        id: socialUser.id || undefined,
-        email,
-        name: socialUser.name || "User",
-        email_confirm: true,
-        user_metadata: {
-          provider: account.provider,
-          provider_id: account.providerAccountId,
-        },
-      });
-
-      if (authError) {
-        console.error("Supabase auth upsert error:", authError);
-        return false;
-      }
-
-        // Upsert user into public.users table
+      // Upsert user in MongoDB
       const existingUser = await findUserByEmail(email);
       if (existingUser) {
-        await updateUser(existingUser.id, {
+        await updateUser(existingUser._id!.toString(), {
           provider: account.provider,
           provider_id: account.providerAccountId,
           last_login_at: new Date().toISOString(),
@@ -156,7 +111,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        const extUser = user as { role?: UserRole; sellerId?: string; isAdmin?: boolean; adminRole?: string; adminPermissions?: string[] };
+        const extUser = user as {
+          role?: UserRole;
+          sellerId?: string;
+          isAdmin?: boolean;
+          adminRole?: string;
+          adminPermissions?: string[];
+        };
         token.role = extUser.role;
         token.sellerId = extUser.sellerId;
         token.isAdmin = extUser.isAdmin;
@@ -168,7 +129,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
-        const extSession = session.user as { role?: UserRole; sellerId?: string; isAdmin?: boolean; adminRole?: string; adminPermissions?: string[] };
+        const extSession = session.user as {
+          role?: UserRole;
+          sellerId?: string;
+          isAdmin?: boolean;
+          adminRole?: string;
+          adminPermissions?: string[];
+        };
         extSession.role = token.role as UserRole;
         extSession.sellerId = token.sellerId as string | undefined;
         extSession.isAdmin = token.isAdmin as boolean | undefined;

@@ -1,54 +1,27 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { createServiceRoleClient } from "@/lib/supabase/supabase";
-
-interface LedgerRow {
-  id: string;
-  seller_id: string;
-  type: string;
-  amount: number;
-  order_id: string | null;
-  description: string | null;
-  created_at: string;
-}
+import { getServerUser } from "@/lib/auth/server";
+import { getSellerByUserId } from "@/lib/db/collections/sellers";
+import { getLedgerBySeller } from "@/lib/db/collections/ledger";
 
 export async function GET() {
   try {
-    const session = await auth();
-    const userId = session?.user?.id ?? null;
+    const user = await getServerUser();
+    const userId = user?.id ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = createServiceRoleClient();
-    const { data: seller, error: sellerError } = await supabase
-      .from("sellers")
-      .select("id")
-      .eq("user_id", userId)
-      .single();
-
-    if (sellerError || !seller) {
+    const seller = await getSellerByUserId(userId);
+    if (!seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller.id;
-
-    const { data: ledgerData, error: ledgerError } = await supabase
-      .from("seller_ledger_entries")
-      .select("*")
-      .eq("seller_id", sellerId)
-      .order("created_at", { ascending: false });
-
-    if (ledgerError) {
-      console.error("Seller wallet ledger error:", ledgerError);
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-    }
-
-    const entries = (ledgerData ?? []) as LedgerRow[];
+    const sellerId = seller._id!.toString();
+    const entries = await getLedgerBySeller(sellerId);
 
     const mappedEntries = entries.map((entry) => ({
-      id: entry.id,
+      id: entry._id!.toString(),
       sellerId: entry.seller_id,
       orderId: entry.order_id ?? undefined,
       type:
@@ -93,8 +66,8 @@ export async function GET() {
       },
       entries: mappedEntries,
     });
-} catch {
-      console.error("Seller wallet error");
+  } catch (error) {
+    console.error("Seller wallet error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
