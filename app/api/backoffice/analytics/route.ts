@@ -1,8 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAdminPermission } from "@/lib/auth/admin";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const days = Math.min(parseInt(searchParams.get("days") ?? "30", 10), 365);
+  const daysAgo = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   try {
     const access = await requireAdminPermission("admin:analytics:read");
     if (access.status !== 200) {
@@ -27,12 +30,12 @@ export async function GET() {
       supabase
         .from("users")
         .select("*", { count: "exact", head: true })
-        .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
-      supabase
-        .from("sellers")
-        .select("*", { count: "exact", head: true })
-        .eq("verified", true),
-    ]);
+        .gte("created_at", daysAgo),
+        supabase
+          .from("sellers")
+          .select("*", { count: "exact", head: true })
+          .eq("verified", true),
+      ]);
 
     const totalRevenue = (revenueData ?? []).reduce(
       (sum: number, o: { gross_amount?: number }) => sum + (o.gross_amount ?? 0),
@@ -41,17 +44,16 @@ export async function GET() {
     const orderCount = totalOrders ?? 0;
     const avgOrderValue = orderCount > 0 ? totalRevenue / orderCount : 0;
 
-    // --- Revenue by day (last 30 days) ---
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    // --- Revenue by day (last N days) ---
     const { data: ordersForRevenue } = await supabase
       .from("orders")
       .select("gross_amount, created_at")
       .eq("status", "paid")
       .eq("payment_status", "paid")
-      .gte("created_at", thirtyDaysAgo);
+      .gte("created_at", daysAgo);
 
     const revenueByDayMap: Record<string, number> = {};
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < days; i++) {
       const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
       const key = d.toISOString().split("T")[0];
       revenueByDayMap[key] = 0;
@@ -79,14 +81,14 @@ export async function GET() {
       count,
     }));
 
-    // --- New users by day (last 30 days) ---
+    // --- New users by day (last N days) ---
     const { data: newUsersRaw } = await supabase
       .from("users")
       .select("created_at")
-      .gte("created_at", thirtyDaysAgo);
+      .gte("created_at", daysAgo);
 
     const newUsersMap: Record<string, number> = {};
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < days; i++) {
       const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
       const key = d.toISOString().split("T")[0];
       newUsersMap[key] = 0;

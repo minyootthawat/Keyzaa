@@ -43,6 +43,38 @@ const STATUS_LABELS: Record<string, { th: string; en: string }> = {
   refunded: { th: "คืนเงิน", en: "Refunded" },
 };
 
+interface CollapsibleSectionProps {
+  title: string;
+  sectionKey: string;
+  isCollapsed: boolean;
+  onToggle: (key: string) => void;
+  children: React.ReactNode;
+  className?: string;
+}
+
+function CollapsibleSection({ title, sectionKey, isCollapsed, onToggle, children, className = "" }: CollapsibleSectionProps) {
+  return (
+    <div className={`surface-card rounded-2xl p-5 ${className}`}>
+      <button
+        onClick={() => onToggle(sectionKey)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <h2 className="text-sm font-bold text-text-main">{title}</h2>
+        <svg
+          className={`h-4 w-4 text-text-muted transition-transform duration-200 ${isCollapsed ? "-rotate-90" : "rotate-0"}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {!isCollapsed && <div className="mt-4">{children}</div>}
+    </div>
+  );
+}
+
 function formatDate(dateStr: string, lang: string) {
   const d = new Date(dateStr);
   return d.toLocaleDateString(lang === "th" ? "th-TH" : "en-US", {
@@ -75,8 +107,33 @@ function AnalyticsContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [dateRange, setDateRange] = useState<"7d" | "30d" | "90d" | "custom">("30d");
+  const [customStart, setCustomStart] = useState<string>("");
+  const [customEnd, setCustomEnd] = useState<string>("");
+
+  // Collapsible section states (5 sections, all expanded by default)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  const toggleSection = (key: string) => {
+    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const fetchDays = useMemo(() => {
+    if (dateRange === "custom") {
+      if (customStart && customEnd) {
+        const start = new Date(customStart);
+        const end = new Date(customEnd);
+        const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        return Math.max(diff, 1);
+      }
+      return 30;
+    }
+    return dateRange === "7d" ? 7 : dateRange === "90d" ? 90 : 30;
+  }, [dateRange, customStart, customEnd]);
+
   useEffect(() => {
-    fetch("/api/backoffice/analytics")
+    setLoading(true);
+    fetch(`/api/backoffice/analytics?days=${fetchDays}`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Failed to load");
         return res.json();
@@ -87,7 +144,7 @@ function AnalyticsContent() {
       })
       .catch(() => setError(lang === "th" ? "โหลดข้อมูลไม่สำเร็จ" : "Failed to load"))
       .finally(() => setLoading(false));
-  }, [lang]);
+  }, [lang, fetchDays]);
 
   const maxRevenue = useMemo(() => {
     if (!data) return 1;
@@ -134,28 +191,34 @@ function AnalyticsContent() {
     );
   }
 
-  const t = (key: string) =>
+  const t = (key: string): string =>
     ({
       heading: lang === "th" ? "แดชบอร์ด Analytics" : "Analytics Dashboard",
       subtitle: lang === "th" ? "สถิติและแนวโน้มของแพลตฟอร์ม" : "Platform statistics and trends",
       totalRevenue: lang === "th" ? "รายได้รวม" : "Total Revenue",
       totalOrders: lang === "th" ? "คำสั่งซื้อทั้งหมด" : "Total Orders",
-      newUsers30d: lang === "th" ? "ผู้ใช้ใหม่ (30 วัน)" : "New Users (30d)",
+      newUsers30d: lang === "th" ? "ผู้ใช้ใหม่" : "New Users",
       activeSellers: lang === "th" ? "ร้านค้าที่ยืนยันแล้ว" : "Active Sellers",
       avgOrderValue: lang === "th" ? "มูลค่าคำสั่งซื้อเฉลี่ย" : "Avg Order Value",
-      revenueTitle: lang === "th" ? "รายได้รายวัน (30 วัน)" : "Daily Revenue (30 Days)",
+      revenueTitle: lang === "th" ? "รายได้รายวัน" : "Daily Revenue",
       ordersStatusTitle: lang === "th" ? "คำสั่งซื้อตามสถานะ" : "Orders by Status",
       topProductsTitle: lang === "th" ? "สินค้าขายดี" : "Top Products",
       topSellersTitle: lang === "th" ? "ร้านค้าขายดี" : "Top Sellers",
-      newUsersTitle: lang === "th" ? "ผู้ใช้ใหม่ (30 วัน)" : "New Users (30 Days)",
+      newUsersTitle: lang === "th" ? "ผู้ใช้ใหม่" : "New Users",
       product: lang === "th" ? "สินค้า" : "Product",
       unitsSold: lang === "th" ? "ขายแล้ว" : "Units Sold",
       revenue: lang === "th" ? "รายได้" : "Revenue",
       storeName: lang === "th" ? "ชื่อร้าน" : "Store Name",
       sales: lang === "th" ? "คำสั่งซื้อ" : "Orders",
-      last30d: lang === "th" ? "30 วันล่าสุด" : "Last 30 days",
       noData: lang === "th" ? "ยังไม่มีข้อมูล" : "No data yet",
-    }[key]);
+      last7d: lang === "th" ? "7 วัน" : "7 Days",
+      last30d: lang === "th" ? "30 วัน" : "30 Days",
+      last90d: lang === "th" ? "90 วัน" : "90 Days",
+      custom: lang === "th" ? "กำหนดเอง" : "Custom",
+      from: lang === "th" ? "จาก" : "From",
+      to: lang === "th" ? "ถึง" : "To",
+      apply: lang === "th" ? "ใช้งาน" : "Apply",
+    }[key] ?? key);
 
   return (
     <div className="space-y-6">
@@ -163,6 +226,41 @@ function AnalyticsContent() {
       <div>
         <h1 className="type-h2 text-text-main">{t("heading")}</h1>
         <p className="mt-1 text-sm text-text-muted">{t("subtitle")}</p>
+      </div>
+
+      {/* Date Range Selector */}
+      <div className="flex flex-wrap items-center gap-2">
+        {(["7d", "30d", "90d", "custom"] as const).map((range) => (
+          <button
+            key={range}
+            onClick={() => setDateRange(range)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-200 ${
+              dateRange === range
+                ? "bg-brand-primary text-white"
+                : "bg-bg-subtle text-text-muted hover:bg-bg-surface-hover hover:text-text-main"
+            }`}
+          >
+            {t(range === "7d" ? "last7d" : range === "30d" ? "last30d" : range === "90d" ? "last90d" : "custom")}
+          </button>
+        ))}
+
+        {dateRange === "custom" && (
+          <div className="flex items-center gap-2 rounded-lg bg-bg-subtle px-3 py-1.5">
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="bg-transparent text-xs text-text-main outline-none"
+            />
+            <span className="text-xs text-text-muted">–</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="bg-transparent text-xs text-text-main outline-none"
+            />
+          </div>
+        )}
       </div>
 
       {/* Summary Cards */}
@@ -202,14 +300,18 @@ function AnalyticsContent() {
       {/* Charts Row */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Revenue Chart */}
-        <div className="surface-card rounded-2xl p-5">
-          <h2 className="text-sm font-bold text-text-main">{t("revenueTitle")}</h2>
+        <CollapsibleSection
+          title={t("revenueTitle")}
+          sectionKey="revenue"
+          isCollapsed={!!collapsed["revenue"]}
+          onToggle={toggleSection}
+        >
           {data.revenueByDay.length === 0 || data.summary.totalRevenue === 0 ? (
             <div className="flex h-40 items-center justify-center text-sm text-text-muted">
               {t("noData")}
             </div>
           ) : (
-            <div className="mt-4 flex items-end gap-1" style={{ height: 160 }}>
+            <div className="flex items-end gap-1" style={{ height: 160 }}>
               {data.revenueByDay.map((d) => {
                 const heightPct = maxRevenue > 0 ? (d.amount / maxRevenue) * 100 : 0;
                 return (
@@ -237,17 +339,21 @@ function AnalyticsContent() {
             <span>{formatDate(data.revenueByDay[0]?.date ?? "", lang)}</span>
             <span>{formatDate(data.revenueByDay[data.revenueByDay.length - 1]?.date ?? "", lang)}</span>
           </div>
-        </div>
+        </CollapsibleSection>
 
         {/* Orders by Status */}
-        <div className="surface-card rounded-2xl p-5">
-          <h2 className="text-sm font-bold text-text-main">{t("ordersStatusTitle")}</h2>
+        <CollapsibleSection
+          title={t("ordersStatusTitle")}
+          sectionKey="orders"
+          isCollapsed={!!collapsed["orders"]}
+          onToggle={toggleSection}
+        >
           {data.ordersByStatus.length === 0 ? (
             <div className="flex h-40 items-center justify-center text-sm text-text-muted">
               {t("noData")}
             </div>
           ) : (
-            <div className="mt-4 space-y-3">
+            <div className="space-y-3">
               {data.ordersByStatus
                 .sort((a, b) => b.count - a.count)
                 .map((s) => {
@@ -275,18 +381,22 @@ function AnalyticsContent() {
                 })}
             </div>
           )}
-        </div>
+        </CollapsibleSection>
       </div>
 
       {/* New Users Chart */}
-      <div className="surface-card rounded-2xl p-5">
-        <h2 className="text-sm font-bold text-text-main">{t("newUsersTitle")}</h2>
+      <CollapsibleSection
+        title={t("newUsersTitle")}
+        sectionKey="newUsers"
+        isCollapsed={!!collapsed["newUsers"]}
+        onToggle={toggleSection}
+      >
         {data.newUsersByDay.length === 0 || data.summary.newUsers === 0 ? (
           <div className="flex h-32 items-center justify-center text-sm text-text-muted">
             {t("noData")}
           </div>
         ) : (
-          <div className="mt-4 flex items-end gap-0.5" style={{ height: 120 }}>
+          <div className="flex items-end gap-0.5" style={{ height: 120 }}>
             {data.newUsersByDay.map((d) => {
               const heightPct = maxUsers > 0 ? (d.count / maxUsers) * 100 : 0;
               return (
@@ -312,19 +422,23 @@ function AnalyticsContent() {
           <span>{formatDate(data.newUsersByDay[0]?.date ?? "", lang)}</span>
           <span>{formatDate(data.newUsersByDay[data.newUsersByDay.length - 1]?.date ?? "", lang)}</span>
         </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Tables Row */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Top Products */}
-        <div className="surface-card rounded-2xl p-5">
-          <h2 className="text-sm font-bold text-text-main">{t("topProductsTitle")}</h2>
+        <CollapsibleSection
+          title={t("topProductsTitle")}
+          sectionKey="topProducts"
+          isCollapsed={!!collapsed["topProducts"]}
+          onToggle={toggleSection}
+        >
           {data.topProducts.length === 0 ? (
-            <div className="mt-6 flex items-center justify-center text-sm text-text-muted">
+            <div className="flex items-center justify-center text-sm text-text-muted">
               {t("noData")}
             </div>
           ) : (
-            <div className="mt-4 overflow-x-auto">
+            <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border-subtle text-left">
@@ -355,17 +469,21 @@ function AnalyticsContent() {
               </table>
             </div>
           )}
-        </div>
+        </CollapsibleSection>
 
         {/* Top Sellers */}
-        <div className="surface-card rounded-2xl p-5">
-          <h2 className="text-sm font-bold text-text-main">{t("topSellersTitle")}</h2>
+        <CollapsibleSection
+          title={t("topSellersTitle")}
+          sectionKey="topSellers"
+          isCollapsed={!!collapsed["topSellers"]}
+          onToggle={toggleSection}
+        >
           {data.topSellers.length === 0 ? (
-            <div className="mt-6 flex items-center justify-center text-sm text-text-muted">
+            <div className="flex items-center justify-center text-sm text-text-muted">
               {t("noData")}
             </div>
           ) : (
-            <div className="mt-4 overflow-x-auto">
+            <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border-subtle text-left">
@@ -396,7 +514,7 @@ function AnalyticsContent() {
               </table>
             </div>
           )}
-        </div>
+        </CollapsibleSection>
       </div>
     </div>
   );
