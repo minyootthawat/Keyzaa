@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useTheme } from "@/app/context/ThemeContext";
+import { useLanguage } from "@/app/context/LanguageContext";
 import AdminSidebar from "@/app/components/AdminSidebar";
 
 export default function AdminAppLayout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
+  const { lang, toggleLang } = useLanguage();
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -25,6 +27,15 @@ export default function AdminAppLayout({ children }: { children: React.ReactNode
           </Link>
 
           <div className="flex items-center gap-2">
+            {/* Language toggle */}
+            <button
+              onClick={toggleLang}
+              aria-label={lang === "th" ? "Switch to English" : "สลับเป็นภาษาไทย"}
+              className="h-11 rounded-xl px-3 text-sm font-bold text-text-subtle hover:bg-bg-surface-hover hover:text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
+            >
+              {lang === "th" ? "EN" : "TH"}
+            </button>
+
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}
