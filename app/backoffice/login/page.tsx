@@ -26,7 +26,6 @@ export default function AdminLoginPage() {
     event.preventDefault();
     setError("");
     setSubmitting(true);
-
     try {
       await login(email, password);
       window.setTimeout(() => {
@@ -41,7 +40,6 @@ export default function AdminLoginPage() {
 
   const handleLogout = async () => {
     setSubmitting(true);
-
     try {
       await logout();
       setError("");
@@ -122,7 +120,6 @@ export default function AdminLoginPage() {
                     className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main focus:border-warning focus:outline-none"
                   />
                 </div>
-
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-text-subtle">{t("auth_password")}</label>
                   <input
@@ -133,14 +130,11 @@ export default function AdminLoginPage() {
                     className="w-full rounded-xl border border-border-subtle bg-bg-surface px-4 py-3 text-sm text-text-main focus:border-warning focus:outline-none"
                   />
                 </div>
-
                 {error ? <p className="text-xs font-semibold text-danger">{error}</p> : null}
-
                 <CTAButton type="submit" fullWidth className="h-11">
                   {submitting ? "..." : t("admin_loginCta")}
                 </CTAButton>
               </form>
-
               <div className="mt-4 text-center">
                 {user && isAdmin ? (
                   <Link href="/backoffice/dashboard" className="text-sm font-semibold text-warning transition-colors hover:text-warning/80">
