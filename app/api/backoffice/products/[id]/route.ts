@@ -4,11 +4,11 @@ import { getProductById, updateProduct, deleteProduct } from "@/lib/db/collectio
 import { getDB } from "@/lib/mongodb";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const result = await getServerAdminAccess();
+    const result = await getServerAdminAccess(req);
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
@@ -39,7 +39,7 @@ export async function GET(
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const result = await getServerAdminAccess();
+    const result = await getServerAdminAccess(req);
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
@@ -96,7 +96,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const result = await getServerAdminAccess();
+    const result = await getServerAdminAccess(req);
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }

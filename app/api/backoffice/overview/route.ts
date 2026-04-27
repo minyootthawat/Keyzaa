@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerAdminAccess } from "@/lib/auth/server";
 import { getDB } from "@/lib/mongodb";
 import { listUsers } from "@/lib/db/collections/users";
@@ -6,9 +6,9 @@ import { listSellers } from "@/lib/db/collections/sellers";
 import { listProducts } from "@/lib/db/collections/products";
 import { listOrders } from "@/lib/db/collections/orders";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const result = await getServerAdminAccess();
+    const result = await getServerAdminAccess(req);
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
@@ -23,7 +23,7 @@ export async function GET() {
         listOrders({ status: "paid" }),
       ]);
 
-    const activeListingsCount = await db.collection("products").countDocuments({ is_active: true });
+    const activeListingsCount = await db.collection("products").countDocuments({ status: "active" });
 
     const totalRevenue = (paidOrders ?? []).reduce(
       (sum: number, o: { gross_amount?: number }) => sum + (o.gross_amount ?? 0),

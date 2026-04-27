@@ -3,9 +3,9 @@ import { getServerSellerAccess } from "@/lib/auth/server";
 import { getSellerById } from "@/lib/db/collections/sellers";
 import { getLedgerBySeller } from "@/lib/db/collections/ledger";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const authResult = await getServerSellerAccess();
+    const authResult = await getServerSellerAccess(req);
     if (authResult.status !== 200) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
@@ -65,7 +65,7 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const authResult = await getServerSellerAccess();
+    const authResult = await getServerSellerAccess(req);
     if (authResult.status !== 200) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }

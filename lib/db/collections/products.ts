@@ -79,7 +79,7 @@ export async function listProducts(opts?: {
   offset?: number;
 }): Promise<{ products: DbProduct[]; total: number }> {
   const db = getDB();
-  const filter: Record<string, unknown> = { is_active: true };
+  const filter: Record<string, unknown> = { status: "active" };
   if (opts?.search) {
     filter.$or = [
       { name: { $regex: opts.search, $options: "i" } },

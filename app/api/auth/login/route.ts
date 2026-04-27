@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
     const token = await new SignJWT({
       userId,
       email: user.email,
+      sellerId: sellerId ?? undefined,
       isAdmin: adminAccess.isAdmin,
       adminRole: adminAccess.adminRole ?? undefined,
       adminPermissions: adminAccess.permissions,

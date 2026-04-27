@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerUser } from "@/lib/auth/server";
+import { getTokenPayload } from "@/lib/auth/jwt-helper";
 import { getSellerByUserId } from "@/lib/db/collections/sellers";
 import { getOrdersBySeller } from "@/lib/db/collections/orders";
 import { getProductsBySeller } from "@/lib/db/collections/products";
@@ -8,13 +8,12 @@ import type { OrderItem } from "@/lib/db/collections/orders";
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await getServerUser();
-    const userId = user?.id ?? null;
-
-    if (!userId) {
+    const payload = await getTokenPayload(req);
+    if (!payload) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const userId = payload.userId;
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "10", 10) || 10));

@@ -23,7 +23,7 @@ function mapRowToProduct(row: { _id?: { toString(): string }; seller_id: string;
 
 export async function GET(req: NextRequest) {
   try {
-    const authResult = await getServerSellerAccess();
+    const authResult = await getServerSellerAccess(req);
     if (authResult.status !== 200) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const authResult = await getServerSellerAccess();
+    const authResult = await getServerSellerAccess(req);
     if (authResult.status !== 200) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }

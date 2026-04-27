@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
   const days = Math.min(parseInt(searchParams.get("days") ?? "30", 10), 365);
   const daysAgo = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   try {
-    const result = await getServerAdminAccess();
+    const result = await getServerAdminAccess(request);
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }

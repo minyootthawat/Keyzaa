@@ -1,13 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerAdminAccess } from "@/lib/auth/server";
 import { findUserById, updateUser } from "@/lib/db/collections/users";
 
 export async function GET(
-  _req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const result = await getServerAdminAccess();
+    const result = await getServerAdminAccess(req);
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
@@ -36,11 +36,11 @@ export async function GET(
 }
 
 export async function PATCH(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const result = await getServerAdminAccess();
+    const result = await getServerAdminAccess(req);
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
@@ -76,11 +76,11 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const result = await getServerAdminAccess();
+    const result = await getServerAdminAccess(req);
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }

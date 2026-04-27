@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerAdminAccess } from "@/lib/auth/server";
 import { getDB } from "@/lib/mongodb";
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const result = await getServerAdminAccess();
+    const result = await getServerAdminAccess(req);
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
@@ -19,9 +19,9 @@ export async function GET(req: Request) {
     const query: Record<string, unknown> = {};
 
     if (filterParam === "active") {
-      query.is_active = true;
+      query.status = "active";
     } else if (filterParam === "inactive") {
-      query.is_active = false;
+      query.status = "inactive";
     }
 
     if (search.trim()) {
