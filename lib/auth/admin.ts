@@ -9,13 +9,16 @@ export type AdminPermission =
   | "admin:access"
   | "admin:overview:read"
   | "admin:orders:read"
+  | "admin:orders:write"
   | "admin:sellers:read"
   | "admin:sellers:write"
   | "admin:products:read"
   | "admin:products:write"
   | "admin:analytics:read"
   | "admin:settings:write"
-  | "admin:listings:read";
+  | "admin:listings:read"
+  | "admin:users:read"
+  | "admin:users:write";
 
 export interface AdminAccess {
   isAdmin: boolean;
@@ -27,6 +30,7 @@ const ALL_ADMIN_PERMISSIONS: AdminPermission[] = [
   "admin:access",
   "admin:overview:read",
   "admin:orders:read",
+  "admin:orders:write",
   "admin:sellers:read",
   "admin:sellers:write",
   "admin:products:read",
@@ -34,6 +38,8 @@ const ALL_ADMIN_PERMISSIONS: AdminPermission[] = [
   "admin:analytics:read",
   "admin:settings:write",
   "admin:listings:read",
+  "admin:users:read",
+  "admin:users:write",
 ];
 
 const ADMIN_ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
@@ -42,17 +48,21 @@ const ADMIN_ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
     "admin:access",
     "admin:overview:read",
     "admin:orders:read",
+    "admin:orders:write",
     "admin:sellers:read",
     "admin:sellers:write",
     "admin:products:read",
     "admin:products:write",
     "admin:analytics:read",
+    "admin:users:read",
+    "admin:users:write",
   ],
   support_admin: [
     "admin:access",
     "admin:orders:read",
     "admin:sellers:read",
     "admin:sellers:write",
+    "admin:users:read",
   ],
   catalog_admin: [
     "admin:access",
