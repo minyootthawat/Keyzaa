@@ -42,7 +42,7 @@ const ALL_ADMIN_PERMISSIONS: AdminPermission[] = [
   "admin:users:write",
 ];
 
-const ADMIN_ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
+export const ADMIN_ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
   super_admin: ALL_ADMIN_PERMISSIONS,
   ops_admin: [
     "admin:access",
