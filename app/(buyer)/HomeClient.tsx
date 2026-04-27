@@ -24,14 +24,24 @@ const categoryGradients: Record<string, string> = {
 
 // Maps API category names to display categories
 const CATEGORY_MAP: Record<string, string> = {
+  // เติมเกม variants
   "Mobile Top-up": "เติมเกม",
+  "Mobile Game Top-up": "เติมเกม",
   "Genshin Impact": "เติมเกม",
   "Honkai Star Rail": "เติมเกม",
   "Mobile Legends": "เติมเกม",
+  "topup": "เติมเกม",
+  "เติมเกม": "เติมเกม",
+  // Gift Card variants
   "Gift Card": "Gift Card",
+  "giftcard": "Gift Card",
+  "Gift Card ": "Gift Card",
+  // Subscription
   Subscription: "Subscription",
-  โปร: "โปร",
+  // AI Tools
   "AI Tools": "AI Tools",
+  // โปร
+  โปร: "โปร",
 };
 
 const categoryIcons: Record<string, LucideIcon> = {

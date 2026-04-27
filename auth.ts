@@ -31,6 +31,7 @@ function getAdapter(): Adapter | undefined {
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  trustHost: true,
   adapter: getAdapter(),
   providers: [
     Google({
