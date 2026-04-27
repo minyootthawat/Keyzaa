@@ -28,7 +28,7 @@ export async function GET(req: Request) {
         sales_count,
         rating,
         created_at,
-        user:users!sellers_user_id_fkey(id, email, full_name)
+        user:users!sellers_user_id_fkey(id, email, name)
       `,
         { count: "exact" }
       )
@@ -58,7 +58,7 @@ export async function GET(req: Request) {
       user: {
         id: (s.user as Record<string, unknown>)?.id ?? "",
         email: (s.user as Record<string, unknown>)?.email ?? "",
-        name: (s.user as Record<string, unknown>)?.full_name ?? "",
+        name: (s.user as Record<string, unknown>)?.name ?? "",
       },
     }));
 

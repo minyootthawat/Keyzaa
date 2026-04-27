@@ -45,6 +45,8 @@ export default function AdminProductsPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   // Edit modal state
   const [editProduct, setEditProduct] = useState<Product | null>(null);
@@ -156,6 +158,87 @@ export default function AdminProductsPage() {
       setActionError(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const toggleProductSelection = (productId: string) => {
+    setSelectedProducts((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  };
+
+  const toggleAllProductSelection = () => {
+    if (selectedProducts.size === products.length) {
+      setSelectedProducts(new Set());
+    } else {
+      setSelectedProducts(new Set(products.map((p) => p.id)));
+    }
+  };
+
+  const handleBulkActivate = async () => {
+    const token = getStoredToken();
+    if (!token || selectedProducts.size === 0) return;
+    setBulkLoading(true);
+    setActionSuccess(null);
+    try {
+      await Promise.all(
+        [...selectedProducts].map((id) =>
+          fetch(`/api/backoffice/products/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ isActive: true }),
+          })
+        )
+      );
+      setProducts((prev) =>
+        prev.map((p) => (selectedProducts.has(p.id) ? { ...p, isActive: true } : p))
+      );
+      setActionSuccess(
+        lang === "th"
+          ? `เปิดใช้งานสินค้า ${selectedProducts.size} รายการแล้ว`
+          : `Activated ${selectedProducts.size} product(s)`
+      );
+      setSelectedProducts(new Set());
+      setTimeout(() => setActionSuccess(null), 5000);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkDeactivate = async () => {
+    const token = getStoredToken();
+    if (!token || selectedProducts.size === 0) return;
+    setBulkLoading(true);
+    setActionSuccess(null);
+    try {
+      await Promise.all(
+        [...selectedProducts].map((id) =>
+          fetch(`/api/backoffice/products/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ isActive: false }),
+          })
+        )
+      );
+      setProducts((prev) =>
+        prev.map((p) => (selectedProducts.has(p.id) ? { ...p, isActive: false } : p))
+      );
+      setActionSuccess(
+        lang === "th"
+          ? `ปิดใช้งานสินค้า ${selectedProducts.size} รายการแล้ว`
+          : `Deactivated ${selectedProducts.size} product(s)`
+      );
+      setSelectedProducts(new Set());
+      setTimeout(() => setActionSuccess(null), 5000);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+    } finally {
+      setBulkLoading(false);
     }
   };
 
@@ -335,6 +418,35 @@ export default function AdminProductsPage() {
           </div>
         )}
 
+        {/* Bulk action toolbar */}
+        {canWrite && selectedProducts.size > 0 && (
+          <div className="flex items-center gap-3 rounded-xl border border-brand-primary/30 bg-brand-primary/10 px-4 py-3">
+            <span className="text-sm font-medium text-brand-primary">
+              {selectedProducts.size} {lang === "th" ? "รายการเลือกแล้ว" : "selected"}
+            </span>
+            <button
+              onClick={handleBulkActivate}
+              disabled={bulkLoading}
+              className="rounded-lg bg-success px-3 py-1.5 text-xs font-semibold text-white hover:opacity-85 disabled:opacity-50"
+            >
+              {bulkLoading ? "..." : (lang === "th" ? "เปิดใช้งานที่เลือก" : "Activate selected")}
+            </button>
+            <button
+              onClick={handleBulkDeactivate}
+              disabled={bulkLoading}
+              className="rounded-lg bg-error px-3 py-1.5 text-xs font-semibold text-white hover:opacity-85 disabled:opacity-50"
+            >
+              {bulkLoading ? "..." : (lang === "th" ? "ปิดใช้งานที่เลือก" : "Deactivate selected")}
+            </button>
+            <button
+              onClick={() => setSelectedProducts(new Set())}
+              className="ml-auto text-xs text-text-muted hover:text-text-main"
+            >
+              {lang === "th" ? "ยกเลิก" : "Clear"}
+            </button>
+          </div>
+        )}
+
         {/* Filter tabs */}
         <div className="flex flex-wrap items-center gap-3">
           {(
@@ -421,6 +533,16 @@ export default function AdminProductsPage() {
               <table className="w-full min-w-[800px] text-sm">
                 <thead>
                   <tr className="border-b border-border-subtle bg-bg-surface/70">
+                    {canWrite && (
+                      <th className="px-4 py-3 text-left">
+                        <input
+                          type="checkbox"
+                          checked={products.length > 0 && selectedProducts.size === products.length}
+                          onChange={toggleAllProductSelection}
+                          className="h-4 w-4 rounded border-border-subtle bg-bg-base accent-brand-primary"
+                        />
+                      </th>
+                    )}
                     <th className="px-4 py-3 text-left font-semibold text-text-muted">ID</th>
                     <th className="px-4 py-3 text-left font-semibold text-text-muted">
                       {lang === "th" ? "ชื่อสินค้า" : "Product Name"}
@@ -453,6 +575,16 @@ export default function AdminProductsPage() {
                       key={product.id}
                       className="bg-bg-base hover:bg-bg-surface/50 transition-colors"
                     >
+                      {canWrite && (
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedProducts.has(product.id)}
+                            onChange={() => toggleProductSelection(product.id)}
+                            className="h-4 w-4 rounded border-border-subtle bg-bg-base accent-brand-primary"
+                          />
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-text-muted font-mono text-xs">
                         {product.id.slice(0, 8)}...
                       </td>

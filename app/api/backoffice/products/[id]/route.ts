@@ -10,7 +10,6 @@ interface DbProduct {
   category: string;
   price: number;
   stock: number;
-  stock_quantity: number;
   image_url: string | null;
   is_active: boolean;
   created_at: string;
@@ -34,7 +33,7 @@ function mapDbToProduct(row: DbProduct): ProductResponse {
     name: row.name,
     price: Number(row.price),
     isActive: row.is_active,
-    stockQuantity: row.stock_quantity ?? row.stock ?? 0,
+    stockQuantity: row.stock ?? 0,
     createdAt: row.created_at,
   };
 }
@@ -64,9 +63,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     if (typeof body.stockQuantity === "number" && body.stockQuantity >= 0) {
-      updates.stock_quantity = body.stockQuantity;
+      updates.stock = body.stockQuantity;
     } else if (typeof body.stock === "number" && body.stock >= 0) {
-      updates.stock_quantity = body.stock;
+      updates.stock = body.stock;
     }
 
     if (Object.keys(updates).length === 0) {

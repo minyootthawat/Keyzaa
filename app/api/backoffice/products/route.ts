@@ -25,7 +25,7 @@ export async function GET(req: Request) {
         name,
         price,
         is_active,
-        stock_quantity,
+        stock,
         created_at,
         seller:sellers!products_seller_id_fkey(id, store_name)
       `,
@@ -55,7 +55,7 @@ export async function GET(req: Request) {
       name: p.name,
       price: p.price ?? 0,
       isActive: p.is_active,
-      stockQuantity: p.stock_quantity ?? 0,
+      stockQuantity: p.stock ?? 0,
       createdAt: p.created_at,
       seller: {
         id: (p.seller as Record<string, unknown>)?.id ?? "",

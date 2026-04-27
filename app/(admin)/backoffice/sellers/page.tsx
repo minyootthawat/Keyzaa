@@ -375,6 +375,16 @@ export default function AdminSellersPage() {
                 <tbody className="divide-y divide-border-subtle">
                   {sellers.map((seller) => (
                     <tr key={seller.id} className="bg-bg-base hover:bg-bg-surface/50 transition-colors">
+                      {canWrite && (
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedSellers.has(seller.id)}
+                            onChange={() => toggleSellerSelection(seller.id)}
+                            className="h-4 w-4 rounded border-border-subtle bg-bg-base accent-brand-primary"
+                          />
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         <div>
                           <p className="font-semibold text-text-main">{seller.storeName}</p>
