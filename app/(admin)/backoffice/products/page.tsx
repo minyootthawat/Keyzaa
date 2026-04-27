@@ -1,124 +1,667 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import AdminPageShell from "@/app/components/backoffice/admin-page-shell";
-import AdminStatusBadge from "@/app/components/backoffice/admin-status-badge";
+import AdminRouteGuard from "@/app/components/AdminRouteGuard";
+import { useEffect, useState, useCallback } from "react";
+import { useAuth } from "@/app/context/AuthContext";
 import { useLanguage } from "@/app/context/LanguageContext";
-import { fetchBackoffice, type BackofficeProduct, type BackofficeProductsResponse } from "@/app/lib/backoffice";
+import { getStoredToken } from "@/app/lib/auth-client";
 import { formatThaiBaht } from "@/app/lib/marketplace";
+
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  isActive: boolean;
+  stockQuantity: number;
+  createdAt: string;
+  seller: {
+    id: string;
+    storeName: string;
+  };
+}
+
+interface ProductsResponse {
+  products: Product[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+const ITEMS_PER_PAGE = 20;
+
+type FilterTab = "all" | "active" | "inactive";
 
 export default function AdminProductsPage() {
   const { lang } = useLanguage();
-  const [products, setProducts] = useState<BackofficeProduct[]>([]);
+  const { adminPermissions, adminRole } = useAuth();
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [filter, setFilter] = useState<FilterTab>("all");
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
+  // Edit modal state
+  const [editProduct, setEditProduct] = useState<Product | null>(null);
+  const [editPrice, setEditPrice] = useState("");
+  const [editStock, setEditStock] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Delete confirmation state
+  const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [orderCountWarning, setOrderCountWarning] = useState<number | null>(null);
+
+  const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
+  const canWrite = adminPermissions.includes("admin:products:write");
+  const isSuperAdmin = adminRole === "super_admin";
+
+  const fetchProducts = useCallback(
+    (pageNum: number, filterVal: FilterTab, searchVal: string) => {
+      const token = getStoredToken();
+      if (!token) {
+        setError(lang === "th" ? "ไม่พบสิทธิ์แอดมิน" : "Admin access not found.");
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: String(pageNum),
+        limit: String(ITEMS_PER_PAGE),
+        filter: filterVal,
+      });
+      if (searchVal.trim()) {
+        params.set("search", searchVal.trim());
+      }
+
+      fetch(`/api/backoffice/products?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(async (res) => {
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${res.status}`);
+          }
+          return res.json();
+        })
+        .then((data: ProductsResponse) => {
+          setProducts(data.products);
+          setTotal(data.total);
+          setError(null);
+        })
+        .catch((err) => {
+          setError(err.message || (lang === "th" ? "โหลดข้อมูลไม่สำเร็จ" : "Failed to load products."));
+        })
+        .finally(() => setLoading(false));
+    },
+    [lang]
+  );
 
   useEffect(() => {
-    const controller = new AbortController();
+    fetchProducts(page, filter, search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, filter]);
 
-    fetchBackoffice<BackofficeProductsResponse>("/api/backoffice/products", controller.signal)
-      .then((response) => {
-        setProducts(response.products);
-        setError(null);
-      })
-      .catch(() => {
-        setProducts([]);
-        setError(lang === "th" ? "โหลดข้อมูลสินค้าไม่สำเร็จ" : "Failed to load listings.");
-      })
-      .finally(() => setLoading(false));
+  // Search on Enter or after 500ms debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchInput !== search) {
+        setSearch(searchInput);
+        setPage(1);
+        fetchProducts(1, filter, searchInput);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchInput, search, filter, fetchProducts]);
 
-    return () => controller.abort();
-  }, [lang]);
+  const handleToggleActive = async (product: Product) => {
+    const token = getStoredToken();
+    if (!token) return;
 
-  const stats = useMemo(() => {
-    const active = products.filter((product) => product.isActive).length;
-    const lowStock = products.filter((product) => product.stock < 10).length;
-    const verifiedSellerCount = products.filter((product) => product.seller.verified).length;
+    setActionLoading(product.id);
+    setActionSuccess(null);
 
-    return [
-      { label: lang === "th" ? "รายการขายทั้งหมด" : "Total listings", value: products.length.toLocaleString() },
-      { label: lang === "th" ? "ใช้งานอยู่" : "Active", value: active.toLocaleString() },
-      { label: lang === "th" ? "สต็อกใกล้หมด" : "Low stock", value: lowStock.toLocaleString() },
-      { label: lang === "th" ? "จากร้านยืนยันแล้ว" : "Verified seller listings", value: verifiedSellerCount.toLocaleString() },
-    ];
-  }, [lang, products]);
+    try {
+      const res = await fetch(`/api/backoffice/products/${product.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isActive: !product.isActive }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+
+      const { product: updated } = await res.json();
+      setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      setActionSuccess(
+        updated.isActive
+          ? lang === "th"
+            ? `เปิดใช้งานสินค้า "${updated.name}" แล้ว`
+            : `Activated "${updated.name}"`
+          : lang === "th"
+          ? `ปิดใช้งานสินค้า "${updated.name}" แล้ว`
+          : `Deactivated "${updated.name}"`
+      );
+      setTimeout(() => setActionSuccess(null), 3000);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const openEditModal = (product: Product) => {
+    setEditProduct(product);
+    setEditPrice(String(product.price));
+    setEditStock(String(product.stockQuantity));
+  };
+
+  const closeEditModal = () => {
+    setEditProduct(null);
+    setEditPrice("");
+    setEditStock("");
+    setSavingEdit(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editProduct) return;
+
+    const token = getStoredToken();
+    if (!token) return;
+
+    const price = parseFloat(editPrice);
+    const stockQuantity = parseInt(editStock, 10);
+
+    if (isNaN(price) || price < 0) {
+      alert(lang === "th" ? "ราคาไม่ถูกต้อง" : "Invalid price");
+      return;
+    }
+    if (isNaN(stockQuantity) || stockQuantity < 0) {
+      alert(lang === "th" ? "จำนวนสต็อกไม่ถูกต้อง" : "Invalid stock quantity");
+      return;
+    }
+
+    setSavingEdit(true);
+
+    try {
+      const res = await fetch(`/api/backoffice/products/${editProduct.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ price, stockQuantity }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+
+      const { product: updated } = await res.json();
+      setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      setActionSuccess(
+        lang === "th"
+          ? `อัปเดตสินค้า "${updated.name}" แล้ว`
+          : `Updated "${updated.name}"`
+      );
+      setTimeout(() => setActionSuccess(null), 3000);
+      closeEditModal();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const openDeleteConfirm = async (product: Product) => {
+    setDeleteProduct(product);
+    setOrderCountWarning(null);
+    setDeleteLoading(false);
+
+    // Pre-check if product has orders (warning only, doesn't block)
+    const token = getStoredToken();
+    if (token) {
+      try {
+        const res = await fetch(`/api/backoffice/products/${product.id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.status === 409) {
+          const body = await res.json();
+          setOrderCountWarning(body.orderCount ?? null);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  const closeDeleteConfirm = () => {
+    setDeleteProduct(null);
+    setOrderCountWarning(null);
+    setDeleteLoading(false);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteProduct) return;
+
+    const token = getStoredToken();
+    if (!token) return;
+
+    setDeleteLoading(true);
+
+    try {
+      const res = await fetch(`/api/backoffice/products/${deleteProduct.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        if (res.status === 409) {
+          setOrderCountWarning(body.orderCount ?? null);
+          setDeleteLoading(false);
+          return;
+        }
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+
+      setProducts((prev) => prev.filter((p) => p.id !== deleteProduct.id));
+      setActionSuccess(
+        lang === "th"
+          ? `ลบสินค้า "${deleteProduct.name}" แล้ว`
+          : `Deleted "${deleteProduct.name}"`
+      );
+      setTimeout(() => setActionSuccess(null), 3000);
+      closeDeleteConfirm();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const activeCount = products.filter((p) => p.isActive).length;
+  const inactiveCount = products.filter((p) => !p.isActive).length;
+
+  const formatDate = (dateStr: string) => {
+    try {
+      return new Date(dateStr).toLocaleDateString(lang === "th" ? "th-TH" : "en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
 
   return (
-    <AdminPageShell
-      eyebrow={lang === "th" ? "Catalog Governance" : "Catalog Governance"}
-      title={lang === "th" ? "ระบบดูแลรายการสินค้า" : "Listing governance"}
-      description={
-        lang === "th"
-          ? "ตรวจสอบสต็อก ราคา และความพร้อมของรายการขายจากฝั่งแอดมิน เพื่อคุมคุณภาพแคตตาล็อกให้คงที่"
-          : "Review stock, pricing, and listing readiness to keep marketplace catalog quality consistent."
-      }
-    >
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((item) => (
-          <div key={item.label} className="rounded-[1.5rem] border border-white/10 bg-bg-surface/80 p-5">
-            <p className="text-xs uppercase tracking-[0.16em] text-text-muted">{item.label}</p>
-            <p className="type-num mt-2 text-2xl font-extrabold text-text-main">{item.value}</p>
-          </div>
-        ))}
-      </div>
+    <AdminRouteGuard requiredPermission="admin:products:read">
+      <div className="space-y-6 md:space-y-7">
+        {/* Header */}
+        <div className="space-y-2">
+          <h1 className="type-h1">
+            {lang === "th" ? "จัดการสินค้า" : "Manage products"}
+          </h1>
+          <p className="type-body max-w-[66ch] text-text-subtle">
+            {lang === "th"
+              ? "ดูและจัดการสินค้าทั้งหมดในระบบ รวมถึงเปิด/ปิดใช้งาน แก้ไขราคาและสต็อก"
+              : "View and manage all products in the system, including toggle active/inactive, edit price and stock."}
+          </p>
+        </div>
 
-      <div className="rounded-[1.75rem] border border-white/10 bg-bg-surface/80 p-5">
-        {loading ? (
-          <div className="h-48 animate-pulse rounded-2xl bg-bg-base/60" />
-        ) : error ? (
-          <div className="rounded-2xl border border-danger/20 bg-danger/10 px-4 py-6 text-sm text-danger">{error}</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-white/10 text-text-muted">
-                  <th className="px-4 py-3 font-semibold">{lang === "th" ? "สินค้า" : "Product"}</th>
-                  <th className="px-4 py-3 font-semibold">{lang === "th" ? "หมวดหมู่" : "Category"}</th>
-                  <th className="px-4 py-3 font-semibold">{lang === "th" ? "ร้าน" : "Seller"}</th>
-                  <th className="px-4 py-3 font-semibold">{lang === "th" ? "ราคา" : "Price"}</th>
-                  <th className="px-4 py-3 font-semibold">{lang === "th" ? "สต็อก" : "Stock"}</th>
-                  <th className="px-4 py-3 font-semibold">{lang === "th" ? "สถานะ" : "Status"}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((product) => (
-                  <tr key={product.id} className="border-b border-white/6 last:border-b-0">
-                    <td className="px-4 py-4">
-                      <p className="font-semibold text-text-main">{product.title}</p>
-                      <p className="mt-1 text-xs text-text-muted">{product.id.slice(0, 8)}</p>
-                    </td>
-                    <td className="px-4 py-4 text-text-subtle">{product.category}</td>
-                    <td className="px-4 py-4">
-                      <p className="font-medium text-text-main">{product.seller.storeName}</p>
-                      <p className="mt-1 text-xs text-text-muted">
-                        {product.seller.verified
-                          ? lang === "th"
-                            ? "ร้านยืนยันแล้ว"
-                            : "Verified seller"
-                          : lang === "th"
-                            ? "รอตรวจสอบ"
-                            : "Pending verification"}
-                      </p>
-                    </td>
-                    <td className="type-num px-4 py-4 font-semibold text-text-main">฿{formatThaiBaht(product.price)}</td>
-                    <td className="type-num px-4 py-4 text-text-subtle">{product.stock}</td>
-                    <td className="px-4 py-4">
-                      <AdminStatusBadge label={product.isActive ? "active" : "paused"} />
-                    </td>
-                  </tr>
-                ))}
-                {products.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-text-muted">
-                      {lang === "th" ? "ยังไม่มีรายการสินค้า" : "No listings found."}
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+        {/* Success toast */}
+        {actionSuccess && (
+          <div className="rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-success font-medium">
+            ✓ {actionSuccess}
           </div>
         )}
+
+        {/* Filter tabs */}
+        <div className="flex flex-wrap items-center gap-3">
+          {(
+            [
+              { key: "all" as FilterTab, label: lang === "th" ? "ทั้งหมด" : "All", count: total },
+              { key: "active" as FilterTab, label: lang === "th" ? "เปิดใช้งาน" : "Active", count: activeCount },
+              { key: "inactive" as FilterTab, label: lang === "th" ? "ปิดใช้งาน" : "Inactive", count: inactiveCount },
+            ]
+          ).map(({ key, label, count }) => (
+            <button
+              key={key}
+              onClick={() => {
+                setFilter(key);
+                setPage(1);
+                fetchProducts(1, key, search);
+              }}
+              className={`shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+                filter === key
+                  ? "bg-brand-primary/20 text-brand-primary"
+                  : "bg-bg-surface text-text-subtle hover:bg-bg-surface/80"
+              }`}
+            >
+              {label}
+              {count > 0 && (
+                <span className="ml-1.5 text-xs opacity-70">({count})</span>
+              )}
+            </button>
+          ))}
+
+          {/* Search */}
+          <div className="ml-auto">
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setSearch(searchInput);
+                  setPage(1);
+                  fetchProducts(1, filter, searchInput);
+                }
+              }}
+              placeholder={lang === "th" ? "ค้นหาชื่อสินค้า..." : "Search product name..."}
+              className="rounded-xl border border-border-subtle bg-bg-surface px-4 py-2 pr-10 text-sm text-text-main placeholder:text-text-muted focus:border-brand-primary focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {/* Table */}
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="h-16 w-full rounded-xl bg-bg-surface/60 animate-pulse" />
+            ))}
+          </div>
+        ) : error ? (
+          <div className="surface-card flex min-h-[200px] items-center justify-center p-6 text-center">
+            <p className="text-error type-body">{error}</p>
+          </div>
+        ) : products.length === 0 ? (
+          <div className="surface-card flex min-h-[200px] flex-col items-center justify-center gap-2 p-6 text-center">
+            <p className="text-3xl">📦</p>
+            <p className="text-text-muted type-body">
+              {search
+                ? lang === "th"
+                  ? `ไม่พบสินค้าที่ค้นหา "${search}"`
+                  : `No products found for "${search}"`
+                : filter === "active"
+                ? lang === "th"
+                  ? "ไม่มีสินค้าที่เปิดใช้งาน"
+                  : "No active products"
+                : filter === "inactive"
+                ? lang === "th"
+                  ? "ไม่มีสินค้าที่ปิดใช้งาน"
+                  : "No inactive products"
+                : lang === "th"
+                ? "ยังไม่มีสินค้า"
+                : "No products found"}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto rounded-2xl border border-border-subtle">
+              <table className="w-full min-w-[800px] text-sm">
+                <thead>
+                  <tr className="border-b border-border-subtle bg-bg-surface/70">
+                    <th className="px-4 py-3 text-left font-semibold text-text-muted">ID</th>
+                    <th className="px-4 py-3 text-left font-semibold text-text-muted">
+                      {lang === "th" ? "ชื่อสินค้า" : "Product Name"}
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-text-muted">
+                      {lang === "th" ? "ร้านค้า" : "Seller"}
+                    </th>
+                    <th className="px-4 py-3 text-right font-semibold text-text-muted">
+                      {lang === "th" ? "ราคา" : "Price"}
+                    </th>
+                    <th className="px-4 py-3 text-right font-semibold text-text-muted">
+                      {lang === "th" ? "สต็อก" : "Stock"}
+                    </th>
+                    <th className="px-4 py-3 text-center font-semibold text-text-muted">
+                      {lang === "th" ? "สถานะ" : "Status"}
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-text-muted">
+                      {lang === "th" ? "สร้างเมื่อ" : "Created"}
+                    </th>
+                    {canWrite && (
+                      <th className="px-4 py-3 text-right font-semibold text-text-muted">
+                        {lang === "th" ? "การกระทำ" : "Actions"}
+                      </th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-subtle">
+                  {products.map((product) => (
+                    <tr
+                      key={product.id}
+                      className="bg-bg-base hover:bg-bg-surface/50 transition-colors"
+                    >
+                      <td className="px-4 py-3 text-text-muted font-mono text-xs">
+                        {product.id.slice(0, 8)}...
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-text-main">
+                        {product.name}
+                      </td>
+                      <td className="px-4 py-3 text-text-subtle">
+                        {product.seller.storeName || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium text-text-main">
+                        ฿{formatThaiBaht(product.price)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span
+                          className={`font-medium ${
+                            product.stockQuantity === 0
+                              ? "text-error"
+                              : product.stockQuantity < 5
+                              ? "text-warning"
+                              : "text-text-main"
+                          }`}
+                        >
+                          {product.stockQuantity}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {product.isActive ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-xs font-semibold text-success">
+                            {lang === "th" ? "✓ เปิด" : "✓ Active"}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-error/15 px-2.5 py-1 text-xs font-semibold text-error">
+                            {lang === "th" ? "✕ ปิด" : "✕ Inactive"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-text-muted">
+                        {formatDate(product.createdAt)}
+                      </td>
+                      {canWrite && (
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex justify-end gap-1.5">
+                            {/* Toggle active/inactive */}
+                            <button
+                              onClick={() => handleToggleActive(product)}
+                              disabled={actionLoading === product.id}
+                              className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-40 ${
+                                product.isActive
+                                  ? "border border-error/40 bg-error/10 text-error"
+                                  : "border border-success/40 bg-success/10 text-success"
+                              }`}
+                            >
+                              {actionLoading === product.id
+                                ? "..."
+                                : product.isActive
+                                ? lang === "th"
+                                  ? "ปิด"
+                                  : "Deactivate"
+                                : lang === "th"
+                                ? "เปิด"
+                                : "Activate"}
+                            </button>
+
+                            {/* Edit */}
+                            <button
+                              onClick={() => openEditModal(product)}
+                              className="shrink-0 rounded-xl border border-brand-primary/40 bg-brand-primary/10 px-3 py-1.5 text-xs font-semibold text-brand-primary transition-opacity hover:opacity-80"
+                            >
+                              {lang === "th" ? "แก้ไข" : "Edit"}
+                            </button>
+
+                            {/* Delete — super_admin only */}
+                            {isSuperAdmin && (
+                              <button
+                                onClick={() => openDeleteConfirm(product)}
+                                className="shrink-0 rounded-xl border border-error/40 bg-error/10 px-3 py-1.5 text-xs font-semibold text-error transition-opacity hover:opacity-80"
+                              >
+                                {lang === "th" ? "ลบ" : "Delete"}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-text-muted">
+                  {lang === "th"
+                    ? `แสดง ${(page - 1) * ITEMS_PER_PAGE + 1}–${Math.min(page * ITEMS_PER_PAGE, total)} จาก ${total} รายการ`
+                    : `Showing ${(page - 1) * ITEMS_PER_PAGE + 1}–${Math.min(page * ITEMS_PER_PAGE, total)} of ${total}`}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="rounded-xl border border-border-subtle bg-bg-surface px-3 py-1.5 text-sm font-semibold text-text-subtle transition-colors hover:border-border-main hover:text-text-main disabled:opacity-40"
+                  >
+                    ←
+                  </button>
+                  <span className="flex items-center rounded-xl border border-border-subtle bg-bg-surface px-3 py-1.5 text-sm font-semibold text-text-main">
+                    {page} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="rounded-xl border border-border-subtle bg-bg-surface px-3 py-1.5 text-sm font-semibold text-text-subtle transition-colors hover:border-border-main hover:text-text-main disabled:opacity-40"
+                  >
+                    →
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
-    </AdminPageShell>
+
+      {/* Edit Modal */}
+      {editProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border-subtle bg-bg-surface p-6 shadow-2xl">
+            <h2 className="type-h3 mb-4">
+              {lang === "th" ? "แก้ไขสินค้า" : "Edit product"}
+            </h2>
+            <p className="mb-4 font-semibold text-text-main">{editProduct.name}</p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-text-subtle">
+                  {lang === "th" ? "ราคา (฿)" : "Price (฿)"}
+                </label>
+                <input
+                  type="number"
+                  value={editPrice}
+                  onChange={(e) => setEditPrice(e.target.value)}
+                  min="0"
+                  step="0.01"
+                  className="w-full rounded-xl border border-border-subtle bg-bg-base px-4 py-2.5 text-text-main focus:border-brand-primary focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-text-subtle">
+                  {lang === "th" ? "สต็อก" : "Stock"}
+                </label>
+                <input
+                  type="number"
+                  value={editStock}
+                  onChange={(e) => setEditStock(e.target.value)}
+                  min="0"
+                  className="w-full rounded-xl border border-border-subtle bg-bg-base px-4 py-2.5 text-text-main focus:border-brand-primary focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={closeEditModal}
+                className="rounded-xl border border-border-subtle bg-bg-base px-4 py-2 text-sm font-semibold text-text-subtle transition-colors hover:border-border-main hover:text-text-main"
+              >
+                {lang === "th" ? "ยกเลิก" : "Cancel"}
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={savingEdit}
+                className="rounded-xl bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-85 disabled:opacity-50"
+              >
+                {savingEdit ? "..." : lang === "th" ? "บันทึก" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-error/30 bg-bg-surface p-6 shadow-2xl">
+            <h2 className="type-h3 mb-2 text-error">
+              {lang === "th" ? "ยืนยันการลบสินค้า" : "Confirm delete product"}
+            </h2>
+            <p className="mb-1 text-text-subtle">
+              {lang === "th" ? "คุณแน่ใจหรือไม่ว่าต้องการลบ" : "Are you sure you want to delete"}
+            </p>
+            <p className="mb-4 font-semibold text-text-main">"{deleteProduct.name}"?</p>
+
+            {orderCountWarning !== null && (
+              <div className="mb-4 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+                ⚠️ {lang === "th"
+                  ? `สินค้านี้มี ${orderCountWarning} ออเดอร์ที่เกี่ยวข้อง การลบอาจส่งผลกระทบ`
+                  : `This product has ${orderCountWarning} related orders. Deleting it may have consequences.`}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={closeDeleteConfirm}
+                className="rounded-xl border border-border-subtle bg-bg-base px-4 py-2 text-sm font-semibold text-text-subtle transition-colors hover:border-border-main hover:text-text-main"
+              >
+                {lang === "th" ? "ยกเลิก" : "Cancel"}
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleteLoading}
+                className="rounded-xl bg-error px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-85 disabled:opacity-50"
+              >
+                {deleteLoading ? "..." : lang === "th" ? "ลบ" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AdminRouteGuard>
   );
 }

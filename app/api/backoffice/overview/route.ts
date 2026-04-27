@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { getAdminAccessFromSession } from "@/lib/auth/admin";
+import { requireAdminPermission } from "@/lib/auth/admin";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
 export async function GET() {
   try {
-    const access = await getAdminAccessFromSession();
+    const access = await requireAdminPermission("admin:overview:read");
     if (access.status !== 200) {
       return NextResponse.json({ error: access.error }, { status: access.status });
     }
