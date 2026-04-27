@@ -1,5 +1,6 @@
 "use client";
 
+import AdminRouteGuard from "@/app/components/AdminRouteGuard";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 import { useLanguage } from "@/app/context/LanguageContext";
@@ -103,6 +104,7 @@ export default function AdminDashboardPage() {
   }
 
   return (
+    <AdminRouteGuard requiredPermission="admin:overview:read">
     <div className="space-y-6 md:space-y-7">
       <div className="space-y-2">
         <h1 className="type-h1">{lang === "th" ? "แดชบอร์ดแอดมิน" : "Admin dashboard"}</h1>
@@ -144,5 +146,6 @@ export default function AdminDashboardPage() {
         </div>
       </div>
     </div>
+    </AdminRouteGuard>
   );
 }

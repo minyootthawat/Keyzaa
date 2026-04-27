@@ -11,6 +11,10 @@ export type AdminPermission =
   | "admin:orders:read"
   | "admin:sellers:read"
   | "admin:sellers:write"
+  | "admin:products:read"
+  | "admin:products:write"
+  | "admin:analytics:read"
+  | "admin:settings:write"
   | "admin:listings:read";
 
 export interface AdminAccess {
@@ -25,14 +29,38 @@ const ALL_ADMIN_PERMISSIONS: AdminPermission[] = [
   "admin:orders:read",
   "admin:sellers:read",
   "admin:sellers:write",
+  "admin:products:read",
+  "admin:products:write",
+  "admin:analytics:read",
+  "admin:settings:write",
   "admin:listings:read",
 ];
 
 const ADMIN_ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
   super_admin: ALL_ADMIN_PERMISSIONS,
-  ops_admin: ["admin:access", "admin:overview:read", "admin:orders:read", "admin:sellers:read", "admin:sellers:write"],
-  support_admin: ["admin:access", "admin:orders:read", "admin:sellers:read"],
-  catalog_admin: ["admin:access", "admin:overview:read", "admin:listings:read"],
+  ops_admin: [
+    "admin:access",
+    "admin:overview:read",
+    "admin:orders:read",
+    "admin:sellers:read",
+    "admin:sellers:write",
+    "admin:products:read",
+    "admin:products:write",
+    "admin:analytics:read",
+  ],
+  support_admin: [
+    "admin:access",
+    "admin:orders:read",
+    "admin:sellers:read",
+    "admin:sellers:write",
+  ],
+  catalog_admin: [
+    "admin:access",
+    "admin:overview:read",
+    "admin:products:read",
+    "admin:products:write",
+    "admin:listings:read",
+  ],
 };
 
 function parseEmailRoleMap() {
@@ -74,6 +102,22 @@ export function getAdminAccessForEmail(email: string | null | undefined): AdminA
 
 export function hasAdminPermission(access: AdminAccess, permission: AdminPermission) {
   return access.isAdmin && access.permissions.includes(permission);
+}
+
+export async function requireAdminPermission(permission: AdminPermission): Promise<{
+  status: number;
+  error?: string;
+  access?: AdminAccess;
+  userId?: string;
+}> {
+  const result = await getAdminAccessFromSession();
+  if (result.status !== 200) return result;
+
+  if (!hasAdminPermission(result.access!, permission)) {
+    return { status: 403, error: `Missing permission: ${permission}` };
+  }
+
+  return result;
 }
 
 export async function getAdminAccessFromRequest(req: NextRequest): Promise<{

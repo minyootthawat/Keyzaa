@@ -1,98 +1,57 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { requireAdminPermission } from "@/lib/auth/admin";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import { getAdminAccessFromRequest } from "@/lib/auth/admin";
 
-interface DbProduct {
-  id: string;
-  seller_id: string;
-  name: string;
-  description: string | null;
-  category: string;
-  price: number;
-  stock: number;
-  image_url: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-interface ProductWithSeller {
-  id: string;
-  sellerId: string;
-  title: string;
-  category: string;
-  price: number;
-  stock: number;
-  image: string;
-  isActive: boolean;
-  seller: {
-    id: string;
-    storeName: string;
-    verified: boolean;
-  };
-}
-
-function mapDbToProduct(row: DbProduct): Omit<ProductWithSeller, "seller"> {
-  return {
-    id: row.id,
-    sellerId: row.seller_id,
-    title: row.name,
-    category: row.category,
-    price: Number(row.price),
-    stock: row.stock,
-    image: row.image_url || "",
-    isActive: row.is_active,
-  };
-}
-
-export async function GET(req: NextRequest) {
+export async function GET(req: Request) {
   try {
-    const access = await getAdminAccessFromRequest(req);
+    const access = await requireAdminPermission("admin:products:read");
     if (access.status !== 200) {
       return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
     const { searchParams } = new URL(req.url);
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20", 10)));
-    const category = searchParams.get("category") || "";
+    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
+    const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "20", 10));
 
     const supabase = createServiceRoleClient();
-
-    let query = supabase
+    const { data, error, count } = await supabase
       .from("products")
-      .select("*, sellers(store_name, verified)", { count: "exact" })
+      .select(
+        `
+        id,
+        name,
+        price,
+        is_active,
+        stock_quantity,
+        created_at,
+        seller:sellers!products_seller_id_fkey(id, store_name)
+      `,
+        { count: "exact" }
+      )
       .order("created_at", { ascending: false })
       .range((page - 1) * limit, page * limit - 1);
 
-    if (category) {
-      query = query.eq("category", category);
-    }
-
-    const { data: rows, error, count } = await query;
-
     if (error) {
-      console.error("Supabase error:", error);
-      return NextResponse.json({ error: "Database error" }, { status: 500 });
+      console.error("Supabase products error:", error);
+      return NextResponse.json({ error: "Failed to fetch products" }, { status: 500 });
     }
 
-    const products: ProductWithSeller[] = (rows as (DbProduct & { sellers: { store_name: string; verified: boolean } })[]).map((row) => ({
-      ...mapDbToProduct(row),
+    const products = (data ?? []).map((p: Record<string, unknown>) => ({
+      id: p.id,
+      name: p.name,
+      price: p.price ?? 0,
+      isActive: p.is_active,
+      stockQuantity: p.stock_quantity ?? 0,
+      createdAt: p.created_at,
       seller: {
-        id: row.seller_id,
-        storeName: (row as unknown as { sellers: { store_name: string; verified: boolean } }).sellers?.store_name || "",
-        verified: (row as unknown as { sellers: { store_name: string; verified: boolean } }).sellers?.verified || false,
+        id: (p.seller as Record<string, unknown>)?.id ?? "",
+        storeName: (p.seller as Record<string, unknown>)?.store_name ?? "",
       },
     }));
 
-    return NextResponse.json({
-      products,
-      total: count ?? 0,
-      page,
-      limit,
-    });
+    return NextResponse.json({ products, total: count ?? 0, page, limit });
   } catch (error) {
-    console.error("Admin products list error:", error);
+    console.error("Admin products GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

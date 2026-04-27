@@ -3,11 +3,42 @@
 import Link from "next/link";
 import { useTheme } from "@/app/context/ThemeContext";
 import { useLanguage } from "@/app/context/LanguageContext";
+import { useAuth } from "@/app/context/AuthContext";
 import AdminSidebar from "@/app/components/AdminSidebar";
+
+const roleConfig: Record<string, { labelTh: string; labelEn: string; emoji: string; className: string }> = {
+  super_admin: {
+    labelTh: "Super Admin",
+    labelEn: "Super Admin",
+    emoji: "👑",
+    className: "bg-purple-500/15 text-purple-400 border-purple-500/25",
+  },
+  ops_admin: {
+    labelTh: "Ops Admin",
+    labelEn: "Ops Admin",
+    emoji: "📊",
+    className: "bg-blue-500/15 text-blue-400 border-blue-500/25",
+  },
+  support_admin: {
+    labelTh: "Support",
+    labelEn: "Support",
+    emoji: "🎧",
+    className: "bg-green-500/15 text-green-400 border-green-500/25",
+  },
+  catalog_admin: {
+    labelTh: "Catalog",
+    labelEn: "Catalog",
+    emoji: "🏷️",
+    className: "bg-orange-500/15 text-orange-400 border-orange-500/25",
+  },
+};
 
 export default function AdminAppLayout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
   const { lang, toggleLang } = useLanguage();
+  const { adminRole } = useAuth();
+
+  const role = roleConfig[adminRole ?? "support_admin"] || roleConfig.support_admin;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -20,9 +51,15 @@ export default function AdminAppLayout({ children }: { children: React.ReactNode
             <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-warning/20 bg-warning/10 text-warning font-bold text-lg">
               AD
             </div>
-            <div>
-              <p className="text-base font-black tracking-tight text-text-main">Keyzaa Admin</p>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-muted">Platform workspace</p>
+            <div className="flex items-center gap-3">
+              <div>
+                <p className="text-base font-black tracking-tight text-text-main">Keyzaa Admin</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-muted">Platform workspace</p>
+              </div>
+              {/* Role badge */}
+              <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold ${role.className}`}>
+                {role.emoji} {role.labelEn}
+              </span>
             </div>
           </Link>
 
