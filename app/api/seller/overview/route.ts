@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBearerPayload } from "@/lib/auth/jwt";
+import { auth } from "@/auth";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
 interface OrderRow {
@@ -57,12 +57,18 @@ interface OrderItemRow {
 
 export async function GET(req: NextRequest) {
   try {
-    const payload = await getBearerPayload(req);
-    const userId = typeof payload?.userId === "string" ? payload.userId : null;
+    const session = await auth();
+    const userId = session?.user?.id ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const { searchParams } = new URL(req.url);
+    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "10", 10) || 10));
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
 
     const supabase = createServiceRoleClient();
 
@@ -79,13 +85,14 @@ export async function GET(req: NextRequest) {
 
     const sellerId = seller.id;
 
-    // Fetch orders, products, and ledger entries in parallel
+    // Fetch orders (paginated), products, and ledger entries in parallel
     const [ordersResult, productsResult, ledgerResult] = await Promise.all([
       supabase
         .from("orders")
-        .select("*")
+        .select("*", { count: "exact" })
         .eq("seller_id", sellerId)
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false })
+        .range(from, to),
       supabase
         .from("products")
         .select("*")
@@ -115,6 +122,8 @@ export async function GET(req: NextRequest) {
     const ordersData = (ordersResult.data ?? []) as OrderRow[];
     const productsData = (productsResult.data ?? []) as ProductRow[];
     const ledgerData = (ledgerResult.data ?? []) as LedgerRow[];
+    const totalOrders = ordersResult.count ?? 0;
+    const totalOrdersPages = Math.ceil(totalOrders / limit);
 
     // Fetch order items for all seller's orders (grouped by product for soldCount)
     const orderIds = ordersData.map((o) => o.id);
@@ -213,7 +222,7 @@ export async function GET(req: NextRequest) {
       price: Number(p.price),
     }));
 
-    return NextResponse.json({ kpis, orders, products });
+    return NextResponse.json({ kpis, orders, products, totalOrdersPages });
   } catch (error) {
     console.error("Seller overview error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

@@ -15,8 +15,6 @@ import {
 import { getAdminAccessForEmail } from "@/lib/auth/admin";
 import type { Adapter } from "next-auth/adapters";
 
-import type { AdminRole, AdminPermission } from "@/lib/auth/admin";
-
 type UserRole = "buyer" | "seller" | "both";
 
 // Lazy adapter — only created when env vars are available (not at module load)
@@ -102,7 +100,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
-    async signIn({ user: socialUser, account, profile }) {
+    async signIn({ user: socialUser, account }) {
       if (!socialUser?.email) return false;
       if (
         account?.provider !== "google" &&
@@ -117,6 +115,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Upsert user into auth.users via Admin API
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const adminApi = supabaseAdmin.auth.admin as any;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { data: authUser, error: authError } = await adminApi.createUser({
         id: socialUser.id || undefined,
         email,

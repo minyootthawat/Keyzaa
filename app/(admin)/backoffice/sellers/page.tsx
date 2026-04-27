@@ -1,118 +1,352 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import AdminPageShell from "@/app/components/backoffice/admin-page-shell";
-import AdminStatusBadge from "@/app/components/backoffice/admin-status-badge";
+import AdminRouteGuard from "@/app/components/AdminRouteGuard";
+import { useEffect, useState } from "react";
 import { useLanguage } from "@/app/context/LanguageContext";
-import { fetchBackoffice, type BackofficeSeller, type BackofficeSellersResponse } from "@/app/lib/backoffice";
+import { getStoredToken } from "@/app/lib/auth-client";
 import { formatThaiBaht } from "@/app/lib/marketplace";
+
+interface Seller {
+  id: string;
+  storeName: string;
+  phone: string;
+  verified: boolean;
+  balance: number;
+  pendingBalance: number;
+  salesCount: number;
+  rating: number;
+  createdAt: string;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+  };
+}
+
+interface SellersResponse {
+  sellers: Seller[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+const ITEMS_PER_PAGE = 20;
 
 export default function AdminSellersPage() {
   const { lang } = useLanguage();
-  const [sellers, setSellers] = useState<BackofficeSeller[]>([]);
+  const [sellers, setSellers] = useState<Seller[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [filter, setFilter] = useState<"all" | "verified" | "unverified">("all");
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
+  const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
 
-    fetchBackoffice<BackofficeSellersResponse>("/api/backoffice/sellers", controller.signal)
-      .then((response) => {
-        setSellers(response.sellers);
+  const fetchSellers = (pageNum: number, filterVal: typeof filter) => {
+    const token = getStoredToken();
+    if (!token) {
+      setError(lang === "th" ? "ไม่พบสิทธิ์แอดมิน" : "Admin access not found.");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    let url = `/api/backoffice/sellers?page=${pageNum}&limit=${ITEMS_PER_PAGE}`;
+    if (filterVal === "verified") url += "&verified=true";
+    else if (filterVal === "unverified") url += "&verified=false";
+
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || `HTTP ${res.status}`);
+        }
+        return res.json();
+      })
+      .then((data: SellersResponse) => {
+        setSellers(data.sellers);
+        setTotal(data.total);
         setError(null);
       })
-      .catch(() => {
-        setSellers([]);
-        setError(lang === "th" ? "โหลดข้อมูลผู้ขายไม่สำเร็จ" : "Failed to load seller oversight.");
+      .catch((err) => {
+        setError(err.message || (lang === "th" ? "โหลดข้อมูลไม่สำเร็จ" : "Failed to load sellers."));
       })
       .finally(() => setLoading(false));
+  };
 
-    return () => controller.abort();
-  }, [lang]);
+  useEffect(() => {
+    fetchSellers(page, filter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, filter]);
 
-  const stats = useMemo(() => {
-    const verified = sellers.filter((seller) => seller.verified).length;
-    const pending = sellers.length - verified;
-    const totalBalance = sellers.reduce((sum, seller) => sum + seller.balance, 0);
+  const handleAction = async (sellerId: string, action: "approve" | "reject") => {
+    const token = getStoredToken();
+    if (!token) return;
 
-    return [
-      { label: lang === "th" ? "ร้านค้าทั้งหมด" : "Total stores", value: sellers.length.toLocaleString() },
-      { label: lang === "th" ? "ยืนยันแล้ว" : "Verified", value: verified.toLocaleString() },
-      { label: lang === "th" ? "รอตรวจสอบ" : "Pending review", value: pending.toLocaleString() },
-      { label: lang === "th" ? "ยอดคงเหลือรวม" : "Combined balance", value: `฿${formatThaiBaht(totalBalance)}` },
-    ];
-  }, [lang, sellers]);
+    setActionLoading(sellerId);
+    setActionSuccess(null);
+
+    try {
+      const res = await fetch(`/api/backoffice/sellers/${sellerId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+
+      const updated = (await res.json()).seller as Seller;
+      setSellers((prev) =>
+        prev.map((s) => (s.id === updated.id ? updated : s))
+      );
+      setActionSuccess(
+        action === "approve"
+          ? lang === "th"
+            ? `อนุมัติร้าน "${updated.storeName}" แล้ว`
+            : `Approved "${updated.storeName}"`
+          : lang === "th"
+          ? `ปฏิเสธร้าน "${updated.storeName}" แล้ว`
+          : `Rejected "${updated.storeName}"`
+      );
+      // Auto-clear success message after 3s
+      setTimeout(() => setActionSuccess(null), 3000);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const verifiedCount = sellers.filter((s) => s.verified).length;
+  const unverifiedCount = sellers.filter((s) => !s.verified).length;
 
   return (
-    <AdminPageShell
-      eyebrow={lang === "th" ? "Seller Oversight" : "Seller Oversight"}
-      title={lang === "th" ? "ระบบกำกับดูแลผู้ขาย" : "Seller oversight"}
-      description={
-        lang === "th"
-          ? "รวมสถานะยืนยันตัวตน คะแนนร้าน และยอดคงเหลือ เพื่อช่วยคัดกรองร้านที่ต้องติดตามใกล้ชิด"
-          : "Track verification, store quality, and balances to identify sellers that need attention."
-      }
-    >
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((item) => (
-          <div key={item.label} className="rounded-[1.5rem] border border-white/10 bg-bg-surface/80 p-5">
-            <p className="text-xs uppercase tracking-[0.16em] text-text-muted">{item.label}</p>
-            <p className="type-num mt-2 text-2xl font-extrabold text-text-main">{item.value}</p>
-          </div>
+    <AdminRouteGuard requiredPermission="admin:sellers:read">
+    <div className="space-y-6 md:space-y-7">
+      {/* Header */}
+      <div className="space-y-2">
+        <h1 className="type-h1">
+          {lang === "th" ? "จัดการร้านค้า" : "Manage sellers"}
+        </h1>
+        <p className="type-body max-w-[66ch] text-text-subtle">
+          {lang === "th"
+            ? "ตรวจสอบและอนุมัติร้านค้าใหม่ก่อนเปิดให้ขายสินค้าได้"
+            : "Review and approve new sellers before they can list products."}
+        </p>
+      </div>
+
+      {/* Success toast */}
+      {actionSuccess && (
+        <div className="rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-success font-medium">
+          ✓ {actionSuccess}
+        </div>
+      )}
+
+      {/* Filter tabs */}
+      <div className="flex gap-2">
+        {(
+          [
+            { key: "all", label: lang === "th" ? "ทั้งหมด" : "All", count: total },
+            {
+              key: "unverified",
+              label: lang === "th" ? "รอตรวจสอบ" : "Pending",
+              count: unverifiedCount,
+            },
+            {
+              key: "verified",
+              label: lang === "th" ? "ผ่านการตรวจสอบแล้ว" : "Verified",
+              count: verifiedCount,
+            },
+          ] as const
+        ).map(({ key, label, count }) => (
+          <button
+            key={key}
+            onClick={() => {
+              setFilter(key);
+              setPage(1);
+            }}
+            className={`shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+              filter === key
+                ? "bg-brand-primary/20 text-brand-primary"
+                : "bg-bg-surface text-text-subtle hover:bg-bg-surface/80"
+            }`}
+          >
+            {label}
+            {typeof count === "number" && count > 0 && (
+              <span className="ml-1.5 text-xs opacity-70">({count})</span>
+            )}
+          </button>
         ))}
       </div>
 
-      <div className="rounded-[1.75rem] border border-white/10 bg-bg-surface/80 p-5">
-        {loading ? (
-          <div className="h-48 animate-pulse rounded-2xl bg-bg-base/60" />
-        ) : error ? (
-          <div className="rounded-2xl border border-danger/20 bg-danger/10 px-4 py-6 text-sm text-danger">{error}</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-left text-sm">
+      {/* Table */}
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-16 w-full rounded-xl bg-bg-surface/60 animate-pulse" />
+          ))}
+        </div>
+      ) : error ? (
+        <div className="surface-card flex min-h-[200px] items-center justify-center p-6 text-center">
+          <p className="text-error type-body">{error}</p>
+        </div>
+      ) : sellers.length === 0 ? (
+        <div className="surface-card flex min-h-[200px] items-center justify-center p-6 text-center">
+          <p className="text-text-muted type-body">
+            {filter === "unverified"
+              ? lang === "th"
+                ? "ไม่มีร้านค้ารอตรวจสอบ"
+                : "No pending sellers"
+              : lang === "th"
+              ? "ไม่พบร้านค้า"
+              : "No sellers found"}
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="overflow-x-auto rounded-2xl border border-border-subtle">
+            <table className="w-full min-w-[640px] text-sm">
               <thead>
-                <tr className="border-b border-white/10 text-text-muted">
-                  <th className="px-4 py-3 font-semibold">{lang === "th" ? "ร้านค้า" : "Store"}</th>
-                  <th className="px-4 py-3 font-semibold">{lang === "th" ? "ผู้ถือบัญชี" : "Account owner"}</th>
-                  <th className="px-4 py-3 font-semibold">{lang === "th" ? "สถานะ" : "Status"}</th>
-                  <th className="px-4 py-3 font-semibold">{lang === "th" ? "ยอดขาย" : "Sales"}</th>
-                  <th className="px-4 py-3 font-semibold">{lang === "th" ? "เรตติ้ง" : "Rating"}</th>
-                  <th className="px-4 py-3 font-semibold">{lang === "th" ? "คงเหลือ" : "Balance"}</th>
-                  <th className="px-4 py-3 font-semibold">{lang === "th" ? "รอถอน" : "Pending"}</th>
+                <tr className="border-b border-border-subtle bg-bg-surface/70">
+                  <th className="px-4 py-3 text-left font-semibold text-text-muted">
+                    {lang === "th" ? "ร้านค้า" : "Store"}
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-text-muted">
+                    {lang === "th" ? "เจ้าของ" : "Owner"}
+                  </th>
+                  <th className="px-4 py-3 text-right font-semibold text-text-muted">
+                    {lang === "th" ? "ยอดขาย" : "Sales"}
+                  </th>
+                  <th className="px-4 py-3 text-right font-semibold text-text-muted">
+                    {lang === "th" ? "ยอดคงเหลือ" : "Balance"}
+                  </th>
+                  <th className="px-4 py-3 text-center font-semibold text-text-muted">
+                    {lang === "th" ? "สถานะ" : "Status"}
+                  </th>
+                  <th className="px-4 py-3 text-right font-semibold text-text-muted">
+                    {lang === "th" ? "การกระทำ" : "Actions"}
+                  </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-border-subtle">
                 {sellers.map((seller) => (
-                  <tr key={seller.id} className="border-b border-white/6 last:border-b-0">
-                    <td className="px-4 py-4">
-                      <p className="font-semibold text-text-main">{seller.storeName}</p>
-                      <p className="mt-1 text-xs text-text-muted">{seller.phone || seller.id.slice(0, 8)}</p>
+                  <tr key={seller.id} className="bg-bg-base hover:bg-bg-surface/50 transition-colors">
+                    <td className="px-4 py-3">
+                      <div>
+                        <p className="font-semibold text-text-main">{seller.storeName}</p>
+                        <p className="text-xs text-text-muted">{seller.phone || "—"}</p>
+                      </div>
                     </td>
-                    <td className="px-4 py-4">
-                      <p className="font-medium text-text-main">{seller.user.name || seller.user.email}</p>
-                      <p className="mt-1 text-xs text-text-muted">{seller.user.email}</p>
+                    <td className="px-4 py-3">
+                      <div>
+                        <p className="text-text-main">{seller.user.name || "—"}</p>
+                        <p className="text-xs text-text-muted">{seller.user.email}</p>
+                      </div>
                     </td>
-                    <td className="px-4 py-4">
-                      <AdminStatusBadge label={seller.verified ? "verified" : "pending"} />
+                    <td className="px-4 py-3 text-right font-medium text-text-main">
+                      {seller.salesCount.toLocaleString()}
                     </td>
-                    <td className="type-num px-4 py-4 text-text-subtle">{seller.salesCount.toLocaleString()}</td>
-                    <td className="type-num px-4 py-4 text-text-subtle">{seller.rating.toFixed(1)}</td>
-                    <td className="type-num px-4 py-4 font-semibold text-text-main">฿{formatThaiBaht(seller.balance)}</td>
-                    <td className="type-num px-4 py-4 text-text-subtle">฿{formatThaiBaht(seller.pendingBalance)}</td>
+                    <td className="px-4 py-3 text-right font-medium text-text-main">
+                      ฿{formatThaiBaht(seller.balance)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {seller.verified ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-xs font-semibold text-success">
+                          {lang === "th" ? "✓ ผ่าน" : "✓ Verified"}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2.5 py-1 text-xs font-semibold text-warning">
+                          {lang === "th" ? "◔ รอตรวจ" : "◔ Pending"}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {!seller.verified ? (
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => handleAction(seller.id, "approve")}
+                            disabled={actionLoading === seller.id}
+                            className="shrink-0 rounded-xl bg-success px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-85 disabled:opacity-50"
+                          >
+                            {actionLoading === seller.id
+                              ? "..."
+                              : lang === "th"
+                              ? "อนุมัติ"
+                              : "Approve"}
+                          </button>
+                          <button
+                            onClick={() => handleAction(seller.id, "reject")}
+                            disabled={actionLoading === seller.id}
+                            className="shrink-0 rounded-xl bg-error/80 px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-85 disabled:opacity-50"
+                          >
+                            {actionLoading === seller.id
+                              ? "..."
+                              : lang === "th"
+                              ? "ปฏิเสธ"
+                              : "Reject"}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleAction(seller.id, "reject")}
+                          disabled={actionLoading === seller.id}
+                          className="shrink-0 rounded-xl border border-error/40 bg-error/10 px-3 py-1.5 text-xs font-semibold text-error transition-opacity hover:bg-error/20 disabled:opacity-50"
+                        >
+                          {actionLoading === seller.id
+                            ? "..."
+                            : lang === "th"
+                            ? "เพิกถอน"
+                            : "Revoke"}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
-                {sellers.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-text-muted">
-                      {lang === "th" ? "ยังไม่พบร้านค้า" : "No sellers found."}
-                    </td>
-                  </tr>
-                ) : null}
               </tbody>
             </table>
           </div>
-        )}
-      </div>
-    </AdminPageShell>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-text-muted">
+                {lang === "th"
+                  ? `แสดง ${(page - 1) * ITEMS_PER_PAGE + 1}–${Math.min(page * ITEMS_PER_PAGE, total)} จาก ${total} ราย`
+                  : `Showing ${(page - 1) * ITEMS_PER_PAGE + 1}–${Math.min(page * ITEMS_PER_PAGE, total)} of ${total}`}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="rounded-xl border border-border-subtle bg-bg-surface px-3 py-1.5 text-sm font-semibold text-text-subtle transition-colors hover:border-border-main hover:text-text-main disabled:opacity-40"
+                >
+                  ←
+                </button>
+                <span className="flex items-center rounded-xl border border-border-subtle bg-bg-surface px-3 py-1.5 text-sm font-semibold text-text-main">
+                  {page} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="rounded-xl border border-border-subtle bg-bg-surface px-3 py-1.5 text-sm font-semibold text-text-subtle transition-colors hover:border-border-main hover:text-text-main disabled:opacity-40"
+                >
+                  →
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+    </AdminRouteGuard>
   );
 }

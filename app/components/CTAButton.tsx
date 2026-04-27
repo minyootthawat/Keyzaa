@@ -40,7 +40,7 @@ export default function CTAButton({
     return (
       <Link
         href={href}
-        onClick={onClick as any}
+        onClick={onClick}
         data-testid={dataTestid}
         className={combinedClassName}
       >
@@ -50,7 +50,7 @@ export default function CTAButton({
   }
 
   return (
-    <button type={type} onClick={onClick as any} disabled={disabled} data-testid={dataTestid} className={combinedClassName}>
+    <button type={type} onClick={onClick} disabled={disabled} data-testid={dataTestid} className={combinedClassName}>
       {children}
     </button>
   );

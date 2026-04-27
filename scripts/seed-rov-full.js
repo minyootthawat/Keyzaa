@@ -134,7 +134,6 @@ async function main() {
     for (let j = 0; j < 5; j++) {
       const diamonds = rovDiamonds[productCount % rovDiamonds.length];
       const basePrice = Math.ceil(diamonds * 0.9);
-      const originalPrice = diamonds * 1;
 
       const { error } = await supabase.from('products').insert({
         seller_id: seller.id,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSellerAccessFromRequest } from "@/lib/auth/seller";
+import { getSellerAccessFromSession } from "@/lib/auth/seller";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
 interface SellerRow {
@@ -31,9 +31,9 @@ interface LedgerRow {
   created_at: string;
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const authResult = await getSellerAccessFromRequest(req);
+    const authResult = await getSellerAccessFromSession();
     if (authResult.status !== 200) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
@@ -113,7 +113,7 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const authResult = await getSellerAccessFromRequest(req);
+    const authResult = await getSellerAccessFromSession();
     if (authResult.status !== 200) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
@@ -155,8 +155,8 @@ export async function PATCH(req: NextRequest) {
     }
 
     return NextResponse.json({ seller: { id: data.id, shopName: data.store_name, phone: data.phone } });
-  } catch (error) {
-    console.error("Seller PATCH error:", error);
+} catch {
+      console.error("Seller PATCH error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

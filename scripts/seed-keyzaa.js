@@ -4,12 +4,12 @@
  * Uses service_role client for admin access
  */
 
-const { createClient } = require("@supabase/supabase-js");
+import { createClient } from "@supabase/supabase-js";
 
 // Load .env.local manually
-const fs = require("node:fs");
-const path = require("node:path");
-const bcrypt = require("bcryptjs");
+import fs from "node:fs";
+import path from "node:path";
+import bcrypt from "bcryptjs";
 
 function loadEnv() {
   const envPath = path.join(process.cwd(), ".env.local");

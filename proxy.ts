@@ -1,68 +1,225 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { jwtVerify, decodeJwt, UnsecuredJWT } from "jose";
+import { auth } from "@/auth";
+import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
-// Routes that buyers should NOT access
-const SELLER_ROUTES = ["/seller"];
+// Routes that buyers should NOT access (but /seller/register is allowed for unauthenticated)
+const SELLER_PROTECTED_ROUTES = ["/seller"];
+const SELLER_REGISTER_ROUTE = "/seller/register";
 const ADMIN_ROUTES = ["/backoffice", "/admin"];
 
-// Edge-compatible JWT secret — TextEncoder is available in Edge Runtime
-const getJwtSecret = () => {
-  const secret = process.env.JWT_SECRET || "";
-  // Filter out control characters that can cause issues
-  const clean = secret.replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim();
-  return new TextEncoder().encode(clean || "fallback-dev-secret");
-};
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW_MS = 10 * 1000; // 10 seconds
+const AUTH_RATE_LIMIT = 10; // requests per window for auth endpoints
+const API_RATE_LIMIT = 30; // requests per window for other API routes
 
-export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+// In-memory rate limit store (Edge-compatible)
+// For production with multiple instances, use Upstash Redis or similar
+interface RateLimitEntry {
+  count: number;
+  resetAt: number;
+}
 
-  // Check for token in cookies or Authorization header
-  const token =
-    request.cookies.get("keyzaa_token")?.value ||
-    request.headers.get("authorization")?.replace("Bearer ", "");
+const rateLimitStore = new Map<string, RateLimitEntry>();
+let requestCount = 0;
+const CLEANUP_INTERVAL = 100; // Run cleanup every N requests
+const ENTRY_TTL_MS = 60 * 1000; // Entries expire after 60 seconds
 
-  // If no token, let the page handle auth (will redirect to login)
-  if (!token) {
-    return NextResponse.next();
+/**
+ * Get client IP from request (handles proxies)
+ */
+function getClientIP(request: NextRequest): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  const realIP = request.headers.get("x-real-ip");
+
+  if (forwarded) {
+    return forwarded.split(",")[0].trim();
+  }
+  if (realIP) {
+    return realIP;
+  }
+  return "unknown";
+}
+
+/**
+ * Check rate limit and return rate limit response if exceeded
+ * Returns null if within limits, or a NextResponse with 429 if exceeded
+ */
+function checkRateLimit(
+  ip: string,
+  endpoint: string,
+  limit: number
+): NextResponse | null {
+  const now = Date.now();
+  const key = `${ip}:${endpoint}`;
+
+  const entry = rateLimitStore.get(key);
+
+  if (!entry || now > entry.resetAt) {
+    // New window or expired entry
+    rateLimitStore.set(key, {
+      count: 1,
+      resetAt: now + RATE_LIMIT_WINDOW_MS,
+    });
+    return null;
   }
 
-  // Server-side check: verify JWT signature and decode payload
-  // Try verified JWT first, then fall back to decoding unsigned/invalid JWTs
-  let payload: Record<string, unknown> | undefined;
-
-  try {
-    const result = await jwtVerify(token, getJwtSecret());
-    payload = result.payload;
-  } catch {
-    // JWT verification failed — try to decode the payload anyway
-    // This handles unsigned JWTs (common in dev/test) and invalid signatures
-    try {
-      // Check if this is an unsigned JWT (alg: none) by decoding header
-      const header = JSON.parse(atob(token.split('.')[0]));
-      if (header.alg === 'none') {
-        // Unsigned JWT — decode without verification using static decode method
-        payload = UnsecuredJWT.decode(token).payload;
-      } else {
-        // Signed but invalid signature — try decodeJwt (doesn't verify)
-        payload = decodeJwt(token);
+  if (entry.count >= limit) {
+    // Rate limit exceeded
+    const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+    return NextResponse.json(
+      { error: "Too Many Requests", message: "Rate limit exceeded. Please try again later." },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(retryAfter),
+          "X-RateLimit-Limit": String(limit),
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(entry.resetAt),
+        }
       }
-    } catch {
-      // Cannot decode JWT at all — let the page handle auth
-      return NextResponse.next();
+    );
+  }
+
+  // Increment count
+  entry.count++;
+  rateLimitStore.set(key, entry);
+
+  // Periodic cleanup: remove expired entries every CLEANUP_INTERVAL requests
+  requestCount++;
+  if (requestCount >= CLEANUP_INTERVAL) {
+    requestCount = 0;
+    const now = Date.now();
+    for (const [k, v] of rateLimitStore.entries()) {
+      if (now - v.resetAt > ENTRY_TTL_MS) {
+        rateLimitStore.delete(k);
+      }
     }
   }
 
-  const isAdmin = payload?.isAdmin as boolean | undefined;
+  return null;
+}
 
-  // Block non-admins from admin routes
-  if (!isAdmin && ADMIN_ROUTES.some((route) => pathname.startsWith(route))) {
+/**
+ * Check if an endpoint matches any of the given patterns
+ */
+function matchesEndpoint(pathname: string, patterns: (string | RegExp)[]): boolean {
+  return patterns.some((pattern) => {
+    if (typeof pattern === "string") {
+      return pathname === pattern || pathname.startsWith(`${pattern}/`);
+    }
+    return pattern.test(pathname);
+  });
+}
+
+/**
+ * Check if the user is a registered seller by querying the sellers table.
+ * Uses the service role client for server-side Edge runtime access.
+ */
+async function isRegisteredSeller(userId: string): Promise<boolean> {
+  try {
+    const supabase = createServiceRoleClient();
+    const { data, error } = await supabase
+      .from("sellers")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Protected API routes for rate limiting
+const AUTH_ROUTES = [
+  "/api/auth/callback",
+  "/api/auth/login",
+  "/api/auth/register",
+];
+const STRIPE_ROUTES = [
+  "/api/stripe/checkout",
+  "/api/stripe/webhook",
+];
+
+export default auth(async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Apply rate limiting to API routes
+  if (pathname.startsWith("/api/")) {
+    const clientIP = getClientIP(request);
+
+    // Determine rate limit based on endpoint type
+    let rateLimit = API_RATE_LIMIT;
+
+    if (matchesEndpoint(pathname, AUTH_ROUTES.map(r => new RegExp(`^${r}`)))) {
+      rateLimit = AUTH_RATE_LIMIT;
+    } else if (matchesEndpoint(pathname, STRIPE_ROUTES.map(r => new RegExp(`^${r}`)))) {
+      rateLimit = AUTH_RATE_LIMIT; // Stripe endpoints use auth rate limit
+    }
+
+    const rateLimitResponse = checkRateLimit(clientIP, pathname, rateLimit);
+    if (rateLimitResponse) {
+      return rateLimitResponse;
+    }
+  }
+
+  const session = await auth();
+  const user = session?.user;
+  const userId = user?.id;
+  const isAdmin = user?.isAdmin ?? false;
+
+  // Block non-admins from admin routes — redirect to admin login, not storefront
+  // But allow /backoffice/login through so users can actually log in
+  if (!isAdmin && ADMIN_ROUTES.some((route) => pathname.startsWith(route)) && pathname !== "/backoffice/login") {
+    return NextResponse.redirect(new URL("/backoffice/login", request.url));
+  }
+
+  // Check if this is a seller-protected route (not the register page)
+  const isSellerRoute = SELLER_PROTECTED_ROUTES.some((route) =>
+    pathname.startsWith(route)
+  );
+  const isRegisterRoute =
+    pathname === SELLER_REGISTER_ROUTE ||
+    pathname.startsWith(`${SELLER_REGISTER_ROUTE}/`);
+
+  // Step 3: /seller/register — must be logged in first (step 1)
+  if (isRegisterRoute) {
+    if (!userId) {
+      // Not authenticated → go to sign-in (step 1 required first)
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+    // Authenticated → allow through (will check if already registered seller below)
+    return NextResponse.next();
+  }
+
+  // Unauthenticated user trying to access seller route → redirect to sign-in
+  if (isSellerRoute && !userId) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
+  // Authenticated user accessing seller route → verify seller registration
+  if (isSellerRoute && userId) {
+    // Verify the user is actually a registered seller
+    const hasSellerAccess = await isRegisteredSeller(userId);
+
+    if (!hasSellerAccess) {
+      // Not a registered seller → redirect to registration (step 3)
+      return NextResponse.redirect(new URL("/seller/register", request.url));
+    }
+  }
+
   return NextResponse.next();
-}
+});
 
 export const config = {
-  matcher: ["/seller/:path*", "/backoffice/:path*", "/admin/:path*"],
+  matcher: [
+    "/seller/:path*",
+    "/backoffice/:path*",
+    "/admin/:path*",
+    "/api/:path*",
+  ],
 };

@@ -36,8 +36,6 @@ interface ProductDetail extends Product {
   reviews: Review[];
 }
 
-const SKELETON_ARRAY = Array.from({ length: 1 });
-
 function SkeletonLoader() {
   return (
     <div className="flex min-h-screen items-center justify-center">
@@ -59,14 +57,13 @@ export default function ProductDetailPage() {
 
   useEffect(function fetchProductData() {
     let cancelled = false;
-    setLoading(true);
+    const doFetch = async () => {
+      setLoading(true);
 
-    fetch("/api/products")
-      .then((res) => {
+      try {
+        const res = await fetch("/api/products");
         if (!res.ok) throw new Error("Failed to fetch");
-        return res.json();
-      })
-      .then((data) => {
+        const data = await res.json();
         if (cancelled) return;
 
         const apiProduct = (data.products ?? []).find(
@@ -142,11 +139,13 @@ export default function ProductDetailPage() {
           setSelectedSeller(sellers[0] || null);
           setLoading(false);
         }
-      })
-      .catch(() => {
-        if (cancelled) return;
-        router.push("/products");
-      });
+      } catch {
+        if (!cancelled) {
+          router.push("/products");
+        }
+      }
+    };
+    doFetch();
 
     return function cleanupFetch() {
       cancelled = true;

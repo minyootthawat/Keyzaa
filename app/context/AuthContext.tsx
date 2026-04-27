@@ -22,19 +22,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("keyzaa_token");
-}
-
-function setToken(token: string) {
-  localStorage.setItem("keyzaa_token", token);
-}
-
-function clearToken() {
-  localStorage.removeItem("keyzaa_token");
-}
-
 function userFromSession(session: { user?: { id: string; name?: string | null; email?: string | null; role?: string; sellerId?: string } } | null): User | null {
   if (!session?.user) return null;
   const u = session.user;
@@ -64,20 +51,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchAccount = async () => {
     setAccountResolved(false);
 
-    const token = getToken();
-    if (!token) {
-      setRole("buyer");
-      setIsAdmin(false);
-      setAdminRole(null);
-      setAdminPermissions([]);
-      setAccountResolved(true);
-      return;
-    }
-
     try {
-      const res = await fetch("/api/auth/me", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch("/api/auth/me");
 
       if (res.ok) {
         const data = await res.json();
@@ -100,13 +75,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const fetchSeller = async () => {
-    const token = getToken();
-    if (!token) return;
-
     try {
-      const res = await fetch("/api/seller/me", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch("/api/seller/me");
       if (res.ok) {
         const data = await res.json();
         setSeller(data.seller);
@@ -154,20 +124,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user?.sellerId]);
 
   const login = async (email: string, password: string) => {
-    const loginResponse = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-
-    if (!loginResponse.ok) {
-      const data = await loginResponse.json();
-      throw new Error(data.error || "Login failed");
-    }
-
-    const loginData = await loginResponse.json();
-    setToken(loginData.token);
-
     const res = await signIn("credentials", {
       email,
       password,
@@ -182,11 +138,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Force re-fetch of admin status with the new session
     setAccountResolved(false);
 
-    // Bootstrap seller state from the login response
-    // sellerId is stored in sellers table (not users.seller_id), so fetch it directly
-    const sellerRes = await fetch("/api/seller/me", {
-      headers: { Authorization: `Bearer ${loginData.token}` },
-    });
+    // Bootstrap seller state from the session
+    const sellerRes = await fetch("/api/seller/me");
     if (sellerRes.ok) {
       const sellerData = await sellerRes.json();
       if (sellerData.seller) {
@@ -208,27 +161,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(data.error || "Registration failed");
     }
 
-    const data = await res.json();
-    setToken(data.token);
     await updateSession();
   };
 
   const registerSeller = async (data: { shopName: string; phone: string }) => {
-    const token = getToken();
-    if (!token) throw new Error("Not authenticated");
-
     const res = await fetch("/api/seller/register", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
 
     if (!res.ok) {
       const resData = await res.json();
-      throw new Error(resData.error || "Seller registration failed");
+      const err = new Error(resData.error || "Seller registration failed") as Error & { status?: number };
+      err.status = res.status;
+      throw err;
     }
 
     const resData = await res.json();
@@ -241,7 +188,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    clearToken();
     setSeller(null);
     await nextAuthSignOut({ redirect: false });
   };

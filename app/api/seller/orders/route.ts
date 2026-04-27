@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getBearerPayload } from "@/lib/auth/jwt";
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 import type { OrderItem, OrderStatus, PaymentStatus, FulfillmentStatus } from "@/app/types";
 
@@ -20,10 +20,10 @@ interface OrderRow {
   payment_method: string;
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const payload = await getBearerPayload(req);
-    const userId = payload?.userId as string | undefined;
+    const session = await auth();
+    const userId = session?.user?.id ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -143,8 +143,8 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({ orders: result });
-  } catch (error) {
-    console.error("Seller orders error:", error);
+} catch {
+      console.error("Seller orders error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

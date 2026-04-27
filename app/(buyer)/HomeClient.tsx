@@ -1,26 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
-import type { LucideIcon } from "lucide-react";
-import { Bot, CreditCard, Gamepad2, Gift, Sparkles, Store } from "lucide-react";
+import { useState, useEffect } from "react";
+import {
+  LucideIcon,
+  Zap,
+  CreditCard,
+  RefreshCw,
+} from "lucide-react";
+import Badge from "@/app/components/Badge";
 import CTAButton from "@/app/components/CTAButton";
-import ProductCard from "@/app/components/ProductCard";
-import CategoryCard from "@/app/components/home/category-card";
-import HeroSection from "@/app/components/home/hero-section";
-import ProductSection from "@/app/components/home/product-section";
-import TrustSection, { defaultTrustIcons } from "@/app/components/home/trust-section";
+import PriceTag from "@/app/components/PriceTag";
 import { useLanguage } from "@/app/context/LanguageContext";
-import type { Product, SellerVerificationStatus } from "@/app/types";
 
 const categoryGradients: Record<string, string> = {
-  เติมเกม: "from-brand-primary/25 via-brand-primary/5 to-transparent",
-  "Gift Card": "from-warning/20 via-warning/5 to-transparent",
-  Subscription: "from-brand-tertiary/20 via-brand-primary/5 to-transparent",
-  "AI Tools": "from-accent/20 via-accent/5 to-transparent",
-  โปร: "from-danger/20 via-danger/5 to-transparent",
+  เติมเกม: "from-game-start to-game-end",
+  "Gift Card": "from-gift-start to-gift-end",
+  Subscription: "from-sub-start to-sub-end",
+  "AI Tools": "from-ai-start to-game-end",
+  โปร: "from-pro-start to-pro-end",
 };
 
+// Maps API category names to display categories
 const CATEGORY_MAP: Record<string, string> = {
   "Mobile Top-up": "เติมเกม",
   "Genshin Impact": "เติมเกม",
@@ -32,20 +34,12 @@ const CATEGORY_MAP: Record<string, string> = {
   "AI Tools": "AI Tools",
 };
 
-const CATEGORY_DISPLAY_MAP: Record<string, string> = {
-  เติมเกม: "เติมเกม",
-  "Gift Card": "บัตรของขวัญ",
-  Subscription: "สมัครสมาชิก",
-  "AI Tools": "เครื่องมือ AI",
-  โปร: "โปร",
-};
-
 const categoryIcons: Record<string, LucideIcon> = {
-  เติมเกม: Gamepad2,
-  "Gift Card": Gift,
-  Subscription: Sparkles,
-  "AI Tools": Bot,
-  โปร: CreditCard,
+  เติมเกม: Zap,
+  "Gift Card": CreditCard,
+  Subscription: Zap,
+  "AI Tools": Zap,
+  โปร: Zap,
 };
 
 interface HomeProduct {
@@ -66,168 +60,105 @@ interface HomeProduct {
   };
 }
 
-interface HomeResponse {
-  categories: Record<string, number>;
-  products: HomeProduct[];
-  totalProducts: number;
-  totalSellers: number;
-}
-
-function mapHomeProductToProduct(product: HomeProduct): Product {
-  const normalizedCategory = CATEGORY_MAP[product.category] ?? product.category;
-  const mappedCategory = CATEGORY_DISPLAY_MAP[normalizedCategory] ?? normalizedCategory;
-  const sellerVerificationStatus: SellerVerificationStatus = product.seller.verified
-    ? "verified"
-    : "new";
-
-  return {
-    id: product.id,
-    title: product.title,
-    nameTh: product.title,
-    nameEn: product.title,
-    image: product.image,
-    price: product.price,
-    originalPrice: product.originalPrice,
-    discount: product.discount,
-    category: mappedCategory,
-    platform: mappedCategory,
-    sellerId: product.seller.id,
-    sellerName: product.seller.storeName,
-    sellerVerificationStatus,
-    stock: product.stock,
-    soldCount: Math.max(product.sellerCount * 18, 24),
-    isActive: product.isActive,
-    sellerCount: product.sellerCount,
-    regionCode: "TH",
-    regionLabelTh: "รองรับประเทศไทย",
-    regionLabelEn: "Works in Thailand",
-    deliverySlaMinutes: 5,
-    deliveryLabelTh: "รับโค้ดทันทีภายใน 5 นาที",
-    deliveryLabelEn: "Get your code within 5 minutes",
-    activationMethodTh: "รับโค้ดแล้วนำไปใช้งานทันที",
-    activationMethodEn: "Receive your code and redeem instantly",
-    trustLabelTh: product.seller.verified ? "ร้านค้ายืนยันตัวตนแล้ว" : "ร้านค้ากำลังเติบโต",
-    trustLabelEn: product.seller.verified ? "Verified seller" : "Growing seller",
-  };
-}
-
 export default function HomeClient() {
   const { t } = useLanguage();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
+  const [products, setProducts] = useState<HomeProduct[]>([]);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>(
+    {},
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const [totalProducts, setTotalProducts] = useState(0);
-  const [totalSellers, setTotalSellers] = useState(0);
 
-  async function fetchHome(signal?: AbortSignal) {
+  function fetchHome() {
     setIsLoading(true);
     setHasError(false);
-
-    try {
-      const response = await fetch("/api/home", { signal });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = (await response.json()) as HomeResponse;
-      setProducts((data.products || []).map(mapHomeProductToProduct));
-      setCategoryCounts(data.categories || {});
-      setTotalProducts(data.totalProducts || 0);
-      setTotalSellers(data.totalSellers || 0);
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        return;
-      }
-      setHasError(true);
-    } finally {
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
-    }
+    fetch("/api/home")
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        setProducts(data.products || []);
+        setCategoryCounts(data.categories || {});
+      })
+      .catch(() => setHasError(true))
+      .finally(() => setIsLoading(false));
   }
 
   useEffect(() => {
-    const controller = new AbortController();
-    void fetchHome(controller.signal);
-    return () => controller.abort();
+    const doFetch = async () => {
+      fetchHome();
+    };
+    doFetch();
   }, []);
 
   const bestDeals = products.slice(0, 4);
-  const hotProducts = products.slice(4, 8).length > 0 ? products.slice(4, 8) : [];
-  const featuredProducts = products.slice(0, 3);
+  const hotDeals = products.slice(4, 8);
 
+  // Build categories from dynamic API counts — all labels in Thai
   const displayCategories = [
-    {
-      key: "เติมเกม",
-      label: t("home_categoryTopup"),
-      description: "สินค้าเกมยอดนิยม ราคาชัด ส่งไว เหมาะกับการซื้อใช้ทันที",
-    },
-    {
-      key: "Gift Card",
-      label: t("home_categoryGiftCard"),
-      description: "รวมบัตรเติมเงินและโค้ดดิจิทัลจากร้านค้าที่ตรวจสอบแล้ว",
-    },
-    {
-      key: "Subscription",
-      label: t("home_categorySubscription"),
-      description: "แพ็กเกจรายเดือนสำหรับบริการที่ใช้งานบ่อยในราคาคุ้มกว่า",
-    },
-    {
-      key: "AI Tools",
-      label: t("home_categoryAITools"),
-      description: "เครื่องมือดิจิทัลและบัญชีใช้งานพร้อมส่งสำหรับสายทำงาน",
-    },
-    {
-      key: "โปร",
-      label: t("home_categoryPromo"),
-      description: "ดีลลดราคาและสินค้าขายเร็วที่กำลังถูกจับตาในตลาด",
-    },
+    { key: "เติมเกม", labelTh: t("home_categoryTopup") },
+    { key: "Gift Card", labelTh: t("home_categoryGiftCard") },
+    { key: "Subscription", labelTh: t("home_categorySubscription") },
+    { key: "AI Tools", labelTh: t("home_categoryAITools") },
+    { key: "โปร", labelTh: t("home_categoryPromo") },
   ];
 
-  const categories = displayCategories.map((category) => ({
-    ...category,
-    accent:
-      categoryGradients[category.key] ??
-      "from-brand-primary/25 via-brand-primary/5 to-transparent",
-    Icon: categoryIcons[category.key] ?? Gamepad2,
+  const categories = displayCategories.map((cat) => ({
+    ...cat,
+    gradient: categoryGradients[cat.key] ?? "from-game-start to-game-end",
+    Icon: categoryIcons[cat.key] ?? Zap,
     count: Object.entries(categoryCounts)
-      .filter(([apiCategory]) => CATEGORY_MAP[apiCategory] === category.key)
-      .reduce((sum, [, count]) => sum + count, 0),
+      .filter(([apiCat]) => CATEGORY_MAP[apiCat] === cat.key)
+      .reduce((sum, [, n]) => sum + n, 0),
   }));
 
   return (
     <div className="relative overflow-hidden pb-16">
       <div className="absolute inset-0 -z-10">
-        <div className="absolute left-[-8%] top-0 h-[42rem] w-[42rem] rounded-full bg-[radial-gradient(circle,rgba(45,91,255,0.18),transparent_68%)]" />
-        <div className="absolute right-[-12%] top-[14rem] h-[32rem] w-[32rem] rounded-full bg-[radial-gradient(circle,rgba(141,181,255,0.12),transparent_72%)]" />
-        <div className="absolute left-[30%] top-[40rem] h-[24rem] w-[24rem] rounded-full bg-[radial-gradient(circle,rgba(63,207,142,0.06),transparent_72%)]" />
+        <div className="absolute left-[-8%] top-0 h-[44rem] w-[44rem] rounded-full bg-[radial-gradient(circle,rgba(45,91,255,0.18),transparent_68%)]" />
+        <div className="absolute right-[-12%] top-[18rem] h-[36rem] w-[36rem] rounded-full bg-[radial-gradient(circle,rgba(141,181,255,0.14),transparent_72%)]" />
       </div>
 
-      <HeroSection
-        title={t("home_marketplaceTitle")}
-        description={t("home_marketplaceDesc")}
-        badge={t("home_marketplaceBadge")}
-        proof={t("home_proofCompact")}
-        totalProducts={Math.max(totalProducts, products.length)}
-        totalSellers={Math.max(totalSellers, 12)}
-        primaryCta={t("home_heroPrimaryCta")}
-        secondaryCta={t("home_heroSecondaryCta")}
-        trustTitle={t("home_heroTrustTitle")}
-        trustPoints={[
-          t("home_trustPillarEscrowDesc"),
-          t("home_trustPillarVerifiedDesc"),
-          t("home_trustPillarDisputeDesc"),
-        ]}
-        searchPlaceholder={t("home_heroSearchPlaceholder")}
-        browseLabel={t("home_heroBrowseLabel")}
-        statusLabel={t("home_heroStatusLabel")}
-        inventoryLabel={t("home_heroInventoryLabel")}
-        sellerCountLabel={t("home_heroSellerCountLabel")}
-      />
+      {/* Hero Banner */}
+      <section className="section-container pt-6 lg:pt-8 pb-12 lg:pb-16">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-primary via-brand-secondary to-brand-tertiary p-8 md:p-14 lg:p-20">
+          {/* Hero background image */}
+          <Image
+            src="/hero-banner.png"
+            alt=""
+            aria-hidden="true"
+            fill
+            className="object-cover opacity-30 mix-blend-soft-light"
+            priority
+            sizes="100vw"
+          />
+          <div className="relative z-10 max-w-xl">
+            <h1 className="type-h1 text-white lg:text-5xl lg:leading-[1.1]">{t("home_heroH1")}</h1>
+            <p className="mt-4 text-lg text-white/85 max-w-[42ch]">
+              {t("home_heroSubtitle")}
+            </p>
+            <div className="mt-6 flex flex-wrap items-center gap-4">
+              <CTAButton href="/products" className="bg-white text-brand-primary hover:bg-white/90 h-12 px-8">
+                {t("home_ctaViewAll")}
+              </CTAButton>
+              <CTAButton
+                href="/seller/register"
+                variant="secondary"
+                className="border-white/30 text-white hover:bg-white/10 h-12 px-6"
+              >
+                {t("home_ctaRegisterSeller")}
+              </CTAButton>
+            </div>
+          </div>
+          <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/10" />
+          <div className="absolute -bottom-6 -right-4 h-24 w-24 rounded-full bg-white/5" />
+        </div>
+      </section>
 
+      {/* Categories */}
       <section className="section-container py-12 lg:py-16" aria-labelledby="categories-heading">
-        <div className="mb-8 flex items-end justify-between gap-4 lg:mb-10">
+        <div className="mb-8 lg:mb-10 flex items-end justify-between gap-4">
           <div className="space-y-3">
             <h2 id="categories-heading" className="type-h2 text-text-main">
               {t("home_popularCategories")}
@@ -238,209 +169,263 @@ export default function HomeClient() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          {categories.map((category) => (
-            <CategoryCard
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          {categories.map((category, index) => (
+            <Link
               key={category.key}
               href={`/products?category=${encodeURIComponent(category.key)}`}
-              title={category.label}
-              description={category.description}
-              count={category.count}
-              accent={category.accent}
-              Icon={category.Icon}
-            />
-          ))}
-        </div>
-      </section>
-
-      {/* Featured Deals interstitial — after categories, before trust */}
-      {featuredProducts.length > 0 && (
-        <section className="section-container py-10 lg:py-14" aria-labelledby="featured-deals-heading">
-          <div className="mb-7 flex items-end justify-between gap-4 lg:mb-9">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 text-accent" aria-hidden="true">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" /></svg>
-              </span>
-              <h2 id="featured-deals-heading" className="type-h2 text-text-main">{t("home_heroSpotlightLabel")}</h2>
-            </div>
-            <Link href="/products" className="hidden text-sm font-semibold text-brand-tertiary transition-colors hover:text-text-main sm:inline-flex">
-              ดูทั้งหมด →
-            </Link>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">
-            {featuredProducts.map((product, index) => (
-              <ProductCard key={product.id} product={product} index={index} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      <TrustSection
-        eyebrow={t("home_trustEyebrow")}
-        title={t("home_trustSectionTitle")}
-        description={t("home_trustSectionDesc")}
-        pillars={[
-          {
-            eyebrow: t("home_trustPillarEscrowEyebrow"),
-            title: t("home_trustPillarEscrowTitle"),
-            description: t("home_trustPillarEscrowDesc"),
-            Icon: defaultTrustIcons.escrow,
-            iconClass: "text-brand-tertiary",
-          },
-          {
-            eyebrow: t("home_trustPillarVerifiedEyebrow"),
-            title: t("home_trustPillarVerifiedTitle"),
-            description: t("home_trustPillarVerifiedDesc"),
-            Icon: defaultTrustIcons.verified,
-            iconClass: "text-accent",
-          },
-          {
-            eyebrow: t("home_trustPillarDisputeEyebrow"),
-            title: t("home_trustPillarDisputeTitle"),
-            description: t("home_trustPillarDisputeDesc"),
-            Icon: defaultTrustIcons.dispute,
-            iconClass: "text-warning",
-          },
-        ]}
-        flowEyebrow={t("home_trustFlowEyebrow")}
-        flowTitle={t("home_trustFlowTitle")}
-        flowDescription={t("home_trustFlowDesc")}
-        journeySteps={[t("home_trustStep1"), t("home_trustStep2"), t("home_trustStep3")]}
-        flowFooter={t("home_trustFlowFooter")}
-      />
-
-      <ProductSection
-        id="best-deals-heading"
-        title={t("home_bestDeals")}
-        description={t("home_dealsProof")}
-        products={bestDeals}
-        isLoading={isLoading}
-        hasError={hasError}
-        onRetry={() => void fetchHome()}
-      />
-
-      {hotProducts.length > 0 && (
-        <ProductSection
-          id="hot-deals-heading"
-          title={t("home_recommended")}
-          description={t("home_recommendedDesc")}
-          products={hotProducts}
-          isLoading={isLoading}
-          variant="hot"
-        />
-      )}
-
-      <section className="section-container py-16 lg:py-24">
-        <div className="group relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(25,43,71,0.96)_0%,rgba(18,32,54,0.98)_55%,rgba(9,19,34,1)_100%)] p-6 shadow-[0_24px_70px_rgba(3,9,22,0.4)] transition-all duration-500 hover:border-brand-primary/30 sm:p-8 lg:flex lg:items-center lg:justify-between lg:gap-10 lg:p-12">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_100%_0%,rgba(45,91,255,0.15),transparent_50%)] opacity-70 pointer-events-none transition-opacity duration-500 group-hover:opacity-100" />
-          <div className="relative z-10 flex-1">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-brand-primary/10 px-3 py-1.5 text-xs font-bold text-brand-tertiary">
-              <Store className="h-3.5 w-3.5" />
-              {t("home_sellerBadge")}
-            </div>
-            <h2 className="type-h1 text-text-main text-3xl tracking-tight md:text-5xl">
-              {t("home_sellerTitle")}
-            </h2>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-text-subtle sm:text-base">
-              {t("home_sellerDesc")}
-            </p>
-            <ul className="mt-8 space-y-4">
-              {[
-                { icon: Store, text: t("home_sellerPointReach"), color: "text-brand-tertiary" },
-                { icon: CreditCard, text: t("home_sellerPointTrust"), color: "text-accent" },
-                { icon: Sparkles, text: t("home_sellerPointMobile"), color: "text-warning" },
-              ].map((item, index) => (
-                <li key={index} className="flex items-center gap-4 text-base font-medium text-text-subtle">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border-subtle bg-bg-surface shadow-sm">
-                    <item.icon className={`h-5 w-5 ${item.color}`} />
-                  </div>
-                  {item.text}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="relative z-10 mt-8 w-full shrink-0 lg:mt-0 lg:w-auto">
-            <CTAButton href="/seller/register" className="h-14 w-full px-8 text-base font-bold shadow-xl shadow-brand-primary/20 lg:h-16 lg:w-auto lg:px-10 lg:text-lg">
-              {t("home_sellerCta")}
-            </CTAButton>
-          </div>
-        </div>
-      </section>
-
-      {/* Social proof: testimonials replacing hardcoded stats */}
-      <section className="section-container py-12 lg:py-16" aria-labelledby="testimonials-heading">
-        <div className="mb-8 text-center lg:mb-10">
-          <h2 id="testimonials-heading" className="type-h2 text-text-main">{t("home_testimonialsTitle")}</h2>
-          <p className="mt-3 text-sm text-text-muted">{t("home_testimonialsDesc")}</p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            {
-              quote: t("home_testimonial1Quote"),
-              author: t("home_testimonial1Author"),
-              role: t("home_testimonial1Role"),
-            },
-            {
-              quote: t("home_testimonial2Quote"),
-              author: t("home_testimonial2Author"),
-              role: t("home_testimonial2Role"),
-            },
-            {
-              quote: t("home_testimonial3Quote"),
-              author: t("home_testimonial3Author"),
-              role: t("home_testimonial3Role"),
-            },
-          ].map((t_, index) => (
-            <figure
-              key={index}
-              className="rounded-[1.75rem] border border-border-subtle bg-bg-surface p-6 text-left"
+              className="surface-card group relative overflow-hidden p-5 transition-transform duration-300 hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
+              style={{
+                animation: `fade-up 520ms ${index * 60}ms cubic-bezier(0.22,1,0.36,1) both`,
+              }}
             >
-              <div className="mb-4 flex items-center gap-1" aria-label="5 stars">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <svg key={i} className="h-4 w-4 fill-warning text-warning" viewBox="0 0 20 20" aria-hidden="true">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                ))}
-              </div>
-              <blockquote className="text-sm leading-6 text-text-subtle">&ldquo;{t_.quote}&rdquo;</blockquote>
-              <figcaption className="mt-4 flex items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-primary/20 text-brand-tertiary text-sm font-bold">
-                  {t_.author.charAt(0)}
+              <div
+                className={`absolute inset-0 bg-gradient-to-br ${category.gradient} opacity-20 transition-opacity duration-300 group-hover:opacity-30`}
+              />
+              <div className="relative flex flex-col gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white">
+                  <category.Icon className="w-6 h-6" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-text-main">{t_.author}</p>
-                  <p className="text-xs text-text-muted">{t_.role}</p>
+                  <p className="text-sm font-semibold text-text-main">
+                    {category.labelTh}
+                  </p>
+                  <p className="mt-1 text-xs text-text-muted">
+                    {category.count} {t("products_items")}
+                  </p>
                 </div>
-              </figcaption>
-            </figure>
+              </div>
+            </Link>
           ))}
         </div>
       </section>
 
-      <section className="section-container py-12 text-center lg:py-20" aria-labelledby="trust-cta-heading">
+      {/* Best Deals */}
+      <section className="section-container py-12 lg:py-16" aria-labelledby="best-deals-heading">
+        <div className="mb-8 lg:mb-10 flex items-end justify-between gap-4">
+          <div className="space-y-3">
+            <h2 id="best-deals-heading" className="type-h2 text-text-main">{t("home_bestDeals")}</h2>
+            <p className="text-sm leading-6 text-text-muted">
+              {t("home_dealsProof")}
+            </p>
+          </div>
+          <Link
+            href="/products"
+            className="text-sm font-semibold text-brand-primary transition-colors hover:text-brand-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45 rounded-md px-1"
+          >
+            {t("common_viewAll")} →
+          </Link>
+        </div>
 
-        <div className="rounded-[2rem] border border-border-main/50 bg-bg-subtle px-6 py-12 text-center shadow-[0_24px_70px_rgba(3,9,22,0.32)] sm:px-8 sm:py-16 lg:py-20">
+        {isLoading ? (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+            {[...Array(4)].map((_, i) => (
+              <div
+                key={i}
+                className="surface-card flex h-full flex-col overflow-hidden"
+              >
+                <div className="aspect-[4/3] w-full animate-pulse bg-bg-subtle/40" />
+                <div className="flex flex-1 flex-col gap-3 p-4">
+                  <div className="space-y-2">
+                    <div className="h-3 w-16 animate-pulse rounded bg-bg-subtle/40" />
+                    <div className="h-4 w-full animate-pulse rounded bg-bg-subtle/40" />
+                  </div>
+                  <div className="mt-auto flex items-end justify-between gap-3">
+                    <div className="h-8 w-24 animate-pulse rounded bg-bg-subtle/40" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : hasError ? (
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-border-subtle bg-bg-subtle/20 py-16 text-center">
+            <p className="text-text-muted">ไม่สามารถโหลดสินค้าได้</p>
+            <button
+              onClick={fetchHome}
+              className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-brand-primary hover:text-brand-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45 rounded-lg p-1"
+            >
+              <RefreshCw className="w-4 h-4" />
+              ลองอีกครั้ง
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+            {bestDeals.map((product, index) => (
+              <Link
+                key={product.id}
+                href={`/products/${product.id}`}
+                className="surface-card group flex h-full flex-col overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
+                style={{
+                  animation: `fade-up 520ms ${index * 70}ms cubic-bezier(0.22,1,0.36,1) both`,
+                }}
+              >
+                <div className="relative aspect-[4/3] w-full overflow-hidden bg-bg-subtle/60">
+                  {product.discount > 20 && (
+                    <div className="absolute top-3 right-3 z-10 rounded-full bg-danger px-2 py-1 text-xs font-bold text-white">
+                      HOT DEAL
+                    </div>
+                  )}
+                  <Image
+                    src={product.image}
+                    alt={product.title}
+                    fill
+                    className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1280px) 25vw, 20vw"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-bg-base/80 via-transparent to-transparent" />
+                  <div className="absolute left-3 top-3">
+                    <Badge label={`-${product.discount}%`} tone="promo" />
+                  </div>
+                </div>
+                <div className="flex flex-1 flex-col gap-3 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="type-meta text-text-muted">
+                        {product.category}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-base font-semibold leading-snug text-text-main">
+                        {product.title}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-1 flex-col justify-between gap-3">
+                    <div className="flex items-center justify-between rounded-2xl border border-border-subtle bg-bg-surface px-3 py-2.5">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                          {t("common_verifiedSellers")}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-text-subtle">
+                          {product.sellerCount} {t("common_sellers")}
+                        </p>
+                      </div>
+                      <div className="rounded-full border border-accent/20 bg-accent/10 px-2.5 py-1 text-xs font-bold text-accent">
+                        {t("common_instantDelivery")}
+                      </div>
+                    </div>
+                    <div className="flex items-end justify-between gap-3">
+                      <PriceTag
+                        price={product.price}
+                        originalPrice={product.originalPrice}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Hot Deals */}
+      <section className="section-container py-12 lg:py-16" aria-labelledby="hot-deals-heading">
+        <div className="mb-8 lg:mb-10 flex items-end justify-between gap-4">
+          <div className="space-y-3">
+            <h2 id="hot-deals-heading" className="type-h2 text-text-main">{t("home_recommended")}</h2>
+            <p className="max-w-2xl text-sm leading-6 text-text-muted">
+              {t("home_recommendedDesc")}
+            </p>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+            {[...Array(4)].map((_, i) => (
+              <div
+                key={i}
+                className="surface-card flex h-full flex-col overflow-hidden"
+              >
+                <div className="aspect-[4/3] w-full animate-pulse bg-bg-subtle/40" />
+                <div className="flex flex-1 flex-col gap-3 p-4">
+                  <div className="h-3 w-16 animate-pulse rounded bg-bg-subtle/40" />
+                  <div className="h-4 w-full animate-pulse rounded bg-bg-subtle/40" />
+                  <div className="mt-auto h-6 w-20 animate-pulse rounded bg-bg-subtle/40" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+            {hotDeals.map((product, index) => (
+              <Link
+                key={product.id}
+                href={`/products/${product.id}`}
+                className="surface-card group flex h-full flex-col overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
+                style={{
+                  animation: `fade-up 520ms ${index * 70}ms cubic-bezier(0.22,1,0.36,1) both`,
+                }}
+              >
+                <div className="relative aspect-[4/3] w-full overflow-hidden bg-bg-subtle/60">
+                  {product.discount > 20 && (
+                    <div className="absolute top-3 right-3 z-10 rounded-full bg-danger px-2 py-1 text-xs font-bold text-white">
+                      HOT DEAL
+                    </div>
+                  )}
+                  <Image
+                    src={product.image}
+                    alt={product.title}
+                    fill
+                    className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1280px) 25vw, 20vw"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-bg-base/80 via-transparent to-transparent" />
+                  <div className="absolute left-3 top-3">
+                    <span className="rounded-full border border-brand-tertiary/16 bg-brand-primary/10 px-2.5 py-1 text-xs font-semibold text-brand-primary dark:text-brand-tertiary">
+                      {t("common_verifiedSellers")}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-1 flex-col gap-3 p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="type-meta text-text-muted">
+                      {product.category}
+                    </p>
+                  </div>
+                  <p className="line-clamp-2 text-base font-semibold leading-snug text-text-main">
+                    {product.title}
+                  </p>
+                  <div className="mt-auto flex items-end justify-between gap-3">
+                    <PriceTag
+                      price={product.price}
+                      originalPrice={product.originalPrice}
+                    />
+                    <div className="text-right">
+                      <p className="text-xs text-text-muted">
+                        {t("common_instantDelivery")}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-accent">
+                        {t("home_stockReady")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* CTA Section */}
+      <section className="section-container py-12 lg:py-20" aria-labelledby="trust-cta-heading">
+        <div className="trust-panel px-6 py-12 text-center sm:px-8 sm:py-16 lg:py-20">
           <div className="relative mx-auto max-w-3xl">
+            <div className="mx-auto mb-4 inline-flex items-center gap-2 rounded-full border border-brand-primary/20 bg-brand-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-brand-primary">
+              Keyzaa
+              <span className="h-1.5 w-1.5 rounded-full bg-brand-tertiary" />
+              {t("home_trustFirstMarketplace")}
+            </div>
             <h2 id="trust-cta-heading" className="type-h1 text-text-main">
-              {t("home_finalCtaTitle")}
+              {t("home_ctaTrustTitle")}
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-text-subtle">
-              {t("home_finalCtaDesc")}
+              {t("home_ctaTrustDesc")}
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
               <CTAButton href="/products" className="h-14 px-8 text-base">
-                {t("home_finalCtaPrimary")}
+                {t("home_ctaTrustPrimary")}
               </CTAButton>
-              <CTAButton href="/seller/register" variant="secondary" className="h-14 px-8 text-base">
-                {t("home_finalCtaSecondary")}
+              <CTAButton href="/orders" variant="secondary" className="h-14 px-8 text-base">
+                {t("home_ctaTrustSecondary")}
               </CTAButton>
-            </div>
-            <div className="mt-6 flex flex-col items-center gap-3 text-sm text-text-muted sm:flex-row sm:justify-center">
-              {[t("home_finalTrustChipEscrow"), t("home_finalTrustChipVerified"), t("home_finalTrustChipMobile")].map((chip) => (
-                <div key={chip} className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2">
-                  {chip}
-                </div>
-              ))}
             </div>
           </div>
         </div>

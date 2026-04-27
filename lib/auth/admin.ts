@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { getBearerPayload } from "@/lib/auth/jwt";
 import { findUserById } from "@/lib/db/supabase";
+import { auth } from "@/auth";
 
 export type AdminRole = "super_admin" | "ops_admin" | "support_admin" | "catalog_admin";
 
@@ -9,6 +10,7 @@ export type AdminPermission =
   | "admin:overview:read"
   | "admin:orders:read"
   | "admin:sellers:read"
+  | "admin:sellers:write"
   | "admin:listings:read";
 
 export interface AdminAccess {
@@ -22,18 +24,19 @@ const ALL_ADMIN_PERMISSIONS: AdminPermission[] = [
   "admin:overview:read",
   "admin:orders:read",
   "admin:sellers:read",
+  "admin:sellers:write",
   "admin:listings:read",
 ];
 
 const ADMIN_ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
   super_admin: ALL_ADMIN_PERMISSIONS,
-  ops_admin: ["admin:access", "admin:overview:read", "admin:orders:read", "admin:sellers:read"],
+  ops_admin: ["admin:access", "admin:overview:read", "admin:orders:read", "admin:sellers:read", "admin:sellers:write"],
   support_admin: ["admin:access", "admin:orders:read", "admin:sellers:read"],
   catalog_admin: ["admin:access", "admin:overview:read", "admin:listings:read"],
 };
 
 function parseEmailRoleMap() {
-  const configured = process.env.ADMIN_EMAILS || process.env.NEXT_PUBLIC_ADMIN_EMAILS || "";
+  const configured = process.env.ADMIN_EMAILS || "";
 
   return configured
     .split(",")
@@ -100,5 +103,34 @@ export async function getAdminAccessFromRequest(req: NextRequest): Promise<{
     status: 200,
     access,
     userId,
+  };
+}
+
+/**
+ * Session-based admin access — preferred over getAdminAccessFromRequest.
+ * Uses NextAuth's getServerSession instead of a JWT bearer token.
+ */
+export async function getAdminAccessFromSession(): Promise<{
+  status: number;
+  error?: string;
+  access?: AdminAccess;
+  userId?: string;
+}> {
+  const session = await auth();
+  const user = session?.user;
+
+  if (!user) {
+    return { status: 401, error: "Unauthorized" };
+  }
+
+  const access = getAdminAccessForEmail(user.email);
+  if (!access.isAdmin) {
+    return { status: 403, error: "Forbidden" };
+  }
+
+  return {
+    status: 200,
+    access,
+    userId: user.id,
   };
 }

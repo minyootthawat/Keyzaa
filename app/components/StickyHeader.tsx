@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
+import { ShoppingBag, LogOut } from "lucide-react";
 import { useCart } from "@/app/context/CartContext";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { useAuth } from "@/app/context/AuthContext";
@@ -30,23 +31,6 @@ function UserIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-    </svg>
-  );
-}
-
-function ShoppingBagIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10V6.75a4.5 4.5 0 10-9 0V10M4.5 9.75h15l-.9 8.325a1.5 1.5 0 01-1.492 1.325H6.892A1.5 1.5 0 015.4 18.075L4.5 9.75z" />
-    </svg>
-  );
-}
-
-function LogOutIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6A2.25 2.25 0 005.25 5.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15l3-3m0 0-3-3m3 3H3.75" />
     </svg>
   );
 }
@@ -105,23 +89,25 @@ export default function StickyHeader() {
   const [scrolled, setScrolled] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [recentSearches, setRecentSearches] = useState<string[]>(() => getRecentSearches());
-  const [showAuthDialog, setShowAuthDialog] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    const params = new URLSearchParams(window.location.search);
-    return params.get("auth_required") === "1";
-  });
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const { totalItems } = useCart();
 
-  useEffect(function syncAuthDialogUrlState() {
-    if (!showAuthDialog || typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    if (url.searchParams.get("auth_required") !== "1") return;
-    url.searchParams.delete("auth_required");
-    const nextUrl = `${url.pathname}${url.search ? `?${url.searchParams.toString()}` : ""}${url.hash}`;
-    window.history.replaceState({}, "", nextUrl);
-  }, [showAuthDialog]);
+  // Check if we were redirected here because auth was required on /seller/register
+  useEffect(function openAuthDialogIfRequired() {
+    const doCheck = () => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("auth_required") === "1") {
+        // Remove the param from URL without a full navigation
+        const url = new URL(window.location.href);
+        url.searchParams.delete("auth_required");
+        window.history.replaceState({}, "", url.pathname);
+        setShowAuthDialog(true);
+      }
+    };
+    doCheck();
+  }, []);
 
   const { user, isAdmin, isRegisteredSeller, logout } = useAuth();
   const { lang, toggleLang, t } = useLanguage();
@@ -142,6 +128,14 @@ export default function StickyHeader() {
     return function removeScrollListener() {
       window.removeEventListener("scroll", onScroll);
     };
+  }, []);
+
+  // Load recent searches on mount
+  useEffect(function loadRecentSearches() {
+    const doLoad = () => {
+      setRecentSearches(getRecentSearches());
+    };
+    doLoad();
   }, []);
 
   // Close panel on click outside
@@ -254,7 +248,6 @@ export default function StickyHeader() {
               />
               {searchQuery && (
                 <button
-                  type="button"
                   onClick={() => {
                     setSearchQuery("");
                     inputRef.current?.focus();
@@ -280,7 +273,6 @@ export default function StickyHeader() {
                   <div className="flex flex-wrap gap-2">
                     {CATEGORIES.map((cat) => (
                       <button
-                        type="button"
                         key={cat.key}
                         onClick={() => handleCategoryClick(cat.key)}
                         className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-bg-surface/60 px-3 py-1.5 text-xs font-semibold text-text-subtle transition-all hover:border-border-main hover:text-text-main hover:bg-bg-surface-hover"
@@ -298,24 +290,22 @@ export default function StickyHeader() {
                     <ul className="space-y-1">
                       {recentSearches.map((q) => (
                         <li key={q}>
-                          <div className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm text-text-subtle transition-colors hover:bg-bg-surface-hover hover:text-text-main">
-                            <button
-                              type="button"
-                              onClick={() => handleSearchSubmit(q)}
-                              className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                            >
+                          <button
+                            onClick={() => handleSearchSubmit(q)}
+                            className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm text-text-subtle transition-colors hover:bg-bg-surface-hover hover:text-text-main"
+                          >
+                            <span className="flex items-center gap-3">
                               <ClockIcon className="h-4 w-4 shrink-0 text-text-muted" />
-                              <span className="truncate">{q}</span>
-                            </button>
+                              {q}
+                            </span>
                             <button
-                              type="button"
                               onClick={(e) => handleRecentRemove(q, e)}
                               className="shrink-0 rounded-lg p-1 text-text-muted hover:text-text-main transition-colors"
                               aria-label={`Remove ${q}`}
                             >
                               <XMarkIcon className="h-3 w-3" />
                             </button>
-                          </div>
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -367,7 +357,6 @@ export default function StickyHeader() {
 
             {/* Language toggle */}
             <button
-              type="button"
               onClick={toggleLang}
               aria-label={t("common_toggleLanguage")}
               className="h-11 rounded-xl px-3 text-sm font-bold text-text-subtle hover:bg-bg-surface-hover hover:text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
@@ -377,7 +366,6 @@ export default function StickyHeader() {
 
             {/* Theme toggle */}
             <button
-              type="button"
               onClick={toggleTheme}
               aria-label={`Theme: ${!isClient || theme === "dark" ? "Dark" : "Light"}`}
               title={`Theme: ${!isClient || theme === "dark" ? "Dark" : "Light"}`}
@@ -396,7 +384,6 @@ export default function StickyHeader() {
 
             {/* Cart */}
             <button
-              type="button"
               onClick={() => router.push("/checkout")}
               aria-label={t("common_openCart")}
               className="relative flex h-11 w-11 items-center justify-center rounded-xl text-text-subtle hover:bg-bg-surface-hover hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
@@ -413,7 +400,6 @@ export default function StickyHeader() {
             {user ? (
               <div className="relative" ref={profileRef}>
                 <button
-                  type="button"
                   onClick={() => setProfileMenuOpen(!profileMenuOpen)}
                   aria-label={t("common_profile")}
                   aria-expanded={profileMenuOpen}
@@ -446,22 +432,21 @@ export default function StickyHeader() {
                         className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-text-subtle hover:bg-bg-surface-hover hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
                         onClick={() => setProfileMenuOpen(false)}
                       >
-                        <ShoppingBagIcon className="h-4 w-4 shrink-0 text-text-muted" />
-                        {t("buyerOrders_title") || "Orders"}
+                        <ShoppingBag className="h-4 w-4 shrink-0 text-text-muted" />
+                        {t("profile_openOrders")}
                       </Link>
 
                       <div className="my-1 h-px bg-border-subtle" />
 
                       <button 
-                        type="button"
                         onClick={() => {
                           setProfileMenuOpen(false);
                           logout();
                         }}
                         className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-danger hover:bg-danger/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/45"
                       >
-                        <LogOutIcon className="h-4 w-4 shrink-0 text-danger/80" />
-                        ออกจากระบบ
+                        <LogOut className="h-4 w-4 shrink-0 text-danger/80" />
+                        {t("auth_logout")}
                       </button>
                     </div>
                   </div>
@@ -469,7 +454,6 @@ export default function StickyHeader() {
               </div>
             ) : (
               <button
-                type="button"
                 onClick={openAuthDialog}
                 aria-label={t("common_profile")}
                 className="hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-text-subtle hover:bg-bg-surface-hover hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"

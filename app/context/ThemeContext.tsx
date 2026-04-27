@@ -1,7 +1,6 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { ThemeProvider as NextThemesProvider, useTheme as useNextTheme } from "next-themes";
 
 export type Theme = "dark" | "light";
 
@@ -13,36 +12,39 @@ type ThemeContextType = {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-function ThemeProviderInner({ children }: { children: React.ReactNode }) {
-  const { resolvedTheme, setTheme: setNextTheme } = useNextTheme();
-  
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+const STORAGE_KEY = "keyzaa_theme";
 
-  const currentTheme = (mounted ? (resolvedTheme === "light" ? "light" : "dark") : "dark") as Theme;
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setThemeState] = useState<Theme>(() => {
+    if (typeof window === "undefined") return "dark";
+    return (localStorage.getItem(STORAGE_KEY) as Theme) ?? "dark";
+  });
 
-  const setTheme = (t: Theme) => {
-    setNextTheme(t);
-  };
+  useEffect(() => {
+    try {
+      const root = document.documentElement;
+      root.classList.remove("light");
+      if (theme === "light") {
+        root.classList.add("light");
+      }
+      localStorage.setItem(STORAGE_KEY, theme);
+    } catch {
+      // localStorage unavailable — persist silently
+    }
+  }, [theme]);
+
+  const setTheme = (t: Theme) => setThemeState(t);
 
   const toggleTheme = () => {
-    setNextTheme(currentTheme === "dark" ? "light" : "dark");
+    setThemeState((prev) => (prev === "dark" ? "light" : "dark"));
   };
 
   const value = useMemo<ThemeContextType>(
-    () => ({ theme: currentTheme, setTheme, toggleTheme }),
-    [currentTheme]
+    () => ({ theme, setTheme, toggleTheme }),
+    [theme]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
-}
-
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  return (
-    <NextThemesProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-      <ThemeProviderInner>{children}</ThemeProviderInner>
-    </NextThemesProvider>
-  );
 }
 
 export function useTheme() {

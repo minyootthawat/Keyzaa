@@ -2,7 +2,8 @@
  * Seed additional products + orders to match seed script intent
  * Uses real seller IDs from existing DB data
  */
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'crypto';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://epbitsaowxxmutgmeqro.supabase.co';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -12,7 +13,7 @@ const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
 });
 
 function uuid() {
-  return require('crypto').randomUUID();
+  return randomUUID();
 }
 
 async function seed() {

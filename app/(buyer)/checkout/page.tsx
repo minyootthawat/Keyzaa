@@ -30,7 +30,6 @@ export default function CheckoutPage() {
   const [countdown, setCountdown] = useState(PROMPTPAY_EXPIRY_SECONDS);
   const [orderIds, setOrderIds] = useState<string[]>([]);
   const [qrData, setQrData] = useState<string | null>(null);
-  const [qrExpiresAt, setQrExpiresAt] = useState<string | null>(null);
 
   const itemsRef = useRef(items);
   const totalPriceRef = useRef(totalPrice);
@@ -66,7 +65,6 @@ export default function CheckoutPage() {
       .then((data) => {
         if (data.qrData) {
           setQrData(data.qrData);
-          setQrExpiresAt(data.expiresAt);
         }
       })
       .catch(() => {
@@ -93,7 +91,7 @@ export default function CheckoutPage() {
       setPaymentState("verifying");
     }, 5000);
 
-    const successTimer = window.setTimeout(() => {
+    const successTimer = window.setTimeout(async () => {
       const newOrderId = `ord_${Date.now()}`;
       const orderItems: OrderItem[] = itemsRef.current.map((item, index) => ({
         id: `oi_${Date.now()}_${index}`,
@@ -119,36 +117,49 @@ export default function CheckoutPage() {
         return;
       }
 
-      fetch("/api/orders", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          totalPrice: totalPriceRef.current,
-          paymentMethod: getMockPaymentMethodLabel(paymentMethodRef.current, "en"),
-          status: "delivered",
-          items: orderItems.map((item) => ({
-            ...item,
-            orderId: newOrderId,
-          })),
-        }),
-      })
-        .then(async (response) => {
-          if (!response.ok) {
-            throw new Error("Order creation failed");
-          }
+      // Step 1: Create order with pending_payment status (not delivered!)
+      try {
+        const createRes = await fetch("/api/orders", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            totalPrice: totalPriceRef.current,
+            paymentMethod: getMockPaymentMethodLabel(paymentMethodRef.current, "en"),
+            status: "pending_payment",
+            items: orderItems.map((item) => ({
+              ...item,
+              orderId: newOrderId,
+            })),
+          }),
+        });
 
-          const data = (await response.json()) as { order: Order; orders?: Order[] };
-          const createdOrderIds = data.orders?.map((order) => order.id) || (data.order ? [data.order.id] : []);
+        if (!createRes.ok) {
+          throw new Error("Order creation failed");
+        }
+
+        const data = (await createRes.json()) as { order: Order; orders?: Order[] };
+        const createdOrderIds = data.orders?.map((order) => order.id) || (data.order ? [data.order.id] : []);
+
+        // Step 2: After 9s demo delay, call mock-confirm (same logic as Stripe webhook)
+        // This simulates what the Stripe webhook would do in production
+        setTimeout(async () => {
+          for (const orderId of createdOrderIds) {
+            await fetch("/api/stripe/mock-confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId }),
+            });
+          }
           setOrderIds(createdOrderIds);
           setPaymentState("confirmed");
           setStep("success");
-        })
-        .catch(() => {
-          setPaymentState("expired");
-        });
+        }, 9000);
+      } catch {
+        setPaymentState("expired");
+      }
     }, 9000);
 
     return () => {
@@ -212,7 +223,17 @@ export default function CheckoutPage() {
                 {items.map((item) => (
                   <div key={item.id} className="flex items-start gap-4 rounded-2xl border border-border-subtle bg-bg-surface p-4">
                     <div className="relative h-20 w-20 overflow-hidden rounded-2xl">
-                      <Image src={item.image} alt={(lang === "th" ? item.titleTh : item.titleEn) || item.title} fill className="object-cover" sizes="80px" />
+                      {item.image ? (
+                        <Image src={item.image} alt={(lang === "th" ? item.titleTh : item.titleEn) || item.title} fill className="object-cover" sizes="80px" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-bg-elevated text-text-muted">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                            <circle cx="9" cy="9" r="2"/>
+                            <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                          </svg>
+                        </div>
+                      )}
                     </div>
                     <div className="min-w-0 flex-1 space-y-2">
                       <p className="font-semibold text-text-main">{(lang === "th" ? item.titleTh : item.titleEn) || item.title}</p>

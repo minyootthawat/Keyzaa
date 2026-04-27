@@ -13,7 +13,6 @@ const API_PATH = "/api/products";
 let passed = 0;
 let failed = 0;
 let errors = [];
-let serverOk = false;
 
 function pass(message) {
   passed++;
@@ -38,7 +37,7 @@ async function fetchJSON(url) {
   let res;
   try {
     res = await fetch(url);
-  } catch (e) {
+  } catch {
     return { status: 0, data: null, networkError: true };
   }
   let data;

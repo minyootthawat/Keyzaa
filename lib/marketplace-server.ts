@@ -1,4 +1,4 @@
-import type { Order, OrderItem, OrderStatus, PaymentStatus, FulfillmentStatus, Product, Seller, SellerLedgerEntry, SellerWalletSummary } from "@/app/types";
+import type { Order, OrderItem, OrderStatus, PaymentStatus, FulfillmentStatus, Product, SellerLedgerEntry, SellerWalletSummary } from "@/app/types";
 import { getSellerById } from "@/lib/db/supabase";
 import { getProductsBySeller } from "@/lib/db/supabase";
 

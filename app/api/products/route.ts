@@ -89,6 +89,7 @@ export async function GET(req: NextRequest) {
     }
 
     const total = count ?? 0;
+    const totalPages = Math.ceil(total / limit);
 
     // Map to response shape (handle both array result and potential single seller object)
     const result: ProductWithSeller[] = (products ?? []).map((row) => {
@@ -115,6 +116,7 @@ export async function GET(req: NextRequest) {
       total,
       page,
       limit,
+      totalPages,
     });
   } catch (error) {
     console.error("Public products list error:", error);

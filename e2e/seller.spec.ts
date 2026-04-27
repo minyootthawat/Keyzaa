@@ -17,23 +17,20 @@ test.describe("Seller E2E Flow", () => {
     await page.getByText("บัญชีเดโมผู้ซื้อ").click();
     await page.waitForTimeout(500);
 
-    // Submit login
-    // Submit login via JS click (button may be outside viewport in dialog)
+    // Submit login — use JS click (button is in dialog overlay, outside default viewport)
     await page.evaluate(() => {
-      const btn = document.querySelector('[data-testid="auth-submit-btn"]') as HTMLButtonElement | null;
+      const btn = document.querySelector('button[type="submit"]') as HTMLButtonElement | null;
       btn?.click();
     });
     await page.waitForTimeout(3000);
 
-    // Step 2: Go to seller register
+    // Step 2: Go to seller register (now requires auth — must be logged in first)
     await page.goto(`${BASE}/seller/register`);
     await page.waitForFunction(() => document.body.innerText.length > 50, { timeout: 15000 });
 
-    // Step 3: Fill seller registration (fill AFTER navigating to the page)
-    await page.waitForTimeout(1000);
+    // Step 3: Fill seller registration
     const inputs = page.locator("input:not([type='hidden'])");
     const count = await inputs.count();
-    console.log("Inputs on seller/register:", count);
 
     if (count >= 1) {
       await inputs.nth(0).fill("E2E Test Shop");
@@ -41,19 +38,29 @@ test.describe("Seller E2E Flow", () => {
     if (count >= 2) {
       await inputs.nth(1).fill("0812345678");
     }
-    await page.waitForTimeout(500);
 
-    // Submit via clicking the seller register form button directly
-    await page.locator('button[type="submit"]').click();
+    await page.evaluate(() => {
+      const btn = document.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+      btn?.click();
+    });
 
-    // Wait for either redirect to dashboard (new seller) or stay on page (already registered)
+    // Wait for redirect
     try {
-      await page.waitForURL("**/seller/dashboard**", { timeout: 5000 });
+      await page.waitForURL("**/seller/dashboard**", { timeout: 8000 });
     } catch {
-      // Already registered as seller — confirm we're still on register page with no error
-      const url = page.url();
-      expect(url).toBe(`${BASE}/seller/register`);
+      // redirect didn't happen — check URL and page state
     }
+
+    // Check for errors
+    const bodyText = await page.evaluate(() => document.body.innerText);
+    const urlAfterSubmit = page.url();
+    console.log("URL after submit:", urlAfterSubmit);
+    console.log("Page text after submit:", bodyText.slice(0, 500));
+
+    // Step 4: Should be on dashboard
+    const url = page.url();
+    console.log("Current URL:", url);
+    expect(url).toContain("/seller/dashboard");
   });
 
   test("2. Seller dashboard — products page loads", async ({ page }) => {
@@ -64,9 +71,8 @@ test.describe("Seller E2E Flow", () => {
     await page.waitForTimeout(1000);
     await page.getByText("บัญชีเดโมผู้ขาย").click();
     await page.waitForTimeout(500);
-    // Submit login via JS click (button may be outside viewport in dialog)
     await page.evaluate(() => {
-      const btn = document.querySelector('[data-testid="auth-submit-btn"]') as HTMLButtonElement | null;
+      const btn = document.querySelector('button[type="submit"]') as HTMLButtonElement | null;
       btn?.click();
     });
     await page.waitForTimeout(3000);
@@ -87,9 +93,8 @@ test.describe("Seller E2E Flow", () => {
     await page.waitForTimeout(1000);
     await page.getByText("บัญชีเดโมผู้ขาย").click();
     await page.waitForTimeout(500);
-    // Submit login via JS click (button may be outside viewport in dialog)
     await page.evaluate(() => {
-      const btn = document.querySelector('[data-testid="auth-submit-btn"]') as HTMLButtonElement | null;
+      const btn = document.querySelector('button[type="submit"]') as HTMLButtonElement | null;
       btn?.click();
     });
     await page.waitForTimeout(3000);
@@ -110,9 +115,8 @@ test.describe("Seller E2E Flow", () => {
     await page.waitForTimeout(1000);
     await page.getByText("บัญชีเดโมผู้ขาย").click();
     await page.waitForTimeout(500);
-    // Submit login via JS click (button may be outside viewport in dialog)
     await page.evaluate(() => {
-      const btn = document.querySelector('[data-testid="auth-submit-btn"]') as HTMLButtonElement | null;
+      const btn = document.querySelector('button[type="submit"]') as HTMLButtonElement | null;
       btn?.click();
     });
     await page.waitForTimeout(3000);
