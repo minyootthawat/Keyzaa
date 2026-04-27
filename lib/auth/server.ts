@@ -35,7 +35,8 @@ export interface TokenUser {
  * Returns the decoded payload or null if not authenticated.
  */
 async function getTokenFromRequest(req: NextRequest): Promise<TokenUser | null> {
-  const token = req.cookies.get("token")?.value;
+  // Check admin_token first (set by /api/admin/login), then token (set by /api/auth/login for buyer/seller)
+  const token = req.cookies.get("admin_token")?.value ?? req.cookies.get("token")?.value;
   if (!token) return null;
 
   try {

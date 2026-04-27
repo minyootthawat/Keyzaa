@@ -1,7 +1,29 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { jwtVerify } from "jose";
 import { auth } from "@/auth";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
+
+// Admin JWT secret (same as admin login route)
+const JWT_SECRET = new TextEncoder().encode(
+  (process.env.JWT_SECRET || "").replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim() || "fallback-dev-secret"
+);
+
+/**
+ * Verify admin JWT token and return payload if valid
+ */
+async function verifyAdminToken(token: string): Promise<{ isAdmin: boolean; adminRole?: string } | null> {
+  try {
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+    if (!payload.isAdmin) return null;
+    return {
+      isAdmin: true,
+      adminRole: payload.adminRole as string | undefined,
+    };
+  } catch {
+    return null;
+  }
+}
 
 // Routes that buyers should NOT access (but /seller/register is allowed for unauthenticated)
 const SELLER_PROTECTED_ROUTES = ["/seller"];
@@ -170,11 +192,30 @@ export default auth(async function middleware(request: NextRequest) {
   const session = await auth();
   const user = session?.user;
   const userId = user?.id;
-  const isAdmin = user?.isAdmin ?? false;
+  const isAdminFromSession = user?.isAdmin ?? false;
 
-  // Block non-admins from admin routes — redirect to admin login, not storefront
+  // Check admin JWT token from cookie OR Authorization header for backoffice access
+  // Admin auth is separate from NextAuth buyer session
+  const adminToken =
+    request.cookies.get("admin_token")?.value ||
+    request.headers.get("authorization")?.replace("Bearer ", "");
+  let isAdminFromToken = false;
+  if (adminToken) {
+    const adminPayload = await verifyAdminToken(adminToken);
+    isAdminFromToken = adminPayload?.isAdmin ?? false;
+  }
+  const isAdmin = isAdminFromSession || isAdminFromToken;
+
+  // Block non-admins from backoffice pages — redirect to admin login
   // But allow /backoffice/login through so users can actually log in
-  if (!isAdmin && ADMIN_ROUTES.some((route) => pathname.startsWith(route)) && pathname !== "/backoffice/login") {
+  // EXCLUDE /api/admin/* routes — admin auth uses separate JWT system, not NextAuth buyer session
+  const isApiAdminRoute = pathname.startsWith("/api/admin/");
+  if (
+    !isApiAdminRoute &&
+    !isAdmin &&
+    (pathname.startsWith("/backoffice") || pathname.startsWith("/admin")) &&
+    pathname !== "/backoffice/login"
+  ) {
     return NextResponse.redirect(new URL("/backoffice/login", request.url));
   }
 

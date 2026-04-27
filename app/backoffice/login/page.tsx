@@ -26,6 +26,9 @@ export default function AdminLoginPage() {
       if (!res.ok || !data.success) {
         throw new Error(data.error || (lang === "th" ? "เข้าสู่ระบบไม่สำเร็จ" : "Login failed"));
       }
+      // Store token and redirect immediately — middleware will read cookie on next request
+      localStorage.setItem("keyzaa_admin_token", data.token);
+      localStorage.setItem("keyzaa_admin_user", JSON.stringify(data.user));
       window.location.href = "/backoffice/dashboard";
     } catch (err) {
       setError(err instanceof Error ? err.message : lang === "th" ? "เข้าสู่ระบบไม่สำเร็จ" : "Login failed");

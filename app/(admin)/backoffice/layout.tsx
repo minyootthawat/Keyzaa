@@ -55,8 +55,13 @@ export default function AdminAppLayout({ children }: { children: React.ReactNode
   useEffect(() => {
     const checkAdmin = async () => {
       try {
+        // Read token from localStorage (set by login page)
+        const token = localStorage.getItem("keyzaa_admin_token");
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
         const res = await fetch("/api/admin/me", {
-          credentials: "include",
+          headers,
         });
         if (!res.ok) throw new Error("not authenticated");
         const data = await res.json();

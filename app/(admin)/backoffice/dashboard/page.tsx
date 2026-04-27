@@ -2,7 +2,6 @@
 
 import AdminRouteGuard from "@/app/components/AdminRouteGuard";
 import { useEffect, useMemo, useState } from "react";
-import { useAuth } from "@/app/context/AuthContext";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { formatThaiBaht } from "@/app/lib/marketplace";
 
@@ -18,29 +17,19 @@ interface AdminOverviewResponse {
 
 export default function AdminDashboardPage() {
   const { lang } = useLanguage();
-  const { isAdmin, loading: authLoading } = useAuth();
   const [overview, setOverview] = useState<AdminOverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Wait for auth state to resolve
-    if (authLoading) return;
-
-    if (!isAdmin) {
-      queueMicrotask(() => {
-        setError(lang === "th" ? "ไม่พบสิทธิ์แอดมิน" : "Admin access was not found.");
-        setLoading(false);
-      });
-      return;
-    }
-
+    // Admin auth is handled by middleware (proxy.ts) and the admin layout.
+    // The /api/admin/me check in the layout already redirects if not admin.
+    // Here we just fetch the dashboard data directly.
     fetch("/api/backoffice/overview")
       .then(async (response) => {
         if (!response.ok) {
           throw new Error("Failed to load admin overview");
         }
-
         const data = (await response.json()) as AdminOverviewResponse;
         setOverview(data);
         setError(null);
@@ -52,7 +41,7 @@ export default function AdminDashboardPage() {
       .finally(() => {
         setLoading(false);
       });
-  }, [lang, isAdmin, authLoading]);
+  }, [lang]);
 
   // Platform revenue = platform fee cut from gross volume
   // We show gross volume (all orders total) separately from platform revenue (our cut)
