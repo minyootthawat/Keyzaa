@@ -60,7 +60,7 @@ export async function getAdmins(): Promise<Admin[]> {
     .from("admins")
     .select(`
       *,
-      user:users(id, email, name)
+      user:users!admins_user_id_fkey(id, email, name)
     `)
     .order("created_at", { ascending: false });
 
@@ -83,7 +83,7 @@ export async function getAdminByUserId(userId: string): Promise<Admin | null> {
     .from("admins")
     .select(`
       *,
-      user:users(id, email, name)
+      user:users!admins_user_id_fkey(id, email, name)
     `)
     .eq("user_id", userId)
     .maybeSingle();
@@ -118,7 +118,7 @@ export async function createAdmin(
     })
     .select(`
       *,
-      user:users(id, email, name)
+      user:users!admins_user_id_fkey(id, email, name)
     `)
     .single();
 
@@ -147,7 +147,7 @@ export async function updateAdminRole(
     .eq("id", adminId)
     .select(`
       *,
-      user:users(id, email, name)
+      user:users!admins_user_id_fkey(id, email, name)
     `)
     .single();
 
