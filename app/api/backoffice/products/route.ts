@@ -12,9 +12,12 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
     const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "20", 10));
+    const filter = searchParams.get("filter") ?? "all";
+    const search = searchParams.get("search") ?? "";
 
     const supabase = createServiceRoleClient();
-    const { data, error, count } = await supabase
+
+    let query = supabase
       .from("products")
       .select(
         `
@@ -28,8 +31,19 @@ export async function GET(req: Request) {
       `,
         { count: "exact" }
       )
-      .order("created_at", { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
+      .order("created_at", { ascending: false });
+
+    if (filter === "active") {
+      query = query.eq("is_active", true);
+    } else if (filter === "inactive") {
+      query = query.eq("is_active", false);
+    }
+
+    if (search.trim()) {
+      query = query.ilike("name", `%${search.trim()}%`);
+    }
+
+    const { data, error, count } = await query.range((page - 1) * limit, page * limit - 1);
 
     if (error) {
       console.error("Supabase products error:", error);

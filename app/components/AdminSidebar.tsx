@@ -23,6 +23,13 @@ const navItems: NavItem[] = [
     permission: "admin:overview:read",
   },
   {
+    href: "/backoffice/users",
+    labelTh: "จัดการผู้ใช้",
+    labelEn: "Manage users",
+    icon: "👥",
+    permission: "admin:users:read",
+  },
+  {
     href: "/backoffice/sellers",
     labelTh: "จัดการร้านค้า",
     labelEn: "Manage sellers",
