@@ -85,12 +85,6 @@ export async function POST(req: NextRequest) {
       }
     );
 
-    // Also store in localStorage for client-side access (used by backoffice)
-    response.headers.set(
-      "X-Auth-Token",
-      token
-    );
-
     return response;
   } catch (err) {
     console.error("[login]", err);
