@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getAdminAccessFromRequest } from "@/lib/auth/admin";
+import { NextResponse } from "next/server";
+import { getAdminAccessFromSession } from "@/lib/auth/admin";
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const access = await getAdminAccessFromRequest(req);
+    const access = await getAdminAccessFromSession();
     if (access.status !== 200) {
       return NextResponse.json({ error: access.error }, { status: access.status });
     }

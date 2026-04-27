@@ -21,6 +21,9 @@ interface RateLimitEntry {
 }
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
+let requestCount = 0;
+const CLEANUP_INTERVAL = 100; // Run cleanup every N requests
+const ENTRY_TTL_MS = 60 * 1000; // Entries expire after 60 seconds
 
 /**
  * Get client IP from request (handles proxies)
@@ -81,6 +84,19 @@ function checkRateLimit(
   // Increment count
   entry.count++;
   rateLimitStore.set(key, entry);
+
+  // Periodic cleanup: remove expired entries every CLEANUP_INTERVAL requests
+  requestCount++;
+  if (requestCount >= CLEANUP_INTERVAL) {
+    requestCount = 0;
+    const now = Date.now();
+    for (const [k, v] of rateLimitStore.entries()) {
+      if (now - v.resetAt > ENTRY_TTL_MS) {
+        rateLimitStore.delete(k);
+      }
+    }
+  }
+
   return null;
 }
 
@@ -156,9 +172,10 @@ export default auth(async function middleware(request: NextRequest) {
   const userId = user?.id;
   const isAdmin = user?.isAdmin ?? false;
 
-  // Block non-admins from admin routes
-  if (!isAdmin && ADMIN_ROUTES.some((route) => pathname.startsWith(route))) {
-    return NextResponse.redirect(new URL("/", request.url));
+  // Block non-admins from admin routes — redirect to admin login, not storefront
+  // But allow /backoffice/login through so users can actually log in
+  if (!isAdmin && ADMIN_ROUTES.some((route) => pathname.startsWith(route)) && pathname !== "/backoffice/login") {
+    return NextResponse.redirect(new URL("/backoffice/login", request.url));
   }
 
   // Check if this is a seller-protected route (not the register page)

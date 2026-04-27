@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AdminSidebar from "@/app/components/AdminSidebar";
 
 export default function AdminAppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -26,7 +27,12 @@ export default function AdminAppLayout({ children }: { children: React.ReactNode
           </Link>
         </div>
       </header>
-      <main className="flex-1">{children}</main>
+      <div className="section-container py-6">
+        <div className="flex gap-8">
+          <AdminSidebar />
+          <main className="flex-1 min-w-0">{children}</main>
+        </div>
+      </div>
     </div>
   );
 }

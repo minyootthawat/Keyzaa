@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/app/context/AuthContext";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { formatThaiBaht } from "@/app/lib/marketplace";
 
@@ -16,14 +17,16 @@ interface AdminOverviewResponse {
 
 export default function AdminDashboardPage() {
   const { lang } = useLanguage();
+  const { isAdmin, loading: authLoading } = useAuth();
   const [overview, setOverview] = useState<AdminOverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = window.localStorage.getItem("keyzaa_token");
+    // Wait for auth state to resolve
+    if (authLoading) return;
 
-    if (!token) {
+    if (!isAdmin) {
       queueMicrotask(() => {
         setError(lang === "th" ? "ไม่พบสิทธิ์แอดมิน" : "Admin access was not found.");
         setLoading(false);
@@ -31,11 +34,7 @@ export default function AdminDashboardPage() {
       return;
     }
 
-    fetch("/api/backoffice/overview", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
+    fetch("/api/backoffice/overview")
       .then(async (response) => {
         if (!response.ok) {
           throw new Error("Failed to load admin overview");
@@ -52,7 +51,7 @@ export default function AdminDashboardPage() {
       .finally(() => {
         setLoading(false);
       });
-  }, [lang]);
+  }, [lang, isAdmin, authLoading]);
 
   const cards = useMemo(
     () => [
