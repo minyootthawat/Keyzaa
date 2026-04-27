@@ -36,6 +36,7 @@ function SettingsContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // General form state
   const [feePercent, setFeePercent] = useState("5");
@@ -67,6 +68,17 @@ function SettingsContent() {
   }, []);
 
   async function saveGeneral() {
+    const fee = Number(feePercent);
+    const payout = Number(minPayout);
+    if (isNaN(fee) || fee < 0 || fee > 100) {
+      setValidationError(lang === "th" ? "ค่าธรรมเนียมต้องอยู่ระหว่าง 0-100%" : "Fee must be between 0-100%");
+      return;
+    }
+    if (isNaN(payout) || payout < 0) {
+      setValidationError(lang === "th" ? "ยอดถอนขั้นต่ำต้องเป็น 0 ขึ้นไป" : "Minimum payout must be 0 or greater");
+      return;
+    }
+    setValidationError(null);
     setSaving(true);
     setSaved(false);
     try {
@@ -155,12 +167,16 @@ function SettingsContent() {
       saving: lang === "th" ? "กำลังบันทึก..." : "Saving...",
       saved: lang === "th" ? "✓ บันทึกแล้ว" : "✓ Saved",
       superAdminOnly: lang === "th" ? "เฉพาะ Super Admin" : "Super Admin only",
-      noAudit: lang === "th" ? "ยังไม่มีประวัติ" : "No audit history",
+      noAudit: lang === "th"
+        ? "ยังไม่มีประวัติการแก้ไข การเปลี่ยนแปลงการตั้งค่าจะปรากฏที่นี่"
+        : "No audit history yet. Settings changes will appear here.",
       auditTime: lang === "th" ? "เวลา" : "Time",
       auditAction: lang === "th" ? "การกระทำ" : "Action",
       auditAdmin: lang === "th" ? "แอดมิน" : "Admin",
       // Audit placeholder
-      auditDesc: lang === "th" ? "ประวัติการแก้ไขการตั้งค่าระบบ" : "System settings change history",
+      auditDesc: lang === "th"
+        ? "ประวัติการแก้ไขการตั้งค่าระบบทั้งหมดโดยแอดมิน"
+        : "Full history of system settings changes by administrators",
     }[key]);
 
   const tabs: { id: TabId; label: string }[] = [
@@ -266,6 +282,9 @@ function SettingsContent() {
                 {saving ? t("saving") : t("save")}
               </button>
               {saved && <span className="text-sm text-green-400">{t("saved")}</span>}
+              {validationError && (
+                <span className="text-sm text-error">{validationError}</span>
+              )}
             </div>
           </div>
         )}
@@ -379,8 +398,9 @@ function SettingsContent() {
         {activeTab === "audit" && (
           <div className="space-y-4">
             <p className="text-sm text-text-muted">{t("auditDesc")}</p>
-            <div className="flex h-40 items-center justify-center text-sm text-text-muted">
-              {t("noAudit")}
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border-subtle py-12 text-center">
+              <p className="mb-2 text-3xl">📋</p>
+              <p className="font-medium text-text-subtle">{t("noAudit")}</p>
             </div>
           </div>
         )}

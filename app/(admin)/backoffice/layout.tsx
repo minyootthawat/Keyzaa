@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useTheme } from "@/app/context/ThemeContext";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { useAuth } from "@/app/context/AuthContext";
 import AdminSidebar from "@/app/components/AdminSidebar";
+import { useRouter } from "next/navigation";
+
+const shortcutHints = "D=Dashboard, O=Orders, P=Products, S=Sellers, U=Users, A=Analytics, T=Toggle theme, L=Toggle language";
 
 const roleConfig: Record<string, { labelTh: string; labelEn: string; emoji: string; className: string }> = {
   super_admin: {
@@ -37,6 +41,52 @@ export default function AdminAppLayout({ children }: { children: React.ReactNode
   const { theme, toggleTheme } = useTheme();
   const { lang, toggleLang } = useLanguage();
   const { adminRole } = useAuth();
+  const router = useRouter();
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInputFocused =
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable;
+
+      if (isInputFocused) return;
+
+      const key = e.key;
+      switch (key.toLowerCase()) {
+        case "d":
+          router.push("/backoffice/dashboard");
+          break;
+        case "o":
+          router.push("/backoffice/orders");
+          break;
+        case "p":
+          router.push("/backoffice/products");
+          break;
+        case "u":
+          router.push("/backoffice/users");
+          break;
+        case "s":
+          router.push("/backoffice/sellers");
+          break;
+        case "a":
+          router.push("/backoffice/analytics");
+          break;
+        case "t":
+          toggleTheme();
+          break;
+        case "l":
+          toggleLang();
+          break;
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [router, toggleTheme, toggleLang]);
 
   const role = roleConfig[adminRole ?? "support_admin"] || roleConfig.support_admin;
 
@@ -64,6 +114,33 @@ export default function AdminAppLayout({ children }: { children: React.ReactNode
           </Link>
 
           <div className="flex items-center gap-2">
+            {/* Keyboard shortcuts hint */}
+            <button
+              onClick={() => setShowShortcuts(!showShortcuts)}
+              aria-label="Keyboard shortcuts"
+              title="Keyboard shortcuts"
+              className="relative h-11 w-11 shrink-0 flex items-center justify-center rounded-xl text-text-subtle hover:bg-bg-surface-hover hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
+            >
+              <svg className="h-[20px] w-[20px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+              </svg>
+              {showShortcuts && (
+                <div className="absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-border-subtle bg-bg-elevated p-3 text-xs text-text-main shadow-xl">
+                  <p className="mb-2 font-bold text-text-muted uppercase tracking-wider">Keyboard Shortcuts</p>
+                  <div className="space-y-1">
+                    <p><span className="font-mono font-bold">D</span> Dashboard</p>
+                    <p><span className="font-mono font-bold">O</span> Orders</p>
+                    <p><span className="font-mono font-bold">P</span> Products</p>
+                    <p><span className="font-mono font-bold">U</span> Users</p>
+                    <p><span className="font-mono font-bold">S</span> Sellers</p>
+                    <p><span className="font-mono font-bold">A</span> Analytics</p>
+                    <p><span className="font-mono font-bold">T</span> Toggle theme</p>
+                    <p><span className="font-mono font-bold">L</span> Toggle language</p>
+                  </div>
+                </div>
+              )}
+            </button>
+
             {/* Language toggle */}
             <button
               onClick={toggleLang}

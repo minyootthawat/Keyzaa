@@ -44,6 +44,7 @@ export default function AdminProductsPage() {
   const [searchInput, setSearchInput] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Edit modal state
   const [editProduct, setEditProduct] = useState<Product | null>(null);
@@ -105,7 +106,7 @@ export default function AdminProductsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, filter]);
 
-  // Search on Enter or after 500ms debounce
+  // Search on Enter or after 400ms debounce
   useEffect(() => {
     const timer = setTimeout(() => {
       if (searchInput !== search) {
@@ -113,7 +114,7 @@ export default function AdminProductsPage() {
         setPage(1);
         fetchProducts(1, filter, searchInput);
       }
-    }, 500);
+    }, 400);
     return () => clearTimeout(timer);
   }, [searchInput, search, filter, fetchProducts]);
 
@@ -150,9 +151,9 @@ export default function AdminProductsPage() {
           ? `ปิดใช้งานสินค้า "${updated.name}" แล้ว`
           : `Deactivated "${updated.name}"`
       );
-      setTimeout(() => setActionSuccess(null), 3000);
+      setTimeout(() => setActionSuccess(null), 5000);
     } catch (err) {
-      alert(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+      setActionError(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
     } finally {
       setActionLoading(null);
     }
@@ -181,11 +182,11 @@ export default function AdminProductsPage() {
     const stockQuantity = parseInt(editStock, 10);
 
     if (isNaN(price) || price < 0) {
-      alert(lang === "th" ? "ราคาไม่ถูกต้อง" : "Invalid price");
+      setActionError(lang === "th" ? "ราคาไม่ถูกต้อง" : "Invalid price");
       return;
     }
     if (isNaN(stockQuantity) || stockQuantity < 0) {
-      alert(lang === "th" ? "จำนวนสต็อกไม่ถูกต้อง" : "Invalid stock quantity");
+      setActionError(lang === "th" ? "จำนวนสต็อกไม่ถูกต้อง" : "Invalid stock quantity");
       return;
     }
 
@@ -213,10 +214,10 @@ export default function AdminProductsPage() {
           ? `อัปเดตสินค้า "${updated.name}" แล้ว`
           : `Updated "${updated.name}"`
       );
-      setTimeout(() => setActionSuccess(null), 3000);
+      setTimeout(() => setActionSuccess(null), 5000);
       closeEditModal();
     } catch (err) {
-      alert(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+      setActionError(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
     } finally {
       setSavingEdit(false);
     }
@@ -281,10 +282,10 @@ export default function AdminProductsPage() {
           ? `ลบสินค้า "${deleteProduct.name}" แล้ว`
           : `Deleted "${deleteProduct.name}"`
       );
-      setTimeout(() => setActionSuccess(null), 3000);
+      setTimeout(() => setActionSuccess(null), 5000);
       closeDeleteConfirm();
     } catch (err) {
-      alert(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+      setActionError(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
     } finally {
       setDeleteLoading(false);
     }
@@ -324,6 +325,13 @@ export default function AdminProductsPage() {
         {actionSuccess && (
           <div className="rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-success font-medium">
             ✓ {actionSuccess}
+          </div>
+        )}
+
+        {/* Error toast */}
+        {actionError && (
+          <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger font-medium">
+            {actionError}
           </div>
         )}
 

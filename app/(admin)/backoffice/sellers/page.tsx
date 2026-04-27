@@ -36,6 +36,7 @@ const ITEMS_PER_PAGE = 20;
 export default function AdminSellersPage() {
   const { lang } = useLanguage();
   const { adminPermissions } = useAuth();
+  const [actionError, setActionError] = useState<string | null>(null);
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,8 @@ export default function AdminSellersPage() {
   const [filter, setFilter] = useState<"all" | "verified" | "unverified">("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [selectedSellers, setSelectedSellers] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
   const canWrite = adminPermissions.includes("admin:sellers:write");
@@ -121,11 +124,92 @@ export default function AdminSellersPage() {
           : `Rejected "${updated.storeName}"`
       );
       // Auto-clear success message after 3s
-      setTimeout(() => setActionSuccess(null), 3000);
+      setTimeout(() => setActionSuccess(null), 5000);
     } catch (err) {
-      alert(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+      setActionError(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const toggleSellerSelection = (sellerId: string) => {
+    setSelectedSellers((prev) => {
+      const next = new Set(prev);
+      if (next.has(sellerId)) next.delete(sellerId);
+      else next.add(sellerId);
+      return next;
+    });
+  };
+
+  const toggleAllSelection = () => {
+    if (selectedSellers.size === sellers.length) {
+      setSelectedSellers(new Set());
+    } else {
+      setSelectedSellers(new Set(sellers.map((s) => s.id)));
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    const token = getStoredToken();
+    if (!token || selectedSellers.size === 0) return;
+    setBulkLoading(true);
+    setActionSuccess(null);
+    try {
+      await Promise.all(
+        [...selectedSellers].map((id) =>
+          fetch(`/api/backoffice/sellers/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ action: "approve" }),
+          })
+        )
+      );
+      setSellers((prev) =>
+        prev.map((s) => (selectedSellers.has(s.id) ? { ...s, verified: true } : s))
+      );
+      setActionSuccess(
+        lang === "th"
+          ? `อนุมัติร้านค้า ${selectedSellers.size} รายแล้ว`
+          : `Approved ${selectedSellers.size} seller(s)`
+      );
+      setSelectedSellers(new Set());
+      setTimeout(() => setActionSuccess(null), 5000);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    const token = getStoredToken();
+    if (!token || selectedSellers.size === 0) return;
+    setBulkLoading(true);
+    setActionSuccess(null);
+    try {
+      await Promise.all(
+        [...selectedSellers].map((id) =>
+          fetch(`/api/backoffice/sellers/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ action: "reject" }),
+          })
+        )
+      );
+      setSellers((prev) =>
+        prev.map((s) => (selectedSellers.has(s.id) ? { ...s, verified: false } : s))
+      );
+      setActionSuccess(
+        lang === "th"
+          ? `ปฏิเสธร้านค้า ${selectedSellers.size} รายแล้ว`
+          : `Rejected ${selectedSellers.size} seller(s)`
+      );
+      setSelectedSellers(new Set());
+      setTimeout(() => setActionSuccess(null), 5000);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+    } finally {
+      setBulkLoading(false);
     }
   };
 
@@ -151,6 +235,42 @@ export default function AdminSellersPage() {
         {actionSuccess && (
           <div className="rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-success font-medium">
             ✓ {actionSuccess}
+          </div>
+        )}
+
+        {/* Error toast */}
+        {actionError && (
+          <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger font-medium">
+            {actionError}
+          </div>
+        )}
+
+        {/* Bulk action toolbar */}
+        {canWrite && selectedSellers.size > 0 && (
+          <div className="flex items-center gap-3 rounded-xl border border-brand-primary/30 bg-brand-primary/10 px-4 py-3">
+            <span className="text-sm font-medium text-brand-primary">
+              {selectedSellers.size} {lang === "th" ? "รายการเลือกแล้ว" : "selected"}
+            </span>
+            <button
+              onClick={handleBulkApprove}
+              disabled={bulkLoading}
+              className="rounded-lg bg-success px-3 py-1.5 text-xs font-semibold text-white hover:opacity-85 disabled:opacity-50"
+            >
+              {bulkLoading ? "..." : (lang === "th" ? "อนุมัติที่เลือก" : "Approve selected")}
+            </button>
+            <button
+              onClick={handleBulkReject}
+              disabled={bulkLoading}
+              className="rounded-lg bg-error px-3 py-1.5 text-xs font-semibold text-white hover:opacity-85 disabled:opacity-50"
+            >
+              {bulkLoading ? "..." : (lang === "th" ? "ปฏิเสธที่เลือก" : "Reject selected")}
+            </button>
+            <button
+              onClick={() => setSelectedSellers(new Set())}
+              className="ml-auto text-xs text-text-muted hover:text-text-main"
+            >
+              {lang === "th" ? "ยกเลิก" : "Clear"}
+            </button>
           </div>
         )}
 
@@ -220,6 +340,16 @@ export default function AdminSellersPage() {
               <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="border-b border-border-subtle bg-bg-surface/70">
+                    {canWrite && (
+                      <th className="px-4 py-3 text-left">
+                        <input
+                          type="checkbox"
+                          checked={sellers.length > 0 && selectedSellers.size === sellers.length}
+                          onChange={toggleAllSelection}
+                          className="h-4 w-4 rounded border-border-subtle bg-bg-base accent-brand-primary"
+                        />
+                      </th>
+                    )}
                     <th className="px-4 py-3 text-left font-semibold text-text-muted">
                       {lang === "th" ? "ร้านค้า" : "Store"}
                     </th>

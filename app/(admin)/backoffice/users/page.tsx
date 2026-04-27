@@ -28,6 +28,7 @@ const ITEMS_PER_PAGE = 20;
 export default function AdminUsersPage() {
   const { lang } = useLanguage();
   const { adminPermissions } = useAuth();
+  const [actionError, setActionError] = useState<string | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +38,8 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
   const canWrite = adminPermissions.includes("admin:users:write");
@@ -84,10 +87,91 @@ export default function AdminUsersPage() {
       setActionSuccess(action === "ban"
         ? (lang === "th" ? `แบนผู้ใช้ "${updated.email}" แล้ว` : `Banned "${updated.email}"`)
         : (lang === "th" ? `ปลดแบนผู้ใช้ "${updated.email}" แล้ว` : `Unbanned "${updated.email}"`));
-      setTimeout(() => setActionSuccess(null), 3000);
+      setTimeout(() => setActionSuccess(null), 5000);
     } catch (err) {
-      alert(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+      setActionError(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
     } finally { setActionLoading(null); }
+  };
+
+  const toggleUserSelection = (userId: string) => {
+    setSelectedUsers((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const toggleAllSelection = () => {
+    if (selectedUsers.size === users.length) {
+      setSelectedUsers(new Set());
+    } else {
+      setSelectedUsers(new Set(users.map((u) => u.id)));
+    }
+  };
+
+  const handleBulkBan = async () => {
+    const token = getStoredToken();
+    if (!token || selectedUsers.size === 0) return;
+    setBulkLoading(true);
+    setActionSuccess(null);
+    try {
+      await Promise.all(
+        [...selectedUsers].map((id) =>
+          fetch(`/api/backoffice/users/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ action: "ban" }),
+          })
+        )
+      );
+      setUsers((prev) =>
+        prev.map((u) => (selectedUsers.has(u.id) ? { ...u, status: "banned" } : u))
+      );
+      setActionSuccess(
+        lang === "th"
+          ? `แบนผู้ใช้ ${selectedUsers.size} รายแล้ว`
+          : `Banned ${selectedUsers.size} user(s)`
+      );
+      setSelectedUsers(new Set());
+      setTimeout(() => setActionSuccess(null), 5000);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkUnban = async () => {
+    const token = getStoredToken();
+    if (!token || selectedUsers.size === 0) return;
+    setBulkLoading(true);
+    setActionSuccess(null);
+    try {
+      await Promise.all(
+        [...selectedUsers].map((id) =>
+          fetch(`/api/backoffice/users/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ action: "unban" }),
+          })
+        )
+      );
+      setUsers((prev) =>
+        prev.map((u) => (selectedUsers.has(u.id) ? { ...u, status: "active" } : u))
+      );
+      setActionSuccess(
+        lang === "th"
+          ? `ปลดแบนผู้ใช้ ${selectedUsers.size} รายแล้ว`
+          : `Unbanned ${selectedUsers.size} user(s)`
+      );
+      setSelectedUsers(new Set());
+      setTimeout(() => setActionSuccess(null), 5000);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+    } finally {
+      setBulkLoading(false);
+    }
   };
 
   const activeCount = users.filter((u) => u.status === "active").length;
@@ -105,6 +189,41 @@ export default function AdminUsersPage() {
 
         {actionSuccess && (
           <div className="rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-success font-medium">✓ {actionSuccess}</div>
+        )}
+
+        {actionError && (
+          <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger font-medium">
+            {actionError}
+          </div>
+        )}
+
+        {/* Bulk action toolbar */}
+        {canWrite && selectedUsers.size > 0 && (
+          <div className="flex items-center gap-3 rounded-xl border border-brand-primary/30 bg-brand-primary/10 px-4 py-3">
+            <span className="text-sm font-medium text-brand-primary">
+              {selectedUsers.size} {lang === "th" ? "รายการเลือกแล้ว" : "selected"}
+            </span>
+            <button
+              onClick={handleBulkBan}
+              disabled={bulkLoading}
+              className="rounded-lg bg-error px-3 py-1.5 text-xs font-semibold text-white hover:opacity-85 disabled:opacity-50"
+            >
+              {bulkLoading ? "..." : (lang === "th" ? "แบนที่เลือก" : "Ban selected")}
+            </button>
+            <button
+              onClick={handleBulkUnban}
+              disabled={bulkLoading}
+              className="rounded-lg bg-success px-3 py-1.5 text-xs font-semibold text-white hover:opacity-85 disabled:opacity-50"
+            >
+              {bulkLoading ? "..." : (lang === "th" ? "ปลดแบนที่เลือก" : "Unban selected")}
+            </button>
+            <button
+              onClick={() => setSelectedUsers(new Set())}
+              className="ml-auto text-xs text-text-muted hover:text-text-main"
+            >
+              {lang === "th" ? "ยกเลิก" : "Clear"}
+            </button>
+          </div>
         )}
 
         {/* Search + Filter */}
@@ -150,6 +269,16 @@ export default function AdminUsersPage() {
               <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="border-b border-border-subtle bg-bg-surface/70">
+                    {canWrite && (
+                      <th className="px-4 py-3 text-left">
+                        <input
+                          type="checkbox"
+                          checked={users.length > 0 && selectedUsers.size === users.length}
+                          onChange={toggleAllSelection}
+                          className="h-4 w-4 rounded border-border-subtle bg-bg-base accent-brand-primary"
+                        />
+                      </th>
+                    )}
                     <th className="px-4 py-3 text-left font-semibold text-text-muted">{lang === "th" ? "ผู้ใช้" : "User"}</th>
                     <th className="px-4 py-3 text-left font-semibold text-text-muted">{lang === "th" ? "บทบาท" : "Role"}</th>
                     <th className="px-4 py-3 text-left font-semibold text-text-muted">{lang === "th" ? "โทรศัพท์" : "Phone"}</th>
@@ -161,6 +290,16 @@ export default function AdminUsersPage() {
                 <tbody className="divide-y divide-border-subtle">
                   {users.map((user) => (
                     <tr key={user.id} className="bg-bg-base hover:bg-bg-surface/50 transition-colors">
+                      {canWrite && (
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedUsers.has(user.id)}
+                            onChange={() => toggleUserSelection(user.id)}
+                            className="h-4 w-4 rounded border-border-subtle bg-bg-base accent-brand-primary"
+                          />
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         <div>
                           <p className="font-semibold text-text-main">{user.name || "—"}</p>

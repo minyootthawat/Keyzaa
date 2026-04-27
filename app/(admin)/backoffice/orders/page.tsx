@@ -52,6 +52,7 @@ const PAYMENT_BADGE: Record<string, string> = {
 export default function AdminOrdersPage() {
   const { lang } = useLanguage();
   const { adminPermissions } = useAuth();
+  const [actionError, setActionError] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -109,9 +110,9 @@ export default function AdminOrdersPage() {
         refund: lang === "th" ? "คืนเงินแล้ว" : "Refunded",
       };
       setActionSuccess(labels[action] || action);
-      setTimeout(() => setActionSuccess(null), 3000);
+      setTimeout(() => setActionSuccess(null), 5000);
     } catch (err) {
-      alert(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
+      setActionError(err instanceof Error ? err.message : (lang === "th" ? "เกิดข้อผิดพลาด" : "An error occurred"));
     } finally { setActionLoading(null); }
   };
 
@@ -136,6 +137,12 @@ export default function AdminOrdersPage() {
 
         {actionSuccess && (
           <div className="rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-success font-medium">✓ {actionSuccess}</div>
+        )}
+
+        {actionError && (
+          <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger font-medium">
+            {actionError}
+          </div>
         )}
 
         {/* Status filter tabs */}

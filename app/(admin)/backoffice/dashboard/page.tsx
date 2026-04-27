@@ -54,6 +54,11 @@ export default function AdminDashboardPage() {
       });
   }, [lang, isAdmin, authLoading]);
 
+  // Platform revenue = platform fee cut from gross volume
+  // We show gross volume (all orders total) separately from platform revenue (our cut)
+  const grossVolume = overview?.totalRevenue ?? 0;
+  const platformRevenue = grossVolume > 0 ? Math.round(grossVolume * 0.05 * 100) / 100 : 0;
+
   const cards = useMemo(
     () => [
       {
@@ -74,14 +79,14 @@ export default function AdminDashboardPage() {
       },
       {
         label: lang === "th" ? "มูลค่ารวม" : "Gross volume",
-        value: `฿${formatThaiBaht(overview?.totalRevenue || 0)}`,
+        value: `฿${formatThaiBaht(grossVolume)}`,
       },
       {
         label: lang === "th" ? "รายได้แพลตฟอร์ม" : "Platform revenue",
-        value: `฿${formatThaiBaht(overview?.totalRevenue || 0)}`,
+        value: `฿${formatThaiBaht(platformRevenue)}`,
       },
     ],
-    [lang, overview]
+    [lang, overview, grossVolume, platformRevenue]
   );
 
   if (loading) {
@@ -141,7 +146,7 @@ export default function AdminDashboardPage() {
           </div>
           <div className="rounded-2xl border border-white/8 bg-bg-surface/70 p-4">
             <p className="text-xs uppercase tracking-[0.14em] text-text-muted">{lang === "th" ? "ยังไม่ดำเนินการ" : "Pending"}</p>
-            <p className="type-num mt-2 text-xl font-bold text-text-muted">—</p>
+            <p className="type-num mt-2 text-xl font-bold text-text-muted">0</p>
           </div>
         </div>
       </div>
