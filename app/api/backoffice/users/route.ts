@@ -19,12 +19,12 @@ export async function GET(req: Request) {
     const supabase = createServiceRoleClient();
     let query = supabase
       .from("users")
-      .select("id, email, full_name, phone, role, status, created_at", { count: "exact" })
+      .select("id, email, name, phone, role, status, created_at", { count: "exact" })
       .order("created_at", { ascending: false })
       .range((page - 1) * limit, page * limit - 1);
 
     if (search) {
-      query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+      query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
     }
     if (role) query = query.eq("role", role);
     if (status) query = query.eq("status", status);
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     const users = (data ?? []).map((u: Record<string, unknown>) => ({
       id: u.id,
       email: u.email ?? "",
-      name: u.full_name ?? "",
+      name: u.name ?? "",
       phone: u.phone ?? "",
       role: u.role ?? "buyer",
       status: u.status ?? "active",
