@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { getStoredToken } from "@/app/lib/auth-client";
+import OrderDetailModal from "@/app/components/backoffice/order-detail-modal";
 
 interface Order {
   id: string;
@@ -59,6 +60,7 @@ export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
   const canWrite = adminPermissions.includes("admin:orders:write");
@@ -182,7 +184,12 @@ export default function AdminOrdersPage() {
                     return (
                       <tr key={order.id} className="bg-bg-base hover:bg-bg-surface/50 transition-colors">
                         <td className="px-4 py-3">
-                          <span className="font-mono text-xs font-semibold text-text-main">{order.orderNumber || order.id.slice(0, 8)}</span>
+                          <button
+                            onClick={() => setSelectedOrder(order)}
+                            className="font-mono text-xs font-semibold text-brand-primary hover:text-brand-secondary transition-colors cursor-pointer"
+                          >
+                            {order.orderNumber || order.id.slice(0, 8)}
+                          </button>
                         </td>
                         <td className="px-4 py-3">
                           <div>
@@ -277,6 +284,7 @@ export default function AdminOrdersPage() {
           </>
         )}
       </div>
+      <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
     </AdminRouteGuard>
   );
 }
