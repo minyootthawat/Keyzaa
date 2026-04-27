@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useTheme } from "@/app/context/ThemeContext";
 import { useLanguage } from "@/app/context/LanguageContext";
-import { useAuth } from "@/app/context/AuthContext";
 import AdminSidebar from "@/app/components/AdminSidebar";
 import { useRouter } from "next/navigation";
 
@@ -37,12 +36,40 @@ const roleConfig: Record<string, { labelTh: string; labelEn: string; emoji: stri
   },
 };
 
+interface AdminUser {
+  email: string;
+  name: string;
+  adminRole: string | null;
+  adminPermissions: string[];
+  isAdmin: boolean;
+}
+
 export default function AdminAppLayout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
   const { lang, toggleLang } = useLanguage();
-  const { adminRole } = useAuth();
   const router = useRouter();
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      try {
+        const res = await fetch("/api/admin/me", {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("not authenticated");
+        const data = await res.json();
+        if (!data.user?.isAdmin) throw new Error("not admin");
+        setAdminUser(data.user);
+      } catch {
+        router.replace("/backoffice/login");
+      } finally {
+        setChecking(false);
+      }
+    };
+    checkAdmin();
+  }, [router]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -88,7 +115,19 @@ export default function AdminAppLayout({ children }: { children: React.ReactNode
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [router, toggleTheme, toggleLang]);
 
-  const role = roleConfig[adminRole ?? "support_admin"] || roleConfig.support_admin;
+  if (checking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-warning border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!adminUser) {
+    return null;
+  }
+
+  const role = roleConfig[adminUser.adminRole ?? "support_admin"] || roleConfig.support_admin;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -178,7 +217,7 @@ export default function AdminAppLayout({ children }: { children: React.ReactNode
       </header>
       <div className="section-container py-6">
         <div className="flex gap-8">
-          <AdminSidebar />
+          <AdminSidebar adminRole={adminUser.adminRole} adminPermissions={adminUser.adminPermissions} />
           <main className="flex-1 min-w-0">{children}</main>
         </div>
       </div>

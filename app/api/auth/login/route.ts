@@ -63,14 +63,33 @@ export async function POST(req: NextRequest) {
       .setExpirationTime("7d")
       .sign(JWT_SECRET);
 
-    const response = NextResponse.json({ success: true, token });
-    response.cookies.set("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7,
-      path: "/",
-    });
+    const response = NextResponse.json(
+      {
+        success: true,
+        token,
+        user: {
+          id: userId,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          sellerId: sellerId ?? undefined,
+          isAdmin: adminAccess.isAdmin,
+          adminRole: adminAccess.adminRole ?? undefined,
+          adminPermissions: adminAccess.permissions,
+        },
+      },
+      {
+        headers: {
+          "Set-Cookie": `token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 7}${process.env.NODE_ENV === "production" ? "; Secure" : ""}`,
+        },
+      }
+    );
+
+    // Also store in localStorage for client-side access (used by backoffice)
+    response.headers.set(
+      "X-Auth-Token",
+      token
+    );
 
     return response;
   } catch (err) {

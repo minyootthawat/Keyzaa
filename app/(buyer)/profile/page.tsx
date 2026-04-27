@@ -55,11 +55,11 @@ function ProfileContent() {
             <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
               <div className="flex items-start gap-4">
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-brand-primary text-xl font-black text-white shadow-lg shadow-brand-primary/20">
-                  {user.name.charAt(0).toUpperCase()}
+                  {((user as {name?: string})?.name ?? "").charAt(0).toUpperCase() || "?"}
                 </div>
                 <div className="space-y-2">
                   <div>
-                    <p className="type-h1 text-3xl">{user.name}</p>
+                    <p className="type-h1 text-3xl">{(user as {name?: string})?.name ?? "User"}</p>
                     <p className="type-body text-text-subtle">{user.email}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">

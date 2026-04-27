@@ -406,7 +406,7 @@ export default function StickyHeader() {
                   className="hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-text-subtle hover:bg-bg-surface-hover hover:text-text-main transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/45"
                 >
                   <div className="h-8 w-8 rounded-full bg-brand-primary flex items-center justify-center text-white text-xs font-bold shadow-sm">
-                    {user.name.charAt(0).toUpperCase()}
+                    {(user?.name ?? "").charAt(0).toUpperCase() || "?"}
                   </div>
                 </button>
                 

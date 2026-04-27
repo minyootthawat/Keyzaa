@@ -1,11 +1,22 @@
 "use client";
 
-import { useSession, signIn, signOut as nextAuthSignOut } from "next-auth/react";
+import { useSession, signOut as nextAuthSignOut } from "next-auth/react";
 import { createContext, useContext, useEffect, useState, useRef } from "react";
 import type { User, Seller } from "@/app/types";
 
+interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  sellerId?: string;
+  isAdmin: boolean;
+  adminRole?: string;
+  adminPermissions: string[];
+}
+
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
   role: User["role"];
   seller: Seller | null;
   isRegisteredSeller: boolean;
@@ -22,55 +33,36 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function userFromSession(session: { user?: { id: string; name?: string | null; email?: string | null; role?: string; sellerId?: string } } | null): User | null {
-  if (!session?.user) return null;
-  const u = session.user;
-  return {
-    id: u.id,
-    name: u.name || "",
-    email: u.email || "",
-    role: (u.role || "buyer") as User["role"],
-    sellerId: u.sellerId,
-    createdAt: "",
-  };
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { data: session, status, update: updateSession } = useSession();
+  const { status } = useSession();
   const sellerIdRef = useRef<string | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [seller, setSeller] = useState<Seller | null>(null);
-  const [role, setRole] = useState<User["role"]>("buyer");
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminRole, setAdminRole] = useState<User["adminRole"]>(null);
-  const [adminPermissions, setAdminPermissions] = useState<NonNullable<User["adminPermissions"]>>([]);
   const [accountResolved, setAccountResolved] = useState(false);
 
-  const user = userFromSession(session);
+  // Derive role/admin from authUser (our custom JWT state)
+  const role = (authUser?.role as User["role"]) || "buyer";
+  const isAdmin = authUser?.isAdmin ?? false;
+  const adminRole = (authUser?.adminRole ?? null) as User["adminRole"];
+  const adminPermissions = (authUser?.adminPermissions ?? []) as NonNullable<User["adminPermissions"]>;
   const loading = status === "loading" || !accountResolved;
 
   const fetchAccount = async () => {
     setAccountResolved(false);
-
     try {
       const res = await fetch("/api/auth/me");
-
       if (res.ok) {
         const data = await res.json();
-        setRole((data.user?.role as User["role"]) || "buyer");
-        setIsAdmin(Boolean(data.user?.isAdmin));
-        setAdminRole(data.user?.adminRole ?? null);
-        setAdminPermissions(Array.isArray(data.user?.adminPermissions) ? data.user.adminPermissions : []);
+        if (data.user) {
+          setAuthUser(data.user as AuthUser);
+        }
         setAccountResolved(true);
         return;
       }
     } catch {
       // ignore
     }
-
-    setRole("buyer");
-    setIsAdmin(false);
-    setAdminRole(null);
-    setAdminPermissions([]);
+    setAuthUser(null);
     setAccountResolved(true);
   };
 
@@ -86,59 +78,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // On mount: try to restore session from JWT cookie
   useEffect(() => {
-    if (!user) {
-      // Clearing account state is required when switching to an anonymous session.
-      queueMicrotask(() => {
-        setSeller(null);
-        setRole("buyer");
-        setIsAdmin(false);
-        setAdminRole(null);
-        setAdminPermissions([]);
-        setAccountResolved(true);
-      });
-      sellerIdRef.current = null;
-      return;
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (!user?.id) return;
     queueMicrotask(() => {
       void fetchAccount();
     });
-  }, [user?.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // Fetch seller when authUser has sellerId
   useEffect(() => {
-    if (!user?.sellerId) {
-      // Clearing seller state is required when switching back to a buyer-only session.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+    const sellerId = authUser?.sellerId;
+    if (!sellerId) {
       setSeller(null);
       sellerIdRef.current = null;
       return;
     }
-    if (user.sellerId !== sellerIdRef.current) {
-      sellerIdRef.current = user.sellerId;
-      fetchSeller();
+    if (sellerId !== sellerIdRef.current) {
+      sellerIdRef.current = sellerId;
+      queueMicrotask(() => {
+        void fetchSeller();
+      });
     }
-  }, [user?.sellerId]);
+  }, [authUser?.sellerId]);
 
   const login = async (email: string, password: string) => {
-    const res = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
     });
 
-    if (res?.error) {
-      throw new Error(res.error);
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      throw new Error(data.error || "Login failed");
     }
 
-    await updateSession();
-    // Force re-fetch of admin status with the new session
-    setAccountResolved(false);
+    // Token is set as HttpOnly cookie by the API
+    // Fetch account data to populate context
+    const accountRes = await fetch("/api/auth/me");
+    if (accountRes.ok) {
+      const accountData = await accountRes.json();
+      if (accountData.user) {
+        setAuthUser(accountData.user as AuthUser);
+      }
+    }
 
-    // Bootstrap seller state from the session
+    // Bootstrap seller state
     const sellerRes = await fetch("/api/seller/me");
     if (sellerRes.ok) {
       const sellerData = await sellerRes.json();
@@ -147,6 +134,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         sellerIdRef.current = sellerData.seller.id;
       }
     }
+
+    setAccountResolved(true);
   };
 
   const register = async (name: string, email: string, password: string) => {
@@ -161,7 +150,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(data.error || "Registration failed");
     }
 
-    await updateSession();
+    // Login after registration
+    await login(email, password);
   };
 
   const registerSeller = async (data: { shopName: string; phone: string }) => {
@@ -180,7 +170,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const resData = await res.json();
     setSeller(resData.seller);
-    await updateSession();
+    // Refresh auth user to get updated sellerId
+    await fetchAccount();
   };
 
   const updateSeller = (data: Partial<Seller>) => {
@@ -188,14 +179,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    setAuthUser(null);
     setSeller(null);
-    await nextAuthSignOut({ redirect: false });
+    sellerIdRef.current = null;
+    setAccountResolved(true);
+    // Clear the JWT cookie
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
   };
 
   return (
     <AuthContext.Provider
       value={{
-        user,
+        user: authUser,
         role,
         seller,
         isRegisteredSeller: !!seller,

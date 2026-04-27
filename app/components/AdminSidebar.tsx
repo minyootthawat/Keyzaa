@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLanguage } from "@/app/context/LanguageContext";
-import { useAuth } from "@/app/context/AuthContext";
 
 interface NavItem {
   href: string;
@@ -75,49 +74,45 @@ const navItems: NavItem[] = [
   },
 ];
 
-export default function AdminSidebar() {
+interface AdminSidebarProps {
+  adminRole?: string | null;
+  adminPermissions?: string[];
+}
+
+export default function AdminSidebar({ adminRole, adminPermissions = [] }: AdminSidebarProps) {
   const pathname = usePathname();
   const { lang } = useLanguage();
-  const { adminPermissions, adminRole } = useAuth();
 
   const visibleItems = navItems.filter((item) => {
-    if (!adminPermissions.includes(item.permission as import("@/lib/auth/admin").AdminPermission)) return false;
+    if (!adminPermissions.includes(item.permission)) return false;
     if (item.roles && adminRole && !item.roles.includes(adminRole)) return false;
     return true;
   });
 
   return (
     <aside className="surface-card glass-panel motion-fade-up h-fit p-4 lg:sticky lg:top-28 lg:p-5">
-      <p className="text-xs font-bold uppercase tracking-[0.2em] text-text-muted">
-        {lang === "th" ? "แอดมิน" : "Admin"}
+      <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-widest text-text-muted">
+        {lang === "th" ? "เมนู" : "Menu"}
       </p>
-      <nav className="no-scrollbar mt-4 flex gap-2 overflow-x-auto text-sm lg:block lg:space-y-2 lg:overflow-visible">
+      <nav className="space-y-1">
         {visibleItems.map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`shrink-0 rounded-xl px-3 py-2.5 lg:block ${
+              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive
-                  ? "bg-brand-primary/25 text-text-main"
-                  : "text-text-subtle hover:bg-bg-surface"
+                  ? "bg-warning/12 text-warning"
+                  : "text-text-subtle hover:bg-bg-surface-hover hover:text-text-main"
               }`}
             >
-              <span className="mr-1.5">{item.icon}</span>
-              {lang === "th" ? item.labelTh : item.labelEn}
+              <span className="text-base">{item.icon}</span>
+              <span>{lang === "th" ? item.labelTh : item.labelEn}</span>
             </Link>
           );
         })}
       </nav>
-      <div className="mt-4 border-t border-border-subtle pt-4">
-        <Link
-          href="/"
-          className="block w-full rounded-xl px-3 py-2.5 text-left text-sm text-text-subtle hover:bg-bg-surface"
-        >
-          ← {lang === "th" ? "กลับสโตร์" : "Back to storefront"}
-        </Link>
-      </div>
     </aside>
   );
 }
