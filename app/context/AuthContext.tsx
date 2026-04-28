@@ -50,15 +50,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchAccount = async () => {
     setAccountResolved(false);
     try {
-      const res = await fetch("/api/auth/me");
-      if (res.ok) {
-        const data = await res.json();
+      // Try both auth endpoints in parallel — auth/me for buyer/seller, admin/me for admin
+      const [authRes, adminRes] = await Promise.all([
+        fetch("/api/auth/me"),
+        fetch("/api/admin/me"),
+      ]);
+
+      let resolvedUser: AuthUser | null = null;
+
+      if (authRes.ok) {
+        const data = await authRes.json();
         if (data.user) {
-          setAuthUser(data.user as AuthUser);
+          resolvedUser = data.user as AuthUser;
         }
-        setAccountResolved(true);
-        return;
       }
+
+      // If admin/me returned a valid admin, merge admin permissions into authUser
+      if (adminRes.ok) {
+        const adminData = await adminRes.json();
+        if (adminData.authenticated && adminData.user) {
+          const adminUser = adminData.user;
+          if (resolvedUser) {
+            // Merge admin info into existing user
+            resolvedUser = {
+              ...resolvedUser,
+              isAdmin: true,
+              adminRole: adminUser.adminRole ?? resolvedUser.adminRole,
+              adminPermissions: (adminUser.adminPermissions ?? []) as NonNullable<User["adminPermissions"]>,
+            };
+          } else {
+            // Pure admin user (no buyer/seller session)
+            resolvedUser = {
+              id: adminUser.id,
+              name: adminUser.email.split("@")[0],
+              email: adminUser.email,
+              role: "buyer",
+              isAdmin: true,
+              adminRole: adminUser.adminRole ?? null,
+              adminPermissions: (adminUser.adminPermissions ?? []) as NonNullable<User["adminPermissions"]>,
+            };
+          }
+        }
+      }
+
+      setAuthUser(resolvedUser);
+      setAccountResolved(true);
+      return;
     } catch {
       // ignore
     }
