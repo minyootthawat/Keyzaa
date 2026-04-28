@@ -96,7 +96,7 @@ export default function AdminOrdersPage() {
       });
       if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || `HTTP ${res.status}`); }
       const updated = (await res.json()).order as Order;
-      setOrders((prev) => prev.map((o) => o.id === updated.id ? { ...o, status: updated.status, paymentStatus: updated.payment_status ?? updated.paymentStatus } : o));
+      setOrders((prev) => prev.map((o) => o.id === updated.id ? { ...o, status: updated.status, paymentStatus: updated.paymentStatus } : o));
       const labels: Record<string, string> = {
         processing: lang === "th" ? "ดำเนินการแล้ว" : "Marked processing",
         completed: lang === "th" ? "เสร็จสิ้นแล้ว" : "Marked completed",
