@@ -1,41 +1,47 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import CTAButton from "@/app/components/CTAButton";
 import { useLanguage } from "@/app/context/LanguageContext";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function AdminLoginPage() {
   const { lang } = useLanguage();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError("");
-    setSubmitting(true);
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    const form = e.currentTarget;
+    const email = (form.elements.namedItem("email") as HTMLInputElement).value;
+    const password = (form.elements.namedItem("password") as HTMLInputElement).value;
+
     try {
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
+
       const data = await res.json();
+
       if (!res.ok || !data.success) {
-        throw new Error(data.error || (lang === "th" ? "เข้าสู่ระบบไม่สำเร็จ" : "Login failed"));
+        setError(data.error ?? "Login failed");
+        setLoading(false);
+        return;
       }
-      // Store token and redirect immediately — middleware will read cookie on next request
-      localStorage.setItem("keyzaa_admin_token", data.token);
-      localStorage.setItem("keyzaa_admin_user", JSON.stringify(data.user));
+
+      // On success, do a hard navigation so the server sets the cookie
       window.location.href = "/backoffice/dashboard";
-    } catch (err) {
-      setError(err instanceof Error ? err.message : lang === "th" ? "เข้าสู่ระบบไม่สำเร็จ" : "Login failed");
-    } finally {
-      setSubmitting(false);
+    } catch {
+      setError("Network error — please try again");
+      setLoading(false);
     }
-  };
+  }
 
   return (
     <div className="section-container py-8 md:py-12">
@@ -56,52 +62,52 @@ export default function AdminLoginPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-text-primary">
-                {lang === "th" ? "อีเมล" : "Email"}
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input-form"
-                placeholder="admin@keyzaa.local"
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-text-primary">
-                {lang === "th" ? "รหัสผ่าน" : "Password"}
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-form"
-                placeholder="••••••••"
-                required
-              />
-            </div>
-
             {error && (
               <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
                 {error}
               </div>
             )}
 
-            <CTAButton
+            <div>
+              <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-text-primary">
+                {lang === "th" ? "อีเมล" : "Email"}
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="username"
+                className="input-form"
+                placeholder=""
+                defaultValue=""
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-text-primary">
+                {lang === "th" ? "รหัสผ่าน" : "Password"}
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                className="input-form"
+                placeholder=""
+                defaultValue=""
+                required
+              />
+            </div>
+
+            <button
               type="submit"
-              className="w-full"
-              disabled={submitting}
+              disabled={loading}
+              className="btn-primary w-full disabled:opacity-50"
             >
-              {submitting
-                ? lang === "th"
-                  ? "กำลังเข้าสู่ระบบ..."
-                  : "Logging in..."
-                : lang === "th"
-                ? "เข้าสู่ระบบ"
-                : "Login"}
-            </CTAButton>
+              {loading
+                ? (lang === "th" ? "กำลังเข้าสู่ระบบ..." : "Logging in...")
+                : (lang === "th" ? "เข้าสู่ระบบ" : "Login")}
+            </button>
           </form>
 
           <div className="mt-6 flex items-center gap-2 rounded-lg border border-warning/20 bg-warning/5 p-3 text-xs text-warning">

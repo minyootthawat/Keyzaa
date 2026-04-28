@@ -54,10 +54,10 @@ export async function GET(req: NextRequest) {
     const sellerMap = new Map<string, { id: string; store_name: string; verified: boolean }>();
     for (const seller of sellerResults) {
       if (seller) {
-        sellerMap.set(seller._id!.toString(), {
-          id: seller._id!.toString(),
+        sellerMap.set(seller.id!, {
+          id: seller.id!,
           store_name: seller.store_name,
-          verified: seller.verified,
+          verified: seller.is_verified,
         });
       }
     }
@@ -89,14 +89,14 @@ export async function GET(req: NextRequest) {
       const sid = row.seller_id;
       const sellerData = sellerMap.get(sid);
       return {
-        id: row._id!.toString(),
+        id: row.id!,
         sellerId: sid,
         title: row.name,
         category: row.category,
         price: Number(row.price),
         stock: row.stock,
         image: row.image_url || "",
-        isActive: row.is_active,
+        isActive: row.status === "active",
         seller: {
           id: sellerData?.id || sid,
           storeName: sellerData?.store_name || "",

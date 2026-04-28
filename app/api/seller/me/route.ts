@@ -38,15 +38,15 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       seller: {
-        id: seller._id!.toString(),
+        id: seller.id,
         userId: seller.user_id,
         shopName: seller.store_name,
         phone: seller.phone ?? "",
         rating: Number(seller.rating ?? 0),
-        salesCount: seller.sales_count ?? 0,
+        salesCount: seller.total_sales ?? 0,
         balance: Number(seller.balance ?? 0),
         pendingBalance: Number(seller.pending_balance ?? 0),
-        verificationStatus: seller.verified ? "verified" : "new",
+        verificationStatus: seller.is_verified ? "verified" : "new",
         payoutStatus: seller.payout_status ?? "manual",
         responseTimeMinutes: seller.response_time_minutes ?? 5,
         fulfillmentRate: Number(seller.fulfillment_rate ?? 100),
@@ -96,7 +96,7 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ 
       seller: { 
-        id: updated._id!.toString(), 
+        id: updated.id, 
         shopName: updated.store_name, 
         phone: updated.phone 
       } 

@@ -3,7 +3,6 @@
 import AdminRouteGuard from "@/app/components/AdminRouteGuard";
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/app/context/LanguageContext";
-import { useAuth } from "@/app/context/AuthContext";
 import { formatThaiBaht } from "@/app/lib/marketplace";
 
 interface AnalyticsResponse {
@@ -102,7 +101,6 @@ export default function AdminAnalyticsPage() {
 
 function AnalyticsContent() {
   const { lang } = useLanguage();
-  const { adminRole } = useAuth();
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +130,6 @@ function AnalyticsContent() {
   }, [dateRange, customStart, customEnd]);
 
   useEffect(() => {
-    setLoading(true);
     fetch(`/api/backoffice/analytics?days=${fetchDays}`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Failed to load");

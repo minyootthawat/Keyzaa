@@ -114,8 +114,8 @@ export async function getServerSellerAccess(req: NextRequest): Promise<{
     status: 200,
     access: {
       userId: user.id,
-      sellerId: seller._id!.toString(),
-      isVerified: seller.verified ?? false,
+      sellerId: seller.id,
+      isVerified: seller.is_verified,
     },
   };
 }

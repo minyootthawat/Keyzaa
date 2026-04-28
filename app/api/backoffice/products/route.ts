@@ -1,61 +1,71 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerAdminAccess } from "@/lib/auth/server";
-import { getDB } from "@/lib/mongodb";
+import { listProducts } from "@/lib/db/collections/products";
+import { getSellerById } from "@/lib/db/collections/sellers";
+import { findUserById } from "@/lib/db/supabase";
 
 export async function GET(req: NextRequest) {
   try {
-    const result = await getServerAdminAccess(req);
-    if (result.status !== 200) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
+    const authResult = await getServerAdminAccess(req);
+    if (authResult.status !== 200) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
 
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
     const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "20", 10));
-    const filterParam = searchParams.get("filter") ?? "all";
-    const search = searchParams.get("search") ?? "";
+    const status = searchParams.get("status") ?? undefined;
+    const category = searchParams.get("category") ?? undefined;
+    const search = searchParams.get("search") ?? undefined;
 
-    const db = getDB();
-    const query: Record<string, unknown> = {};
+    const { products, total } = await listProducts({
+      status: status as "active" | "inactive" | "out_of_stock" | "deleted" | undefined,
+      category,
+      search,
+      limit,
+      offset: (page - 1) * limit,
+    });
 
-    if (filterParam === "active") {
-      query.status = "active";
-    } else if (filterParam === "inactive") {
-      query.status = "inactive";
-    }
-
-    if (search.trim()) {
-      query.name = { $regex: search.trim(), $options: "i" };
-    }
-
-    const skip = (page - 1) * limit;
-    const [products, total] = await Promise.all([
-      db.collection("products").find(query).sort({ created_at: -1 }).skip(skip).limit(limit).toArray(),
-      db.collection("products").countDocuments(query),
-    ]);
-
-    // Fetch seller store names
+    // Fetch seller info for each product
     const sellerIds = [...new Set(products.map((p) => p.seller_id))];
-    const sellers = await db.collection("sellers").find({ _id: { $in: sellerIds.map((id) => new (require("mongodb")).ObjectId(id)) } }).toArray();
-    const sellerMap: Record<string, Record<string, unknown>> = {};
-    for (const s of sellers) {
-      sellerMap[s._id.toString()] = s;
-    }
+    const sellerMap: Record<string, { storeName: string }> = {};
+
+    await Promise.all(
+      sellerIds.map(async (id) => {
+        const seller = await getSellerById(id);
+        if (seller) {
+          sellerMap[id] = { storeName: seller.store_name };
+        }
+      })
+    );
 
     const mapped = products.map((p) => ({
-      id: p._id?.toString() ?? "",
+      id: p.id,
+      publicId: p.public_id,
       name: p.name,
-      price: p.price ?? 0,
-      isActive: p.is_active,
-      stockQuantity: p.stock ?? 0,
-      createdAt: p.created_at,
+      description: p.description ?? "",
+      category: p.category,
+      price: Number(p.price),
+      stock: p.stock,
+      imageUrl: p.image_url ?? "",
+      status: p.status,
+      isFeatured: p.is_featured,
+      tags: p.tags ?? [],
       seller: {
         id: p.seller_id,
-        storeName: (sellerMap[p.seller_id] as Record<string, unknown> | undefined)?.store_name ?? "",
+        storeName: sellerMap[p.seller_id]?.storeName ?? "",
       },
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
     }));
 
-    return NextResponse.json({ products: mapped, total, page, limit });
+    return NextResponse.json({
+      products: mapped,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (error) {
     console.error("Admin products GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

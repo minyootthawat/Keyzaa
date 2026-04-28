@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerAdminAccess } from "@/lib/auth/server";
 import { getProductById, updateProduct, deleteProduct } from "@/lib/db/collections/products";
-import { getDB } from "@/lib/mongodb";
 
 export async function GET(
   req: NextRequest,
@@ -22,11 +21,11 @@ export async function GET(
 
     return NextResponse.json({
       product: {
-        id: product._id?.toString() ?? "",
+        id: product.id,
         sellerId: product.seller_id,
         name: product.name,
         price: Number(product.price),
-        isActive: product.is_active,
+        isActive: product.status === "active",
         stockQuantity: product.stock ?? 0,
         createdAt: product.created_at,
       },
@@ -50,11 +49,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const updates: Record<string, unknown> = {};
 
     if (body.isActive !== undefined) {
-      updates.is_active = Boolean(body.isActive);
+      updates.status = body.isActive ? "active" : "inactive";
     } else if (body.action === "enable") {
-      updates.is_active = true;
+      updates.status = "active";
     } else if (body.action === "disable") {
-      updates.is_active = false;
+      updates.status = "inactive";
     }
 
     if (typeof body.price === "number" && body.price >= 0) {
@@ -79,11 +78,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     return NextResponse.json({
       product: {
-        id: updated._id?.toString() ?? "",
+        id: updated.id,
         sellerId: updated.seller_id,
         name: updated.name,
         price: Number(updated.price),
-        isActive: updated.is_active,
+        isActive: updated.status === "active",
         stockQuantity: updated.stock ?? 0,
         createdAt: updated.created_at,
       },
@@ -109,17 +108,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
 
     const { id } = await params;
-    const db = getDB();
-
-    const orderCount = await db.collection("orders").countDocuments({ "items.product_id": id });
-
-    if (orderCount > 0) {
-      return NextResponse.json(
-        { error: `Product has ${orderCount} existing order(s). Cannot delete.`, orderCount },
-        { status: 409 }
-      );
-    }
-
     const deleted = await deleteProduct(id);
 
     if (!deleted) {

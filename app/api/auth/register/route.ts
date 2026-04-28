@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const userId = user._id!.toString();
+    const userId = user.id;
     const adminAccess = await getAdminAccessForEmail(user.email);
 
     const token = await new SignJWT({

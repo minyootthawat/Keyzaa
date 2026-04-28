@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerAdminAccess } from "@/lib/auth/server";
 import { getOrderById, updateOrderStatus, updateOrderFields } from "@/lib/db/collections/orders";
 
-const VALID_STATUSES = ["pending", "processing", "shipped", "delivered", "cancelled"];
+const VALID_STATUSES = ["pending", "processing", "completed", "cancelled"];
 
 export async function GET(
   req: NextRequest,
@@ -54,7 +54,7 @@ export async function PATCH(
     }
 
     if (action && VALID_STATUSES.includes(action)) {
-      const updated = await updateOrderStatus(id, action as "pending" | "paid" | "shipped" | "completed" | "cancelled");
+      const updated = await updateOrderStatus(id, action as "pending" | "processing" | "completed" | "cancelled");
 
       if (!updated) {
         return NextResponse.json({ error: "Failed to update order" }, { status: 500 });

@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSellerAccess } from "@/lib/auth/server";
 import { getProductsBySeller, createProduct } from "@/lib/db/collections/products";
 
-function mapRowToProduct(row: { _id?: { toString(): string }; seller_id: string; name: string; description?: string; category: string; price: number; stock: number; image_url?: string; is_active: boolean }) {
+function mapRowToProduct(row: { id: string; seller_id: string; name: string; description?: string | null; category: string; price: number; stock: number; image_url?: string | null; status: "active" | "inactive" | "out_of_stock" | "deleted" }) {
   return {
-    id: row._id?.toString() ?? "",
+    id: row.id,
     sellerId: row.seller_id,
     title: row.name,
     nameTh: row.name,
@@ -17,7 +17,7 @@ function mapRowToProduct(row: { _id?: { toString(): string }; seller_id: string;
     stock: row.stock,
     soldCount: 0,
     image: row.image_url || "",
-    isActive: row.is_active,
+    isActive: row.status === "active",
   };
 }
 
@@ -80,10 +80,14 @@ export async function POST(req: NextRequest) {
       imageUrl: body.image,
     });
 
+    if (!product) {
+      return NextResponse.json({ error: "Failed to create product" }, { status: 500 });
+    }
+
     // Update stock separately since createProduct sets stock to 0
     if (stock > 0) {
       const { updateProduct } = await import("@/lib/db/collections/products");
-      await updateProduct(product._id!.toString(), { stock });
+      await updateProduct(product.id, { stock });
     }
 
     return NextResponse.json({ product: mapRowToProduct(product) }, { status: 201 });

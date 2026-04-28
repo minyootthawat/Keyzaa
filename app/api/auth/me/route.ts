@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
-import { getDB } from "@/lib/mongodb/client";
+import { findUserByEmail } from "@/lib/db/supabase";
+import { findAdminByEmail } from "@/lib/db/supabase";
+import { normalizeAdminPermissions, type AdminRole } from "@/lib/auth/admin";
 
 const JWT_SECRET = new TextEncoder().encode(
   (process.env.JWT_SECRET || "fallback-secret-key-for-dev").replace(/[\x00-\x1F\x7F-\x9F]/g, "")
@@ -17,7 +19,6 @@ interface TokenPayload {
 }
 
 export async function GET(req: NextRequest) {
-  // Try cookie first, then Bearer token
   let token = req.cookies.get("token")?.value;
   if (!token) {
     const authHeader = req.headers.get("Authorization");
@@ -38,31 +39,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized", reason: "no_email_in_token" }, { status: 401 });
     }
 
-    // Fetch user name and admin data from MongoDB
     let name = payload.email.split("@")[0];
     let adminRole = payload.adminRole ?? null;
     let adminPermissions = payload.adminPermissions ?? [];
-    try {
-      const db = getDB();
-      const dbUser = await db.collection("users").findOne(
-        { email: payload.email },
-        { projection: { name: 1 } }
-      );
-      if (dbUser?.name) name = dbUser.name;
 
-      // Fetch admin permissions if this is an admin
+    try {
+      const user = await findUserByEmail(payload.email);
+      if (user?.name) name = user.name;
+
       if (payload.isAdmin) {
-        const dbAdmin = await db.collection("admins").findOne(
-          { email: payload.email },
-          { projection: { role: 1, permissions: 1 } }
-        );
-        if (dbAdmin) {
-          adminRole = dbAdmin.role ?? adminRole;
-          adminPermissions = dbAdmin.permissions ?? adminPermissions;
+        const admin = await findAdminByEmail(payload.email);
+        if (admin) {
+          adminRole = admin.role ?? adminRole;
+          adminPermissions = normalizeAdminPermissions(
+            admin.role as AdminRole,
+            admin.is_super_admin,
+            admin.permissions ?? []
+          );
         }
       }
     } catch {
-      // MongoDB unavailable — use JWT payload as fallback
+      // Supabase unavailable — use JWT payload as fallback
     }
 
     return NextResponse.json({

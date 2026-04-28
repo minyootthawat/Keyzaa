@@ -1,4 +1,6 @@
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
+import { findUserById } from "@/lib/db/collections/users";
+import { ADMIN_ROLE_PERMISSIONS } from "@/lib/auth/admin";
 
 export type AdminRole = "super_admin" | "ops_admin" | "support_admin" | "catalog_admin";
 
@@ -55,6 +57,14 @@ export interface AuditLogQuery {
 
 const supabase = createServiceRoleClient();
 
+function isMissingTableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  return "code" in error && error.code === "PGRST205";
+}
+
 export async function getAdmins(): Promise<Admin[]> {
   const { data, error } = await supabase
     .from("admins")
@@ -109,11 +119,19 @@ export async function createAdmin(
   role: AdminRole,
   createdBy: string
 ): Promise<Admin> {
+  const user = await findUserById(userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
+
   const { data, error } = await supabase
     .from("admins")
     .insert({
       user_id: userId,
+      email: user.email,
       role,
+      is_super_admin: role === "super_admin",
+      permissions: ADMIN_ROLE_PERMISSIONS[role],
       created_by: createdBy,
     })
     .select(`
@@ -143,7 +161,11 @@ export async function updateAdminRole(
 ): Promise<Admin> {
   const { data, error } = await supabase
     .from("admins")
-    .update({ role })
+    .update({
+      role,
+      is_super_admin: role === "super_admin",
+      permissions: ADMIN_ROLE_PERMISSIONS[role],
+    })
     .eq("id", adminId)
     .select(`
       *,
@@ -191,7 +213,12 @@ export async function getAdminAuditLog({
   if (dateTo) query = query.lte("created_at", dateTo);
 
   const { data, error } = await query;
-  if (error) throw error;
+  if (error) {
+    if (isMissingTableError(error)) {
+      return [];
+    }
+    throw error;
+  }
 
   return (data ?? []).map((row: Record<string, unknown>) => ({
     id: row.id as string,
@@ -251,7 +278,12 @@ export async function getIpAllowlist(): Promise<AdminIpAllowlist[]> {
     .select("*")
     .order("created_at", { ascending: false });
 
-  if (error) throw error;
+  if (error) {
+    if (isMissingTableError(error)) {
+      return [];
+    }
+    throw error;
+  }
 
   return (data ?? []).map((row: Record<string, unknown>) => ({
     id: row.id as string,

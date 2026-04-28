@@ -17,11 +17,11 @@ export async function GET() {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller._id!.toString();
+    const sellerId = seller.id;
     const entries = await getLedgerBySeller(sellerId);
 
     const mappedEntries = entries.map((entry) => ({
-      id: entry._id!.toString(),
+      id: entry.id,
       sellerId: entry.seller_id,
       orderId: entry.order_id ?? undefined,
       type:

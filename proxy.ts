@@ -167,7 +167,7 @@ const STRIPE_ROUTES = [
   "/api/stripe/webhook",
 ];
 
-export default auth(async function middleware(request: NextRequest) {
+export const proxy = auth(async function (request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Apply rate limiting to API routes
@@ -256,7 +256,7 @@ export default auth(async function middleware(request: NextRequest) {
   return NextResponse.next();
 });
 
-export const config = {
+export const proxyConfig = {
   matcher: [
     "/seller/:path*",
     "/backoffice/:path*",

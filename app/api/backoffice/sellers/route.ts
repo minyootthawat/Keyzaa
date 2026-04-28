@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerAdminAccess } from "@/lib/auth/server";
 import { listSellers } from "@/lib/db/collections/sellers";
-import { getDB } from "@/lib/mongodb";
+import { findUserById } from "@/lib/db/supabase";
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,39 +15,40 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "20", 10));
     const verified = searchParams.get("verified");
 
+    // verified=true/false query param maps to is_verified boolean filter
+    const isVerified =
+      verified === "true" ? true : verified === "false" ? false : undefined;
+
     const { sellers, total } = await listSellers({
-      status: verified === "true" ? "verified" : verified === "false" ? "unverified" : undefined,
+      isVerified,
       limit,
       offset: (page - 1) * limit,
     });
 
-    // Fetch user info for each seller
-    const db = getDB();
-    const userIds = [...new Set(sellers.map((s) => s.user_id))];
-    const users = await db.collection("users").find({ _id: { $in: userIds.map((id) => new (require("mongodb").ObjectId)(id)) } }).toArray();
-    const userMap: Record<string, Record<string, unknown>> = {};
-    for (const u of users) {
-      userMap[u._id.toString()] = u;
-    }
+    // Fetch user info for each seller from Supabase
+    const sellersWithUsers = await Promise.all(
+      sellers.map(async (s) => {
+        const user = s.user_id ? await findUserById(s.user_id) : null;
+        return {
+          id: s.id,
+          storeName: s.store_name,
+          phone: s.phone ?? "",
+          verified: s.is_verified,
+          balance: s.balance ?? 0,
+          pendingBalance: s.pending_balance ?? 0,
+          salesCount: s.total_sales ?? 0,
+          rating: s.rating ?? 0,
+          createdAt: s.created_at,
+          user: {
+            id: s.user_id,
+            email: user?.email ?? "",
+            name: user?.name ?? "",
+          },
+        };
+      })
+    );
 
-    const mapped = sellers.map((s) => ({
-      id: s._id?.toString() ?? "",
-      storeName: s.store_name,
-      phone: s.phone ?? "",
-      verified: s.verified,
-      balance: s.balance ?? 0,
-      pendingBalance: s.pending_balance ?? 0,
-      salesCount: s.sales_count ?? 0,
-      rating: s.rating ?? 0,
-      createdAt: s.created_at,
-      user: {
-        id: s.user_id,
-        email: (userMap[s.user_id] as Record<string, unknown> | undefined)?.email ?? "",
-        name: (userMap[s.user_id] as Record<string, unknown> | undefined)?.name ?? "",
-      },
-    }));
-
-    return NextResponse.json({ sellers: mapped, total, page, limit });
+    return NextResponse.json({ sellers: sellersWithUsers, total, page, limit });
   } catch (error) {
     console.error("Admin sellers GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

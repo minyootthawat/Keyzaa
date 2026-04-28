@@ -14,18 +14,16 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "20", 10));
     const search = searchParams.get("search") ?? "";
     const role = searchParams.get("role");
-    const status = searchParams.get("status");
 
     const { users, total } = await listUsers({
       search: search || undefined,
       role: role || undefined,
-      status: status || undefined,
       limit,
       offset: (page - 1) * limit,
     });
 
     const mapped = users.map((u) => ({
-      id: u._id?.toString() ?? "",
+      id: u.id ?? "",
       email: u.email ?? "",
       name: u.name ?? "",
       phone: (u as unknown as Record<string, unknown>).phone ?? "",
@@ -41,15 +39,15 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const result = await getServerAdminAccess();
+    const result = await getServerAdminAccess(req);
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
     const body = await req.json();
-    const { email, name, phone, role } = body;
+    const { email, name, role } = body;
 
     if (!email || !name) {
       return NextResponse.json({ error: "email and name are required" }, { status: 400 });
@@ -61,9 +59,13 @@ export async function POST(req: Request) {
       role: role ?? "buyer",
     });
 
+    if (!user) {
+      return NextResponse.json({ error: "Failed to create user" }, { status: 500 });
+    }
+
     return NextResponse.json({
       user: {
-        id: user._id?.toString() ?? "",
+        id: user.id ?? "",
         email: user.email,
         name: user.name,
         role: user.role,

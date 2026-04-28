@@ -23,9 +23,9 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function PATCH(req: Request) {
+export async function PATCH(req: NextRequest) {
   try {
-    const result = await getServerAdminAccess();
+    const result = await getServerAdminAccess(req);
     if (result.status !== 200) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }

@@ -4,7 +4,6 @@ import AdminRouteGuard from "@/app/components/AdminRouteGuard";
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 import { useLanguage } from "@/app/context/LanguageContext";
-import { getStoredToken } from "@/app/lib/auth-client";
 import { formatThaiBaht } from "@/app/lib/marketplace";
 
 interface Product {
@@ -21,7 +20,20 @@ interface Product {
 }
 
 interface ProductsResponse {
-  products: Product[];
+  products: Array<{
+    id: string;
+    name: string;
+    price: number;
+    stock?: number;
+    stockQuantity?: number;
+    status?: string;
+    isActive?: boolean;
+    createdAt: string;
+    seller?: {
+      id: string;
+      storeName: string;
+    };
+  }>;
   total: number;
   page: number;
   limit: number;
@@ -30,6 +42,18 @@ interface ProductsResponse {
 const ITEMS_PER_PAGE = 20;
 
 type FilterTab = "all" | "active" | "inactive";
+
+function normalizeProduct(row: ProductsResponse["products"][number], current?: Product): Product {
+  return {
+    id: row.id,
+    name: row.name,
+    price: row.price,
+    isActive: row.isActive ?? row.status === "active",
+    stockQuantity: row.stockQuantity ?? row.stock ?? current?.stockQuantity ?? 0,
+    createdAt: row.createdAt,
+    seller: row.seller ?? current?.seller ?? { id: "", storeName: "" },
+  };
+}
 
 export default function AdminProductsPage() {
   const { lang } = useLanguage();
@@ -65,24 +89,19 @@ export default function AdminProductsPage() {
 
   const fetchProducts = useCallback(
     (pageNum: number, filterVal: FilterTab, searchVal: string) => {
-      const token = getStoredToken();
-      if (!token) {
-        setError(lang === "th" ? "ไม่พบสิทธิ์แอดมิน" : "Admin access not found.");
-        setLoading(false);
-        return;
-      }
-
       setLoading(true);
       const params = new URLSearchParams({
         page: String(pageNum),
         limit: String(ITEMS_PER_PAGE),
-        filter: filterVal,
       });
+      if (filterVal !== "all") {
+        params.set("status", filterVal);
+      }
       if (searchVal.trim()) {
         params.set("search", searchVal.trim());
       }
 
-      fetch(`/api/backoffice/products?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`/api/backoffice/products?${params}`)
         .then(async (res) => {
           if (!res.ok) {
             const body = await res.json().catch(() => ({}));
@@ -91,7 +110,7 @@ export default function AdminProductsPage() {
           return res.json();
         })
         .then((data: ProductsResponse) => {
-          setProducts(data.products);
+          setProducts(data.products.map((product) => normalizeProduct(product)));
           setTotal(data.total);
           setError(null);
         })
@@ -121,9 +140,6 @@ export default function AdminProductsPage() {
   }, [searchInput, search, filter, fetchProducts]);
 
   const handleToggleActive = async (product: Product) => {
-    const token = getStoredToken();
-    if (!token) return;
-
     setActionLoading(product.id);
     setActionSuccess(null);
 
@@ -132,7 +148,6 @@ export default function AdminProductsPage() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ isActive: !product.isActive }),
       });
@@ -143,7 +158,9 @@ export default function AdminProductsPage() {
       }
 
       const { product: updated } = await res.json();
-      setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      setProducts((prev) =>
+        prev.map((p) => (p.id === updated.id ? normalizeProduct(updated, p) : p))
+      );
       setActionSuccess(
         updated.isActive
           ? lang === "th"
@@ -179,8 +196,7 @@ export default function AdminProductsPage() {
   };
 
   const handleBulkActivate = async () => {
-    const token = getStoredToken();
-    if (!token || selectedProducts.size === 0) return;
+    if (selectedProducts.size === 0) return;
     setBulkLoading(true);
     setActionSuccess(null);
     try {
@@ -188,7 +204,7 @@ export default function AdminProductsPage() {
         [...selectedProducts].map((id) =>
           fetch(`/api/backoffice/products/${id}`, {
             method: "PATCH",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ isActive: true }),
           })
         )
@@ -211,8 +227,7 @@ export default function AdminProductsPage() {
   };
 
   const handleBulkDeactivate = async () => {
-    const token = getStoredToken();
-    if (!token || selectedProducts.size === 0) return;
+    if (selectedProducts.size === 0) return;
     setBulkLoading(true);
     setActionSuccess(null);
     try {
@@ -220,7 +235,7 @@ export default function AdminProductsPage() {
         [...selectedProducts].map((id) =>
           fetch(`/api/backoffice/products/${id}`, {
             method: "PATCH",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ isActive: false }),
           })
         )
@@ -258,9 +273,6 @@ export default function AdminProductsPage() {
   const handleSaveEdit = async () => {
     if (!editProduct) return;
 
-    const token = getStoredToken();
-    if (!token) return;
-
     const price = parseFloat(editPrice);
     const stockQuantity = parseInt(editStock, 10);
 
@@ -280,7 +292,6 @@ export default function AdminProductsPage() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ price, stockQuantity }),
       });
@@ -291,7 +302,9 @@ export default function AdminProductsPage() {
       }
 
       const { product: updated } = await res.json();
-      setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      setProducts((prev) =>
+        prev.map((p) => (p.id === updated.id ? normalizeProduct(updated, p) : p))
+      );
       setActionSuccess(
         lang === "th"
           ? `อัปเดตสินค้า "${updated.name}" แล้ว`
@@ -310,23 +323,6 @@ export default function AdminProductsPage() {
     setDeleteProduct(product);
     setOrderCountWarning(null);
     setDeleteLoading(false);
-
-    // Pre-check if product has orders (warning only, doesn't block)
-    const token = getStoredToken();
-    if (token) {
-      try {
-        const res = await fetch(`/api/backoffice/products/${product.id}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.status === 409) {
-          const body = await res.json();
-          setOrderCountWarning(body.orderCount ?? null);
-        }
-      } catch {
-        // ignore
-      }
-    }
   };
 
   const closeDeleteConfirm = () => {
@@ -338,15 +334,11 @@ export default function AdminProductsPage() {
   const handleDelete = async () => {
     if (!deleteProduct) return;
 
-    const token = getStoredToken();
-    if (!token) return;
-
     setDeleteLoading(true);
 
     try {
       const res = await fetch(`/api/backoffice/products/${deleteProduct.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!res.ok) {
@@ -774,7 +766,7 @@ export default function AdminProductsPage() {
             <p className="mb-1 text-text-subtle">
               {lang === "th" ? "คุณแน่ใจหรือไม่ว่าต้องการลบ" : "Are you sure you want to delete"}
             </p>
-            <p className="mb-4 font-semibold text-text-main">"{deleteProduct.name}"?</p>
+            <p className="mb-4 font-semibold text-text-main">&quot;{deleteProduct.name}&quot;?</p>
 
             {orderCountWarning !== null && (
               <div className="mb-4 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">

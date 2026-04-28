@@ -73,14 +73,14 @@ export async function GET() {
     const orderRows = await getOrdersByBuyer(userId);
 
     const orders = orderRows.map((row) => {
-      const orderId = row._id!.toString();
+      const orderId = row.id!;
       const items: OrderItem[] = row.items.map((item) =>
-        buildOrderItem(item, orderId, row.seller_id)
+        buildOrderItem(item, orderId, row.seller_id!)
       );
       return mapOrderDocument({
         orderId,
-        buyerId: row.buyer_id,
-        sellerId: row.seller_id,
+        buyerId: row.buyer_id!,
+        sellerId: row.seller_id!,
         date: row.created_at,
         status: row.status as OrderStatus,
         paymentStatus: row.payment_status as PaymentStatus,
@@ -152,7 +152,11 @@ export async function POST(req: NextRequest) {
         paymentMethod: body.paymentMethod,
       });
 
-      const orderId = order._id!.toString();
+      if (!order) {
+        return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
+      }
+
+      const orderId = order.id!;
       const state = deriveOrderState(status);
 
       // Insert ledger entries for paid orders

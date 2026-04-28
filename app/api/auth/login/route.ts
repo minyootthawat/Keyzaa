@@ -43,12 +43,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const userId = user._id!.toString();
+    const userId = user.id;
     const adminAccess = await getAdminAccessForEmail(user.email);
 
-    // Get sellerId from MongoDB
+    // Get sellerId from Supabase
     const seller = await getSellerByUserId(userId);
-    const sellerId = seller?._id?.toString();
+    const sellerId = seller?.id;
 
     const token = await new SignJWT({
       userId,

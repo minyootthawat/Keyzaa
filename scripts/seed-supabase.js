@@ -89,11 +89,10 @@ async function main() {
     }
   }
 
-  // Admin access is determined by ADMIN_EMAILS env var, not a database table.
-  // getAdminAccessForEmail checks process.env.ADMIN_EMAILS for admin emails.
-  // Set ADMIN_EMAILS=admin@demo.keyzaa.local:super_admin in Vercel for admin access.
+  // Admin seeding is done via supabase/seed.sql (not this script).
+  // Admin credentials: admin@keyzaa.local / demo123
 
-  console.log('\nDone. Test credentials: buyer@seller@admin@demo.keyzaa.local / demo123');
+  console.log('\nDone. Test credentials: buyer@keyzaa.local, seller@keyzaa.local, admin@keyzaa.local / demo123');
 }
 
 main().catch(err => { console.error(err); process.exit(1); });

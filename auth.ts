@@ -52,15 +52,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!validPassword) return null;
 
         // Update last login
-        const userId = user._id!.toString();
+        const userId = user.id;
         await updateUserLastLogin(userId);
 
-        // Get admin access from MongoDB
+        // Get admin access from Supabase
         const adminAccess = await getAdminAccessForEmail(user.email);
 
-        // Fetch sellerId from MongoDB
+        // Fetch sellerId
         const seller = await getSellerByUserId(userId);
-        const sellerId = seller?._id?.toString();
+        const sellerId = seller?.id;
 
         const result: User = {
           id: userId,
@@ -91,7 +91,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Upsert user in MongoDB
       const existingUser = await findUserByEmail(email);
       if (existingUser) {
-        await updateUser(existingUser._id!.toString(), {
+        await updateUser(existingUser.id, {
           provider: account.provider,
           provider_id: account.providerAccountId,
           last_login_at: new Date().toISOString(),

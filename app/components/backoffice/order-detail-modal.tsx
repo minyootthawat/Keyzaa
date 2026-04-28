@@ -29,17 +29,17 @@ interface OrderDetailModalProps {
 
 const STATUS_LABELS: Record<string, { th: string; en: string }> = {
   pending: { th: "รอดำเนินการ", en: "Pending" },
+  paid: { th: "ชำระเงินแล้ว", en: "Paid" },
   processing: { th: "กำลังดำเนินการ", en: "Processing" },
-  shipped: { th: "จัดส่งแล้ว", en: "Shipped" },
-  delivered: { th: "ส่งมอบแล้ว", en: "Delivered" },
+  completed: { th: "เสร็จสิ้น", en: "Completed" },
   cancelled: { th: "ยกเลิก", en: "Cancelled" },
 };
 
 const STATUS_BADGE: Record<string, string> = {
   pending: "bg-warning/15 text-warning",
+  paid: "bg-brand-primary/15 text-brand-primary",
   processing: "bg-blue-500/15 text-blue-400",
-  shipped: "bg-purple-500/15 text-purple-400",
-  delivered: "bg-success/15 text-success",
+  completed: "bg-success/15 text-success",
   cancelled: "bg-error/15 text-error",
 };
 

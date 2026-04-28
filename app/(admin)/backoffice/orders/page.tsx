@@ -4,7 +4,6 @@ import AdminRouteGuard from "@/app/components/AdminRouteGuard";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 import { useLanguage } from "@/app/context/LanguageContext";
-import { getStoredToken } from "@/app/lib/auth-client";
 import OrderDetailModal from "@/app/components/backoffice/order-detail-modal";
 
 interface Order {
@@ -29,17 +28,17 @@ const ITEMS_PER_PAGE = 20;
 
 const STATUS_LABELS: Record<string, { th: string; en: string }> = {
   pending: { th: "รอดำเนินการ", en: "Pending" },
+  paid: { th: "ชำระเงินแล้ว", en: "Paid" },
   processing: { th: "กำลังดำเนินการ", en: "Processing" },
-  shipped: { th: "จัดส่งแล้ว", en: "Shipped" },
-  delivered: { th: "ส่งมอบแล้ว", en: "Delivered" },
+  completed: { th: "เสร็จสิ้น", en: "Completed" },
   cancelled: { th: "ยกเลิก", en: "Cancelled" },
 };
 
 const STATUS_BADGE: Record<string, string> = {
   pending: "bg-warning/15 text-warning",
+  paid: "bg-brand-primary/15 text-brand-primary",
   processing: "bg-blue-500/15 text-blue-400",
-  shipped: "bg-purple-500/15 text-purple-400",
-  delivered: "bg-success/15 text-success",
+  completed: "bg-success/15 text-success",
   cancelled: "bg-error/15 text-error",
 };
 
@@ -67,14 +66,11 @@ export default function AdminOrdersPage() {
   const canWrite = adminPermissions.includes("admin:orders:write");
 
   const fetchOrders = (pageNum: number, status: string) => {
-    const token = getStoredToken();
-    if (!token) { setError(lang === "th" ? "ไม่พบสิทธิ์แอดมิน" : "Admin access not found."); setLoading(false); return; }
-
     setLoading(true);
     let url = `/api/backoffice/orders?page=${pageNum}&limit=${ITEMS_PER_PAGE}`;
     if (status !== "all") url += `&status=${status}`;
 
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(url)
       .then(async (res) => {
         if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || `HTTP ${res.status}`); }
         return res.json();
@@ -90,23 +86,20 @@ export default function AdminOrdersPage() {
   }, [page, statusFilter]);
 
   const handleAction = async (orderId: string, action: string) => {
-    const token = getStoredToken();
-    if (!token) return;
     setActionLoading(orderId);
     setActionSuccess(null);
     try {
       const res = await fetch(`/api/backoffice/orders/${orderId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
       if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || `HTTP ${res.status}`); }
       const updated = (await res.json()).order as Order;
-      setOrders((prev) => prev.map((o) => o.id === updated.id ? { ...o, status: updated.status, paymentStatus: updated.paymentStatus } : o));
+      setOrders((prev) => prev.map((o) => o.id === updated.id ? { ...o, status: updated.status, paymentStatus: updated.payment_status ?? updated.paymentStatus } : o));
       const labels: Record<string, string> = {
         processing: lang === "th" ? "ดำเนินการแล้ว" : "Marked processing",
-        shipped: lang === "th" ? "จัดส่งแล้ว" : "Marked shipped",
-        delivered: lang === "th" ? "ส่งมอบแล้ว" : "Marked delivered",
+        completed: lang === "th" ? "เสร็จสิ้นแล้ว" : "Marked completed",
         refund: lang === "th" ? "คืนเงินแล้ว" : "Refunded",
       };
       setActionSuccess(labels[action] || action);
@@ -119,9 +112,9 @@ export default function AdminOrdersPage() {
   const filterTabs = [
     { key: "all", label: lang === "th" ? "ทั้งหมด" : "All", count: total },
     { key: "pending", label: lang === "th" ? "รอดำเนินการ" : "Pending", count: null },
+    { key: "paid", label: lang === "th" ? "ชำระเงินแล้ว" : "Paid", count: null },
     { key: "processing", label: lang === "th" ? "กำลังดำเนินการ" : "Processing", count: null },
-    { key: "shipped", label: lang === "th" ? "จัดส่งแล้ว" : "Shipped", count: null },
-    { key: "delivered", label: lang === "th" ? "ส่งมอบแล้ว" : "Delivered", count: null },
+    { key: "completed", label: lang === "th" ? "เสร็จสิ้น" : "Completed", count: null },
     { key: "cancelled", label: lang === "th" ? "ยกเลิก" : "Cancelled", count: null },
   ];
 
@@ -226,7 +219,7 @@ export default function AdminOrdersPage() {
                         {canWrite && (
                           <td className="px-4 py-3 text-right">
                             <div className="flex justify-end gap-2 flex-wrap">
-                              {order.status === "pending" && (
+                              {(order.status === "pending" || order.status === "paid") && (
                                 <button
                                   onClick={() => handleAction(order.id, "processing")}
                                   disabled={actionLoading === order.id}
@@ -237,20 +230,11 @@ export default function AdminOrdersPage() {
                               )}
                               {order.status === "processing" && (
                                 <button
-                                  onClick={() => handleAction(order.id, "shipped")}
-                                  disabled={actionLoading === order.id}
-                                  className="shrink-0 rounded-xl bg-purple-500 px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-85 disabled:opacity-50"
-                                >
-                                  {lang === "th" ? "จัดส่ง" : "Ship"}
-                                </button>
-                              )}
-                              {order.status === "shipped" && (
-                                <button
-                                  onClick={() => handleAction(order.id, "delivered")}
+                                  onClick={() => handleAction(order.id, "completed")}
                                   disabled={actionLoading === order.id}
                                   className="shrink-0 rounded-xl bg-success px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-85 disabled:opacity-50"
                                 >
-                                  {lang === "th" ? "ส่งมอบแล้ว" : "Delivered"}
+                                  {lang === "th" ? "เสร็จสิ้น" : "Complete"}
                                 </button>
                               )}
                               {order.paymentStatus === "paid" && order.status !== "cancelled" && (

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerAdminAccess } from "@/lib/auth/server";
 import { getSellerById, updateSeller } from "@/lib/db/collections/sellers";
-import { getDB } from "@/lib/mongodb";
+import { findUserById } from "@/lib/db/supabase";
 
 export async function GET(
   req: NextRequest,
@@ -20,24 +20,24 @@ export async function GET(
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const db = getDB();
-    const user = await db.collection("users").findOne({ _id: new (require("mongodb").ObjectId)(seller.user_id) });
+    // Fetch user from Supabase
+    const user = seller.user_id ? await findUserById(seller.user_id) : null;
 
     return NextResponse.json({
       seller: {
-        id: seller._id?.toString() ?? "",
+        id: seller.id,
         storeName: seller.store_name,
         phone: seller.phone ?? "",
-        verified: seller.verified,
+        verified: seller.is_verified,
         balance: seller.balance ?? 0,
         pendingBalance: seller.pending_balance ?? 0,
-        salesCount: seller.sales_count ?? 0,
+        salesCount: seller.total_sales ?? 0,
         rating: seller.rating ?? 0,
         createdAt: seller.created_at,
         user: {
           id: seller.user_id,
-          email: (user as Record<string, unknown> | null)?.email ?? "",
-          name: (user as Record<string, unknown> | null)?.name ?? "",
+          email: user?.email ?? "",
+          name: user?.name ?? "",
         },
       },
     });
@@ -64,8 +64,8 @@ export async function PATCH(
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
-    const verified = action === "approve";
-    const updated = await updateSeller(id, { verified });
+    const is_verified = action === "approve";
+    const updated = await updateSeller(id, { is_verified });
 
     if (!updated) {
       return NextResponse.json({ error: "Failed to update seller" }, { status: 500 });

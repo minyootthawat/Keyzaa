@@ -4,7 +4,6 @@ import AdminRouteGuard from "@/app/components/AdminRouteGuard";
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/app/context/LanguageContext";
 import { useAuth } from "@/app/context/AuthContext";
-import { getStoredToken } from "@/app/lib/auth-client";
 import type { AdminRole } from "@/lib/auth/admin";
 import type { Admin, AdminAuditLog, AdminIpAllowlist } from "@/lib/db/admin-db";
 
@@ -56,7 +55,6 @@ function AdminAdminsContent() {
   // Search users for add
   const [userSearch, setUserSearch] = useState("");
   const [userResults, setUserResults] = useState<{ id: string; email: string; name: string }[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
 
   // Edit role
   const [editRole, setEditRole] = useState<AdminRole>("support_admin");
@@ -127,10 +125,8 @@ function AdminAdminsContent() {
 
   // Fetch admins
   const fetchAdmins = () => {
-    const token = getStoredToken();
-    if (!token) return;
     setAdminsLoading(true);
-    fetch("/api/backoffice/admins", { headers: { Authorization: `Bearer ${token}` } })
+    fetch("/api/backoffice/admins")
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -143,14 +139,10 @@ function AdminAdminsContent() {
   // Search users
   const searchUsers = (query: string) => {
     if (!query.trim()) { setUserResults([]); return; }
-    const token = getStoredToken();
-    if (!token) return;
-    setSearchLoading(true);
-    fetch(`/api/backoffice/users?search=${encodeURIComponent(query)}&limit=10`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`/api/backoffice/users?search=${encodeURIComponent(query)}&limit=10`)
       .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((d) => setUserResults(d.users ?? []))
-      .catch(() => setUserResults([]))
-      .finally(() => setSearchLoading(false));
+      .catch(() => setUserResults([]));
   };
 
   useEffect(() => {
@@ -171,15 +163,13 @@ function AdminAdminsContent() {
   // Fetch audit logs
   useEffect(() => {
     if (activeTab !== "audit") return;
-    const token = getStoredToken();
-    if (!token) return;
     setAuditLoading(true);
     let url = `/api/backoffice/admins/audit-log?limit=${AUDIT_LIMIT}&offset=${auditOffset}`;
     if (auditFilter.adminId) url += `&adminId=${auditFilter.adminId}`;
     if (auditFilter.action) url += `&action=${encodeURIComponent(auditFilter.action)}`;
     if (auditFilter.dateFrom) url += `&dateFrom=${auditFilter.dateFrom}`;
     if (auditFilter.dateTo) url += `&dateTo=${auditFilter.dateTo}`;
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(url)
       .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((d) => setAuditLogs(d.logs ?? []))
       .catch(() => setAuditLogs([]))
@@ -189,10 +179,8 @@ function AdminAdminsContent() {
   // Fetch IP allowlist
   useEffect(() => {
     if (activeTab !== "ip") return;
-    const token = getStoredToken();
-    if (!token) return;
     setIpLoading(true);
-    fetch("/api/backoffice/admins/ip-allowlist", { headers: { Authorization: `Bearer ${token}` } })
+    fetch("/api/backoffice/admins/ip-allowlist")
       .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((d) => setIpEntries(d.entries ?? []))
       .catch(() => setIpEntries([]))
@@ -202,14 +190,12 @@ function AdminAdminsContent() {
   // Add admin
   const handleAddAdmin = async () => {
     if (!addUserId) return;
-    const token = getStoredToken();
-    if (!token) return;
     setModalLoading(true);
     setModalError(null);
     try {
       const res = await fetch("/api/backoffice/admins", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: addUserId, role: addRole }),
       });
       if (!res.ok) {
@@ -232,14 +218,12 @@ function AdminAdminsContent() {
   // Edit admin role
   const handleEditAdmin = async () => {
     if (!selectedAdmin) return;
-    const token = getStoredToken();
-    if (!token) return;
     setModalLoading(true);
     setModalError(null);
     try {
       const res = await fetch(`/api/backoffice/admins/${selectedAdmin.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: editRole }),
       });
       if (!res.ok) {
@@ -259,14 +243,11 @@ function AdminAdminsContent() {
   // Delete admin
   const handleDeleteAdmin = async () => {
     if (!selectedAdmin) return;
-    const token = getStoredToken();
-    if (!token) return;
     setModalLoading(true);
     setModalError(null);
     try {
       const res = await fetch(`/api/backoffice/admins/${selectedAdmin.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
@@ -284,12 +265,10 @@ function AdminAdminsContent() {
 
   // Toggle IP entry
   const handleToggleIp = async (entry: AdminIpAllowlist) => {
-    const token = getStoredToken();
-    if (!token) return;
     try {
       const res = await fetch("/api/backoffice/admins/ip-allowlist", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: entry.id, isActive: !entry.is_active }),
       });
       if (!res.ok) return;
@@ -300,14 +279,12 @@ function AdminAdminsContent() {
   // Add IP entry
   const handleAddIp = async () => {
     if (!ipForm.ip || !ipForm.label) return;
-    const token = getStoredToken();
-    if (!token) return;
     setIpModalLoading(true);
     setModalError(null);
     try {
       const res = await fetch("/api/backoffice/admins/ip-allowlist", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ip: ipForm.ip, label: ipForm.label }),
       });
       if (!res.ok) {
@@ -316,8 +293,7 @@ function AdminAdminsContent() {
       }
       setShowAddIpModal(false);
       setIpForm({ ip: "", label: "" });
-      const token2 = getStoredToken();
-      const r = await fetch("/api/backoffice/admins/ip-allowlist", { headers: { Authorization: `Bearer ${token2}` } });
+      const r = await fetch("/api/backoffice/admins/ip-allowlist");
       const d = await r.json();
       setIpEntries(d.entries ?? []);
       setActionSuccess(lang === "th" ? "เพิ่ม IP แล้ว" : "IP added");
@@ -329,12 +305,9 @@ function AdminAdminsContent() {
 
   // Delete IP entry
   const handleDeleteIp = async (id: string) => {
-    const token = getStoredToken();
-    if (!token) return;
     try {
       const res = await fetch(`/api/backoffice/admins/ip-allowlist?id=${id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
       setIpEntries((prev) => prev.filter((e) => e.id !== id));

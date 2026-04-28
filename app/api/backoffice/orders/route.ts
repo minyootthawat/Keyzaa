@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerAdminAccess } from "@/lib/auth/server";
 import { listOrders } from "@/lib/db/collections/orders";
-import { getDB } from "@/lib/mongodb";
+import type { OrderStatus } from "@/lib/db/collections/orders";
+import { findUserById } from "@/lib/db/collections/users";
+import { getSellerById } from "@/lib/db/collections/sellers";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,48 +15,55 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
     const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "20", 10));
-    const status = searchParams.get("status");
+    const status = searchParams.get("status") as OrderStatus | null;
 
     const { orders, total } = await listOrders({
-      status: status || undefined,
+      status: (status ?? undefined) as "pending" | "paid" | "processing" | "completed" | "cancelled" | undefined,
       limit,
       offset: (page - 1) * limit,
     });
 
-    // Fetch user and seller info
-    const db = getDB();
-    const buyerIds = [...new Set(orders.map((o) => o.buyer_id))];
-    const sellerIds = [...new Set(orders.map((o) => o.seller_id))];
+    // Fetch user and seller info for each order
+    const buyerIds = [...new Set(orders.map((o) => o.buyer_id).filter(Boolean))];
+    const sellerIds = [...new Set(orders.map((o) => o.seller_id).filter(Boolean))];
 
-    const [buyers, sellers] = await Promise.all([
-      buyerIds.length > 0 ? db.collection("users").find({ _id: { $in: buyerIds.map((id) => new (require("mongodb")).ObjectId(id)) } }).toArray() : [],
-      sellerIds.length > 0 ? db.collection("sellers").find({ _id: { $in: sellerIds.map((id) => new (require("mongodb")).ObjectId(id)) } }).toArray() : [],
+    const buyerMap: Record<string, { email: string; name: string }> = {};
+    const sellerMap: Record<string, { store_name: string }> = {};
+
+    await Promise.all([
+      Promise.all(buyerIds.map(async (id) => {
+        if (id) {
+          const user = await findUserById(id);
+          if (user) {
+            buyerMap[id] = { email: user.email, name: user.name };
+          }
+        }
+      })),
+      Promise.all(sellerIds.map(async (id) => {
+        if (id) {
+          const seller = await getSellerById(id);
+          if (seller) {
+            sellerMap[id] = { store_name: seller.store_name };
+          }
+        }
+      })),
     ]);
 
-    const buyerMap: Record<string, Record<string, unknown>> = {};
-    for (const u of buyers) {
-      buyerMap[u._id.toString()] = u;
-    }
-    const sellerMap: Record<string, Record<string, unknown>> = {};
-    for (const s of sellers) {
-      sellerMap[s._id.toString()] = s;
-    }
-
     const mapped = orders.map((o) => ({
-      id: o._id?.toString() ?? "",
-      orderNumber: (o as unknown as Record<string, unknown>).order_number ?? "",
+      id: o.id,
+      orderNumber: o.public_id ?? "",
       status: o.status,
       paymentStatus: o.payment_status,
       grossAmount: o.gross_amount ?? 0,
       createdAt: o.created_at,
       user: {
         id: o.buyer_id,
-        email: (buyerMap[o.buyer_id] as Record<string, unknown> | undefined)?.email ?? "",
-        name: (buyerMap[o.buyer_id] as Record<string, unknown> | undefined)?.name ?? "",
+        email: buyerMap[o.buyer_id ?? ""]?.email ?? "",
+        name: buyerMap[o.buyer_id ?? ""]?.name ?? "",
       },
       seller: {
         id: o.seller_id,
-        storeName: (sellerMap[o.seller_id] as Record<string, unknown> | undefined)?.store_name ?? "",
+        storeName: sellerMap[o.seller_id ?? ""]?.store_name ?? "",
       },
     }));
 

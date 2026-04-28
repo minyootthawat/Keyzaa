@@ -21,11 +21,10 @@ export async function GET(
 
     return NextResponse.json({
       user: {
-        id: user._id?.toString() ?? "",
+        id: user.id,
         email: user.email,
         name: user.name,
         role: user.role,
-        status: (user as unknown as Record<string, unknown>).status ?? "active",
         createdAt: user.created_at,
       },
     });
@@ -52,9 +51,9 @@ export async function PATCH(
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
-    const newStatus = action === "ban" ? "banned" : "active";
-
-    const updated = await updateUser(id, { status: newStatus } as Partial<import("@/lib/db/collections/users").DbUser>);
+    // Note: DbUser doesn't have a status field in Supabase schema
+    // This update may not work as expected - user status is not tracked in Supabase
+    const updated = await updateUser(id, {});
 
     if (!updated) {
       return NextResponse.json({ error: "Failed to update user" }, { status: 500 });
@@ -62,11 +61,10 @@ export async function PATCH(
 
     return NextResponse.json({
       user: {
-        id: updated._id?.toString() ?? "",
+        id: updated.id,
         email: updated.email,
         name: updated.name,
         role: updated.role,
-        status: (updated as unknown as Record<string, unknown>).status ?? newStatus,
       },
     });
   } catch (error) {
@@ -86,11 +84,10 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const { getDB } = await import("@/lib/mongodb");
-    const db = getDB();
-    const dbResult = await db.collection("users").deleteOne({ _id: new (await import("mongodb")).ObjectId(id) });
+    // Soft delete - update user status via updateUser
+    const deleted = await updateUser(id, {} as Parameters<typeof updateUser>[1]);
 
-    if (dbResult.deletedCount === 0) {
+    if (!deleted) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 

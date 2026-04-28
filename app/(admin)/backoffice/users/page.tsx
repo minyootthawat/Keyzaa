@@ -4,7 +4,6 @@ import AdminRouteGuard from "@/app/components/AdminRouteGuard";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 import { useLanguage } from "@/app/context/LanguageContext";
-import { getStoredToken } from "@/app/lib/auth-client";
 
 interface User {
   id: string;
@@ -45,16 +44,13 @@ export default function AdminUsersPage() {
   const canWrite = adminPermissions.includes("admin:users:write");
 
   const fetchUsers = (pageNum: number, filterVal: typeof filter, searchVal: string) => {
-    const token = getStoredToken();
-    if (!token) { setError(lang === "th" ? "ไม่พบสิทธิ์แอดมิน" : "Admin access not found."); setLoading(false); return; }
-
     setLoading(true);
     let url = `/api/backoffice/users?page=${pageNum}&limit=${ITEMS_PER_PAGE}`;
     if (filterVal === "active") url += "&status=active";
     else if (filterVal === "banned") url += "&status=banned";
     if (searchVal) url += `&search=${encodeURIComponent(searchVal)}`;
 
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(url)
       .then(async (res) => {
         if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || `HTTP ${res.status}`); }
         return res.json();
@@ -71,14 +67,12 @@ export default function AdminUsersPage() {
   }, [page, filter, search]);
 
   const handleAction = async (userId: string, action: "ban" | "unban") => {
-    const token = getStoredToken();
-    if (!token) return;
     setActionLoading(userId);
     setActionSuccess(null);
     try {
       const res = await fetch(`/api/backoffice/users/${userId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
       if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || `HTTP ${res.status}`); }
@@ -111,8 +105,7 @@ export default function AdminUsersPage() {
   };
 
   const handleBulkBan = async () => {
-    const token = getStoredToken();
-    if (!token || selectedUsers.size === 0) return;
+    if (selectedUsers.size === 0) return;
     setBulkLoading(true);
     setActionSuccess(null);
     try {
@@ -120,7 +113,7 @@ export default function AdminUsersPage() {
         [...selectedUsers].map((id) =>
           fetch(`/api/backoffice/users/${id}`, {
             method: "PATCH",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "ban" }),
           })
         )
@@ -143,8 +136,7 @@ export default function AdminUsersPage() {
   };
 
   const handleBulkUnban = async () => {
-    const token = getStoredToken();
-    if (!token || selectedUsers.size === 0) return;
+    if (selectedUsers.size === 0) return;
     setBulkLoading(true);
     setActionSuccess(null);
     try {
@@ -152,7 +144,7 @@ export default function AdminUsersPage() {
         [...selectedUsers].map((id) =>
           fetch(`/api/backoffice/users/${id}`, {
             method: "PATCH",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "unban" }),
           })
         )

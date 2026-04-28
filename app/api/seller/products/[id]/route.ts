@@ -3,9 +3,9 @@ import { getServerUser } from "@/lib/auth/server";
 import { getSellerByUserId } from "@/lib/db/collections/sellers";
 import { getProductById, updateProduct, deleteProduct } from "@/lib/db/collections/products";
 
-function mapRowToProduct(row: { _id?: { toString(): string }; seller_id: string; name: string; description?: string; category: string; price: number; stock: number; image_url?: string; is_active: boolean }) {
+function mapRowToProduct(row: { id: string; seller_id: string; name: string; description?: string | null; category: string; price: number; stock: number; image_url?: string | null; status: "active" | "inactive" | "out_of_stock" | "deleted" }) {
   return {
-    id: row._id?.toString() ?? "",
+    id: row.id,
     sellerId: row.seller_id,
     title: row.name,
     nameTh: row.name,
@@ -22,7 +22,7 @@ function mapRowToProduct(row: { _id?: { toString(): string }; seller_id: string;
     stock: row.stock,
     soldCount: 0,
     image: row.image_url || "",
-    isActive: row.is_active,
+    isActive: row.status === "active",
   };
 }
 
@@ -44,7 +44,7 @@ export async function GET(
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller._id!.toString();
+    const sellerId = seller.id;
 
     const product = await getProductById(id);
 
@@ -81,7 +81,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller._id!.toString();
+    const sellerId = seller.id;
 
     const existing = await getProductById(id);
     if (!existing) {
@@ -131,12 +131,8 @@ export async function PATCH(
       updates.image_url = body.image === "" ? undefined : body.image;
     }
 
-    if (body.isActive !== undefined) {
-      updates.is_active = Boolean(body.isActive);
-    }
-
     if (body.listingStatus !== undefined) {
-      updates.is_active = body.listingStatus === "active";
+      updates.status = body.listingStatus;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -174,7 +170,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller._id!.toString();
+    const sellerId = seller.id;
 
     const existing = await getProductById(id);
     if (!existing) {
@@ -185,8 +181,8 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Soft delete by setting is_active to false
-    await updateProduct(id, { is_active: false });
+    // Soft delete by setting status to deleted
+    await updateProduct(id, { status: "deleted" });
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {

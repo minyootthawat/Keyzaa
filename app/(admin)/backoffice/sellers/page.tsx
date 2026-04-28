@@ -4,7 +4,6 @@ import AdminRouteGuard from "@/app/components/AdminRouteGuard";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 import { useLanguage } from "@/app/context/LanguageContext";
-import { getStoredToken } from "@/app/lib/auth-client";
 import { formatThaiBaht } from "@/app/lib/marketplace";
 
 interface Seller {
@@ -52,19 +51,12 @@ export default function AdminSellersPage() {
   const canWrite = adminPermissions.includes("admin:sellers:write");
 
   const fetchSellers = (pageNum: number, filterVal: typeof filter) => {
-    const token = getStoredToken();
-    if (!token) {
-      setError(lang === "th" ? "ไม่พบสิทธิ์แอดมิน" : "Admin access not found.");
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     let url = `/api/backoffice/sellers?page=${pageNum}&limit=${ITEMS_PER_PAGE}`;
     if (filterVal === "verified") url += "&verified=true";
     else if (filterVal === "unverified") url += "&verified=false";
 
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(url)
       .then(async (res) => {
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
@@ -89,9 +81,6 @@ export default function AdminSellersPage() {
   }, [page, filter]);
 
   const handleAction = async (sellerId: string, action: "approve" | "reject") => {
-    const token = getStoredToken();
-    if (!token) return;
-
     setActionLoading(sellerId);
     setActionSuccess(null);
 
@@ -100,7 +89,6 @@ export default function AdminSellersPage() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ action }),
       });
@@ -150,8 +138,7 @@ export default function AdminSellersPage() {
   };
 
   const handleBulkApprove = async () => {
-    const token = getStoredToken();
-    if (!token || selectedSellers.size === 0) return;
+    if (selectedSellers.size === 0) return;
     setBulkLoading(true);
     setActionSuccess(null);
     try {
@@ -159,7 +146,7 @@ export default function AdminSellersPage() {
         [...selectedSellers].map((id) =>
           fetch(`/api/backoffice/sellers/${id}`, {
             method: "PATCH",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "approve" }),
           })
         )
@@ -182,8 +169,7 @@ export default function AdminSellersPage() {
   };
 
   const handleBulkReject = async () => {
-    const token = getStoredToken();
-    if (!token || selectedSellers.size === 0) return;
+    if (selectedSellers.size === 0) return;
     setBulkLoading(true);
     setActionSuccess(null);
     try {
@@ -191,7 +177,7 @@ export default function AdminSellersPage() {
         [...selectedSellers].map((id) =>
           fetch(`/api/backoffice/sellers/${id}`, {
             method: "PATCH",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "reject" }),
           })
         )

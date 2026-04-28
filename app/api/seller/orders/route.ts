@@ -20,7 +20,7 @@ export async function GET() {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller._id!.toString();
+    const sellerId = seller.id;
 
     // Fetch orders for this seller
     const orders = await getOrdersBySeller(sellerId);
@@ -29,8 +29,8 @@ export async function GET() {
       return NextResponse.json({ orders: [] });
     }
 
-    // Collect unique buyer IDs
-    const buyerIds = [...new Set(orders.map((o) => o.buyer_id))];
+    // Collect unique buyer IDs (filter out nulls)
+    const buyerIds = [...new Set(orders.map((o) => o.buyer_id).filter((id): id is string => id !== null))];
 
     // Fetch buyer names
     const buyerMap = new Map<string, string>();
@@ -60,10 +60,10 @@ export async function GET() {
       }));
 
       return {
-        id: order._id!.toString(),
-        orderId: order._id!.toString(),
+        id: order.id,
+        orderId: order.id,
         buyerId: order.buyer_id,
-        buyerName: buyerMap.get(order.buyer_id) ?? "Buyer",
+        buyerName: order.buyer_id ? (buyerMap.get(order.buyer_id) ?? "Buyer") : "Buyer",
         date: order.created_at,
         status: order.status,
         paymentStatus: order.payment_status,

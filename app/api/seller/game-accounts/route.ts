@@ -1,75 +1,120 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerUser } from "@/lib/auth/server";
-import { getSellerByUserId } from "@/lib/db/collections/sellers";
-import { getDB } from "@/lib/mongodb";
+import { getServerSellerAccess } from "@/lib/auth/server";
+import { getGameAccountsBySeller, createGameAccount } from "@/lib/db/collections/game-accounts";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const user = await getServerUser();
-    const userId = user?.id ?? null;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const authResult = await getServerSellerAccess(req);
+    if (authResult.status !== 200) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
 
-    const seller = await getSellerByUserId(userId);
-    if (!seller) {
-      return NextResponse.json({ error: "Seller not found" }, { status: 404 });
-    }
+    const { sellerId } = authResult.access!;
 
-    const sellerId = seller._id!.toString();
-    const db = getDB();
-    
-    const accounts = await db
-      .collection("game_accounts")
-      .find({ seller_id: sellerId })
-      .toArray();
+    const accounts = await getGameAccountsBySeller(sellerId);
 
-    return NextResponse.json({ accounts });
+    const mapped = accounts.map((a) => ({
+      id: a.id,
+      gameName: a.game_name,
+      gameNameTh: a.game_name_th ?? "",
+      accountUsername: a.account_username,
+      // accountPassword intentionally excluded from list response
+      description: a.description ?? "",
+      price: Number(a.price),
+      stock: a.stock,
+      isActive: a.is_active,
+      platform: a.platform ?? "",
+      region: a.region ?? "",
+      imageUrl: a.image_url ?? "",
+      createdAt: a.created_at,
+    }));
+
+    return NextResponse.json({ accounts: mapped, total: mapped.length });
   } catch (error) {
-    console.error("Seller game accounts get error:", error);
+    console.error("Seller game-accounts list error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await getServerUser();
-    const userId = user?.id ?? null;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const authResult = await getServerSellerAccess(req);
+    if (authResult.status !== 200) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
 
-    const seller = await getSellerByUserId(userId);
-    if (!seller) {
-      return NextResponse.json({ error: "Seller not found" }, { status: 404 });
+    const { sellerId } = authResult.access!;
+
+    const body = await req.json();
+
+    const {
+      gameName,
+      gameNameTh,
+      accountUsername,
+      accountPassword,
+      description,
+      price,
+      stock,
+      platform,
+      region,
+      imageUrl,
+    } = body;
+
+    if (!gameName || typeof gameName !== "string" || gameName.trim() === "") {
+      return NextResponse.json({ error: "Game name is required" }, { status: 400 });
+    }
+    if (!accountUsername || typeof accountUsername !== "string" || accountUsername.trim() === "") {
+      return NextResponse.json({ error: "Account username is required" }, { status: 400 });
+    }
+    if (!accountPassword || typeof accountPassword !== "string" || accountPassword === "") {
+      return NextResponse.json({ error: "Account password is required" }, { status: 400 });
+    }
+    if (price !== undefined && (typeof price !== "number" || price < 0)) {
+      return NextResponse.json({ error: "Price must be a non-negative number" }, { status: 400 });
+    }
+    if (stock !== undefined && (typeof stock !== "number" || stock < 0)) {
+      return NextResponse.json({ error: "Stock must be a non-negative integer" }, { status: 400 });
     }
 
-    const sellerId = seller._id!.toString();
-    const body = await req.json().catch(() => ({}));
+    const account = await createGameAccount({
+      sellerId,
+      gameName: gameName.trim(),
+      gameNameTh: gameNameTh?.trim(),
+      accountUsername: accountUsername.trim(),
+      accountPassword,
+      description: description?.trim(),
+      price: price ?? 0,
+      stock: stock ?? 1,
+      platform: platform?.trim(),
+      region: region?.trim(),
+      imageUrl: imageUrl?.trim(),
+    });
 
-    const db = getDB();
-    const now = new Date().toISOString();
-    
-    const doc = {
-      seller_id: sellerId,
-      is_active: true,
-      created_at: now,
-      updated_at: now,
-      ...body,
-    };
+    if (!account) {
+      return NextResponse.json({ error: "Failed to create game account" }, { status: 500 });
+    }
 
-    const result = await db.collection("game_accounts").insertOne(doc);
-
-    return NextResponse.json({ 
-      account: { 
-        id: result.insertedId.toString(),
-        ...doc 
-      } 
-    }, { status: 201 });
+    return NextResponse.json(
+      {
+        account: {
+          id: account.id,
+          gameName: account.game_name,
+          gameNameTh: account.game_name_th ?? "",
+          accountUsername: account.account_username,
+          description: account.description ?? "",
+          price: Number(account.price),
+          stock: account.stock,
+          isActive: account.is_active,
+          platform: account.platform ?? "",
+          region: account.region ?? "",
+          imageUrl: account.image_url ?? "",
+          createdAt: account.created_at,
+        },
+      },
+      { status: 201 }
+    );
   } catch (error) {
-    console.error("Seller game accounts create error:", error);
+    console.error("Seller game-account create error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

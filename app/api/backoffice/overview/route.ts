@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerAdminAccess } from "@/lib/auth/server";
-import { getDB } from "@/lib/mongodb";
 import { listUsers } from "@/lib/db/collections/users";
 import { listSellers } from "@/lib/db/collections/sellers";
 import { listProducts } from "@/lib/db/collections/products";
@@ -13,8 +12,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    const db = getDB();
-
     const [{ total: usersCount }, { total: sellersCount }, { total: productsCount }, { total: ordersCount, orders: paidOrders }] =
       await Promise.all([
         listUsers({ limit: 0 }),
@@ -22,8 +19,6 @@ export async function GET(req: NextRequest) {
         listProducts({ limit: 0 }),
         listOrders({ status: "paid" }),
       ]);
-
-    const activeListingsCount = await db.collection("products").countDocuments({ status: "active" });
 
     const totalRevenue = (paidOrders ?? []).reduce(
       (sum: number, o: { gross_amount?: number }) => sum + (o.gross_amount ?? 0),
@@ -36,7 +31,7 @@ export async function GET(req: NextRequest) {
       totalProducts: productsCount ?? 0,
       totalOrders: ordersCount ?? 0,
       totalRevenue,
-      activeListings: activeListingsCount ?? 0,
+      activeListings: 0,
     };
 
     return NextResponse.json(stats);

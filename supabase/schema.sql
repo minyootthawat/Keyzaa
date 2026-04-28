@@ -1,222 +1,183 @@
--- Keyzaa Marketplace Schema
-create extension if not exists "uuid-ossp";
+-- KeyZaa Supabase Schema
+-- Run this in Supabase SQL Editor: https://supabase.com/dashboard
+-- ⚠️  This will DROP all existing tables and recreate them
 
--- USERS TABLE
-create table if not exists public.users (
-    id uuid primary key default uuid_generate_v4(),
-    email text unique not null,
-    name text not null,
-    password_hash text,
-    role text not null default 'buyer' check (role in ('buyer', 'seller', 'both')),
-    provider text,
-    provider_id text,
-    created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now(),
-    last_login_at timestamptz
-);
-create index if not exists idx_users_email on public.users (email);
-
--- SELLERS TABLE
-create table if not exists public.sellers (
-    id uuid primary key default uuid_generate_v4(),
-    user_id uuid not null references public.users(id) on delete cascade,
-    store_name text not null,
-    phone text,
-    id_card_url text,
-    verified boolean not null default false,
-    rating numeric(3, 2) default 0,
-    sales_count integer default 0,
-    balance numeric(10, 2) default 0,
-    pending_balance numeric(10, 2) default 0,
-    payout_status text default 'manual' check (payout_status in ('manual', 'enabled')),
-    response_time_minutes integer default 5,
-    fulfillment_rate numeric(5, 2) default 100,
-    dispute_rate numeric(5, 2) default 0,
-    created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now()
+-- ─── USERS ───────────────────────────────────────────────────────────────────
+create table public.users (
+  id               uuid primary key default gen_random_uuid(),
+  email            text not null unique,
+  name             text not null,
+  role             text not null default 'buyer'
+                   check (role in ('buyer', 'seller', 'both')),
+  password_hash    text,
+  provider         text,
+  provider_id      text,
+  is_email_verified boolean not null default false,
+  avatar_url       text,
+  phone            text,
+  last_login_at    timestamptz,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
 );
 
--- PRODUCTS TABLE
-create table if not exists public.products (
-    id uuid primary key default uuid_generate_v4(),
-    seller_id uuid not null references public.sellers(id) on delete cascade,
-    name text not null,
-    description text,
-    category text not null,
-    price numeric(10, 2) not null,
-    stock integer not null default 0,
-    image_url text,
-    is_active boolean not null default true,
-    created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now()
-);
-create index if not exists idx_products_seller_id on public.products (seller_id);
-
--- ORDERS TABLE
-create table if not exists public.orders (
-    id uuid primary key default uuid_generate_v4(),
-    buyer_id uuid not null references public.users(id) on delete restrict,
-    seller_id uuid not null references public.sellers(id) on delete restrict,
-    product_id uuid not null references public.products(id) on delete restrict,
-    quantity integer not null check (quantity > 0),
-    total_price numeric(10, 2) not null,
-    gross_amount numeric(10, 2) default 0,
-    commission_amount numeric(10, 2) default 0,
-    seller_net_amount numeric(10, 2) default 0,
-    platform_fee_rate numeric(5, 4) default 0.05,
-    currency text default 'THB',
-    status text not null default 'pending' check (status in ('pending', 'paid', 'shipped', 'completed', 'cancelled')),
-    payment_status text default 'pending' check (payment_status in ('pending', 'paid', 'failed', 'refunded')),
-    fulfillment_status text default 'pending' check (fulfillment_status in ('pending', 'processing', 'delivered', 'failed', 'cancelled')),
-    payment_method text,
-    created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now()
+-- ─── SELLERS ─────────────────────────────────────────────────────────────────
+create table public.sellers (
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid not null unique
+                      references public.users(id) on delete cascade,
+  store_name          text not null,
+  store_slug          text not null unique,
+  description         text,
+  avatar_url          text,
+  phone               text,
+  id_card_url         text,
+  status              text not null default 'pending_verification'
+                      check (status in ('active', 'suspended', 'pending_verification', 'deleted')),
+  is_verified         boolean not null default false,
+  rating              numeric(2, 1) not null default 0,
+  total_sales         integer not null default 0,
+  balance             numeric(12, 2) not null default 0,
+  pending_balance     numeric(12, 2) not null default 0,
+  payout_status       text not null default 'manual',
+  response_time_minutes integer not null default 5,
+  fulfillment_rate    numeric(5, 2) not null default 100,
+  dispute_rate        numeric(5, 2) not null default 0,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
 );
 
--- ORDER ITEMS TABLE (supports multiple items per order)
-create table if not exists public.order_items (
-    id uuid primary key default uuid_generate_v4(),
-    order_id uuid not null references public.orders(id) on delete cascade,
-    product_id uuid not null references public.products(id) on delete restrict,
-    title text not null,
-    title_th text,
-    title_en text,
-    image text,
-    price numeric(10, 2) not null,
-    quantity integer not null check (quantity > 0),
-    platform text,
-    region_code text,
-    activation_method_th text,
-    activation_method_en text
-);
-create index if not exists idx_orders_seller_id on public.orders (seller_id);
-create index if not exists idx_orders_buyer_id on public.orders (buyer_id);
-
--- SELLER LEDGER ENTRIES TABLE
-create table if not exists public.seller_ledger_entries (
-    id uuid primary key default uuid_generate_v4(),
-    seller_id uuid not null references public.sellers(id) on delete cascade,
-    type text not null check (type in ('sale', 'commission_fee', 'withdrawal')),
-    amount numeric(10, 2) not null,
-    order_id uuid references public.orders(id) on delete set null,
-    description text,
-    created_at timestamptz not null default now()
-);
-create index if not exists idx_seller_ledger_entries_seller_id on public.seller_ledger_entries (seller_id);
-
--- TRIGGER FUNCTIONS
-create or replace function public.handle_updated_at() returns trigger as $$ begin new.updated_at = now(); return new; end; $$ language plpgsql;
-
-create or replace function public.handle_users_updated_at() returns trigger as $$ begin new.updated_at = now(); return new; end; $$ language plpgsql;
-drop trigger if exists set_users_updated_at on public.users;
-create trigger set_users_updated_at before update on public.users for each row execute function public.handle_users_updated_at();
-
-create or replace function public.handle_sellers_updated_at() returns trigger as $$ begin new.updated_at = now(); return new; end; $$ language plpgsql;
-drop trigger if exists set_sellers_updated_at on public.sellers;
-create trigger set_sellers_updated_at before update on public.sellers for each row execute function public.handle_sellers_updated_at();
-
-create or replace function public.handle_products_updated_at() returns trigger as $$ begin new.updated_at = now(); return new; end; $$ language plpgsql;
-drop trigger if exists set_products_updated_at on public.products;
-create trigger set_products_updated_at before update on public.products for each row execute function public.handle_products_updated_at();
-
-create or replace function public.handle_orders_updated_at() returns trigger as $$ begin new.updated_at = now(); return new; end; $$ language plpgsql;
-drop trigger if exists set_orders_updated_at on public.orders;
-create trigger set_orders_updated_at before update on public.orders for each row execute function public.handle_orders_updated_at();
-
--- RLS
-alter table public.users enable row level security;
-alter table public.sellers enable row level security;
-alter table public.products enable row level security;
--- Orders table migrated to MongoDB. Disable RLS here; all order auth is enforced in API routes.
-alter table public.orders disable row level security;
--- Ledger migrated to MongoDB-style access pattern; disable RLS until migrated.
--- Auth for ledger entries is enforced in application code (API routes use service role).
-alter table public.seller_ledger_entries disable row level security;
-
--- USERS POLICIES
-drop policy if exists "Users can read own data" on public.users;
-create policy "Users can read own data" on public.users for select using (auth.uid() = id);
-
-drop policy if exists "Users can update own data" on public.users;
-create policy "Users can update own data" on public.users for update using (auth.uid() = id);
-
-drop policy if exists "Users can insert own data" on public.users;
-create policy "Users can insert own data" on public.users for insert with check (auth.uid() = id);
-
-drop policy if exists "Admins can read all users" on public.users;
-create policy "Admins can read all users" on public.users for select using (
-    exists (select 1 from public.users where id = auth.uid() and role = 'both')
+-- ─── PRODUCTS ────────────────────────────────────────────────────────────────
+create table public.products (
+  id           uuid primary key default gen_random_uuid(),
+  public_id    text not null unique default gen_random_uuid()::text,
+  seller_id    uuid not null
+               references public.sellers(id) on delete cascade,
+  name         text not null,
+  description  text,
+  category     text not null default 'general',
+  price        numeric(10, 2) not null,
+  stock        integer not null default 0,
+  image_url    text,
+  status       text not null default 'active'
+               check (status in ('active', 'inactive', 'out_of_stock', 'deleted')),
+  is_featured  boolean not null default false,
+  tags         jsonb not null default '[]',
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
 );
 
--- SELLERS POLICIES
-drop policy if exists "Sellers can read own record" on public.sellers;
-create policy "Sellers can read own record" on public.sellers for select using (user_id in (select id from public.users where auth.uid() = id));
-
-drop policy if exists "Sellers can update own record" on public.sellers;
-create policy "Sellers can update own record" on public.sellers for update using (user_id in (select id from public.users where auth.uid() = id));
-
-drop policy if exists "Sellers can insert own record" on public.sellers;
-create policy "Sellers can insert own record" on public.sellers for insert with check (user_id in (select id from public.users where auth.uid() = id));
-
-drop policy if exists "Admins can read all sellers" on public.sellers;
-create policy "Admins can read all sellers" on public.sellers for select using (
-    exists (select 1 from public.users where id = auth.uid() and role = 'both')
+-- ─── ORDERS ─────────────────────────────────────────────────────────────────
+create table public.orders (
+  id                  uuid primary key default gen_random_uuid(),
+  public_id           text not null unique default gen_random_uuid()::text,
+  buyer_id            uuid
+                     references public.users(id) on delete set null,
+  seller_id           uuid
+                     references public.sellers(id) on delete set null,
+  items               jsonb not null default '[]',
+  -- items format: [{ product_id, title, price, quantity }]
+  total_price         numeric(12, 2) not null,
+  gross_amount        numeric(12, 2) not null,
+  commission_amount   numeric(12, 2) not null,
+  seller_net_amount   numeric(12, 2) not null,
+  platform_fee_rate   numeric(3, 2) not null default 0.05,
+  currency            text not null default 'THB',
+  status              text not null default 'pending'
+                     check (status in ('pending', 'paid', 'processing', 'completed', 'cancelled')),
+  payment_status      text not null default 'pending'
+                     check (payment_status in ('pending', 'paid', 'failed', 'refunded')),
+  fulfillment_status  text not null default 'pending'
+                     check (fulfillment_status in ('pending', 'processing', 'delivered', 'failed', 'cancelled')),
+  payment_method      text,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
 );
 
--- PRODUCTS POLICIES
-drop policy if exists "Anyone can read active products" on public.products;
-create policy "Anyone can read active products" on public.products for select using (is_active = true);
-
-drop policy if exists "Sellers can manage own products" on public.products;
-create policy "Sellers can manage own products" on public.products for all using (
-    seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
+-- ─── LEDGER_ENTRIES ──────────────────────────────────────────────────────────
+create table public.ledger_entries (
+  id          uuid primary key default gen_random_uuid(),
+  public_id   text not null unique default gen_random_uuid()::text,
+  seller_id   uuid not null
+              references public.sellers(id) on delete cascade,
+  type        text not null
+              check (type in ('sale', 'commission_fee', 'withdrawal', 'refund', 'topup')),
+  amount      numeric(12, 2) not null,
+  order_id    uuid references public.orders(id) on delete set null,
+  description text,
+  created_at  timestamptz not null default now()
 );
 
-drop policy if exists "Admins can read all products" on public.products;
-create policy "Admins can read all products" on public.products for select using (
-    exists (select 1 from public.users where id = auth.uid() and role = 'both')
+-- ─── ADMINS ──────────────────────────────────────────────────────────────────
+create table public.admins (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid unique
+               references public.users(id) on delete cascade,
+  email        text not null unique,
+  password_hash text,
+  role         text not null default 'super_admin',
+  is_super_admin boolean not null default false,
+  permissions  jsonb not null default '[]',
+  created_by   uuid references public.admins(id) on delete set null,
+  created_at   timestamptz not null default now()
 );
 
--- LEDGER POLICIES (disabled — ledger RLS uses auth.uid() which breaks with NextAuth JWT strategy)
--- drop policy if exists "Sellers can read own ledger" on public.seller_ledger_entries;
--- create policy "Sellers can read own ledger" on public.seller_ledger_entries for select using (
---     seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
--- );
+-- ─── GAME_ACCOUNTS ───────────────────────────────────────────────────────────
+create table public.game_accounts (
+  id                 uuid primary key default gen_random_uuid(),
+  seller_id          uuid not null
+                     references public.sellers(id) on delete cascade,
+  game_name          text not null,
+  game_name_th       text,
+  account_username   text not null,
+  account_password   text not null,
+  description        text,
+  price              numeric(10, 2) not null default 0,
+  stock              integer not null default 1,
+  is_active          boolean not null default true,
+  platform           text,
+  region             text,
+  image_url          text,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
 
--- drop policy if exists "System can insert ledger entries" on public.seller_ledger_entries;
--- create policy "System can insert ledger entries" on public.seller_ledger_entries for insert with check (
---     seller_id in (select s.id from public.sellers s inner join public.users u on s.user_id = u.id where u.id = auth.uid())
--- );
+-- ─── INDEXES ─────────────────────────────────────────────────────────────────
+create index idx_products_seller_id   on public.products(seller_id);
+create index idx_products_status      on public.products(status);
+create index idx_products_category    on public.products(category);
+create index idx_orders_buyer_id      on public.orders(buyer_id);
+create index idx_orders_seller_id     on public.orders(seller_id);
+create index idx_orders_status        on public.orders(status);
+create index idx_orders_created_at     on public.orders(created_at desc);
+create index idx_ledger_seller_id     on public.ledger_entries(seller_id);
+create index idx_ledger_order_id       on public.ledger_entries(order_id);
+create index idx_sellers_user_id      on public.sellers(user_id);
+create index idx_sellers_status       on public.sellers(status);
+create index idx_admins_user_id       on public.admins(user_id);
+create index idx_game_accounts_seller_id on public.game_accounts(seller_id);
+create index idx_game_accounts_is_active on public.game_accounts(is_active);
 
--- drop policy if exists "Admins can read all ledger entries" on public.seller_ledger_entries;
--- create policy "Admins can read all ledger entries" on public.seller_ledger_entries for select using (
---     exists (select 1 from public.users where id = auth.uid() and role = 'both')
--- );
+-- ─── ROW LEVEL SECURITY ──────────────────────────────────────────────────────
+alter table public.users         enable row level security;
+alter table public.sellers       enable row level security;
+alter table public.products      enable row level security;
+alter table public.orders        enable row level security;
+alter table public.ledger_entries enable row level security;
+alter table public.admins         enable row level security;
+alter table public.game_accounts  enable row level security;
 
--- UTILITY FUNCTIONS
-create or replace function public.get_seller_balance(seller_uuid uuid)
-returns numeric(10, 2) as $$
-declare
-    total_sales numeric(10, 2);
-    total_fees numeric(10, 2);
-    total_withdrawals numeric(10, 2);
-begin
-    select coalesce(sum(amount), 0) into total_sales from public.seller_ledger_entries where seller_id = seller_uuid and type = 'sale';
-    select coalesce(sum(amount), 0) into total_fees from public.seller_ledger_entries where seller_id = seller_uuid and type = 'commission_fee';
-    select coalesce(sum(amount), 0) into total_withdrawals from public.seller_ledger_entries where seller_id = seller_uuid and type = 'withdrawal';
-    return total_sales - total_fees - total_withdrawals;
-end;
-$$ language plpgsql security definer;
-
-create or replace function public.record_sale(order_uuid uuid, commission_amount numeric(10, 2))
-returns void as $$
-declare v_seller_id uuid; v_total_price numeric(10, 2);
-begin
-    select seller_id, total_price into v_seller_id, v_total_price from public.orders where id = order_uuid;
-    insert into public.seller_ledger_entries (seller_id, type, amount, order_id, description)
-    values (v_seller_id, 'sale', v_total_price, order_uuid, 'Sale from order ' || order_uuid::text);
-    insert into public.seller_ledger_entries (seller_id, type, amount, order_id, description)
-    values (v_seller_id, 'commission_fee', commission_amount, order_uuid, 'Commission fee for order ' || order_uuid::text);
-    update public.orders set status = 'completed', updated_at = now() where id = order_uuid;
-end;
-$$ language plpgsql security definer;
+-- Service role bypasses RLS (used by server-side API routes)
+create policy "Service role full access" on public.users
+  using (auth.role() = 'service_role');
+create policy "Service role full access" on public.sellers
+  using (auth.role() = 'service_role');
+create policy "Service role full access" on public.products
+  using (auth.role() = 'service_role');
+create policy "Service role full access" on public.orders
+  using (auth.role() = 'service_role');
+create policy "Service role full access" on public.ledger_entries
+  using (auth.role() = 'service_role');
+create policy "Service role full access" on public.admins
+  using (auth.role() = 'service_role');
+create policy "Service role full access" on public.game_accounts
+  using (auth.role() = 'service_role');

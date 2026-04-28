@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    const sellerId = seller._id!.toString();
+    const sellerId = seller.id;
 
     // Fetch orders, products, and ledger entries in parallel
     const [ordersData, productsData, ledgerData] = await Promise.all([
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
 
     const availableForPayout = Math.max(0, netEarnings);
     const orderCount = ordersData.filter(
-      (o) => o.payment_status === "paid" || o.status === "completed" || o.status === "shipped"
+      (o) => o.payment_status === "paid" || o.status === "completed"
     ).length;
 
     const kpis = {
@@ -83,8 +83,8 @@ export async function GET(req: NextRequest) {
     };
 
     const orders = paginatedOrders.map((order) => ({
-      id: order._id!.toString(),
-      orderId: order._id!.toString(),
+      id: order.id,
+      orderId: order.id,
       buyerId: order.buyer_id,
       date: order.created_at,
       status: order.status,
@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
       paymentMethod: order.payment_method || null,
       items: order.items.map((item: OrderItem) => ({
         id: item.product_id,
-        orderId: order._id!.toString(),
+        orderId: order.id,
         productId: item.product_id,
         title: item.title ?? "",
         image: item.image ?? "",
@@ -111,10 +111,10 @@ export async function GET(req: NextRequest) {
     }));
 
     const products = productsData.map((p) => ({
-      id: p._id!.toString(),
+      id: p.id,
       title: p.name,
       stock: p.stock,
-      soldCount: soldCountMap[p._id!.toString()] ?? 0,
+      soldCount: soldCountMap[p.id] ?? 0,
       price: Number(p.price),
     }));
 

@@ -20,9 +20,4 @@ export type { DbLedgerEntry } from "./ledger";
 
 // Admin / platform collection
 export * from "./admins";
-export type {
-  DbAdmin,
-  DbAuditLog,
-  DbIpAllowlist,
-  DbPlatformSetting,
-} from "./admins";
+export type { DbAdmin } from "./admins";

@@ -1,168 +1,177 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerAdminAccess } from "@/lib/auth/server";
-import { getDB } from "@/lib/mongodb";
+import { listOrders } from "@/lib/db/supabase";
+import { listSellers } from "@/lib/db/collections/sellers";
+import { listProducts } from "@/lib/db/collections/products";
+import { listUsers } from "@/lib/db/collections/users";
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const days = Math.min(parseInt(searchParams.get("days") ?? "30", 10), 365);
-  const daysAgo = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+export async function GET(req: NextRequest) {
   try {
-    const result = await getServerAdminAccess(request);
-    if (result.status !== 200) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
+    const authResult = await getServerAdminAccess(req);
+    if (authResult.status !== 200) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
 
-    const db = getDB();
+    const { searchParams } = new URL(req.url);
+    const requestedDays = parseInt(searchParams.get("days") ?? "", 10);
+    const period = searchParams.get("period") ?? "30d"; // 7d, 30d, 90d, all
+    const analyticsDays = Number.isFinite(requestedDays) && requestedDays > 0
+      ? Math.min(requestedDays, 365)
+      : period === "7d"
+        ? 7
+        : period === "90d"
+          ? 90
+          : period === "all"
+            ? 365
+            : 30;
 
-    // --- Summary stats ---
-    const [
-      totalOrders,
-      revenueData,
-      newUsers30d,
-      activeSellers,
-    ] = await Promise.all([
-      db.collection("orders").countDocuments(),
-      db.collection("orders").find({ status: "paid", payment_status: "paid" }, { projection: { gross_amount: 1 } }).toArray(),
-      db.collection("users").countDocuments({ created_at: { $gte: daysAgo.toISOString() } }),
-      db.collection("sellers").countDocuments({ verified: true }),
-    ]);
+    // Determine date range
+    let startDate: Date | null = null;
+    if (period !== "all" || Number.isFinite(requestedDays)) {
+      startDate = new Date(Date.now() - analyticsDays * 24 * 60 * 60 * 1000);
+    }
 
-    const revenueDocs = revenueData as unknown as Array<{ gross_amount?: number }>;
-    const totalRevenue = revenueDocs.reduce(
-      (sum: number, o) => sum + (o.gross_amount ?? 0),
-      0
-    );
-    const orderCount = totalOrders;
-    const avgOrderValue = orderCount > 0 ? totalRevenue / orderCount : 0;
+    // Fetch all orders (paginated internally, use large limit for analytics)
+    const { orders } = await listOrders({ limit: 10000, offset: 0 });
 
-    // --- Revenue by day (last N days) ---
-    const ordersForRevenue = await db
-      .collection("orders")
-      .find({ status: "paid", payment_status: "paid", created_at: { $gte: daysAgo.toISOString() } }, { projection: { gross_amount: 1, created_at: 1 } })
-      .toArray();
+    // Filter by date range if needed
+    const filteredOrders = startDate
+      ? orders.filter((o) => new Date(o.created_at) >= startDate!)
+      : orders;
 
-    const revenueByDayMap: Record<string, number> = {};
-    for (let i = 0; i < days; i++) {
+    // Compute metrics
+    const totalOrders = filteredOrders.length;
+    const completedOrders = filteredOrders.filter((o) => o.status === "completed");
+    const pendingOrders = filteredOrders.filter((o) => o.status === "pending");
+    const cancelledOrders = filteredOrders.filter((o) => o.status === "cancelled");
+
+    const totalRevenue = completedOrders.reduce((sum, o) => sum + Number(o.total_price), 0);
+    const totalCommission = completedOrders.reduce((sum, o) => sum + Number(o.commission_amount), 0);
+    const totalGross = completedOrders.reduce((sum, o) => sum + Number(o.gross_amount), 0);
+
+    const avgOrderValue = completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0;
+
+    // Seller stats
+    const { sellers } = await listSellers({ limit: 10000, offset: 0 });
+    const activeSellers = sellers.filter((s) => s.status === "active").length;
+    const pendingSellers = sellers.filter((s) => s.status === "pending_verification").length;
+
+    // Product stats
+    const { products } = await listProducts({ limit: 10000, offset: 0, status: undefined });
+    const activeProducts = products.filter((p) => p.status === "active").length;
+    const outOfStockProducts = products.filter((p) => p.status === "out_of_stock").length;
+    const { users } = await listUsers({ limit: 10000, offset: 0 });
+
+    // Revenue by day
+    const revenueByDay: Record<string, { date: string; amount: number }> = {};
+    const ordersByDay: Record<string, number> = {};
+    const newUsersByDayMap: Record<string, { date: string; count: number }> = {};
+    for (let i = 0; i < analyticsDays; i++) {
       const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
       const key = d.toISOString().split("T")[0];
-      revenueByDayMap[key] = 0;
+      revenueByDay[key] = { date: key, amount: 0 };
+      ordersByDay[key] = 0;
+      newUsersByDayMap[key] = { date: key, count: 0 };
     }
-    for (const o of ordersForRevenue) {
-      const key = (o.created_at as string).split("T")[0];
-      if (key in revenueByDayMap) revenueByDayMap[key] += o.gross_amount ?? 0;
-    }
-    const revenueByDay = Object.entries(revenueByDayMap)
-      .map(([date, amount]) => ({ date, amount }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    // --- Orders by status ---
-    const ordersByStatusRaw = await db
-      .collection("orders")
-      .find({}, { projection: { status: 1 } })
-      .toArray();
-
-    const statusCountMap: Record<string, number> = {};
-    for (const o of ordersByStatusRaw) {
-      const s = String((o as Record<string, unknown>).status ?? "unknown");
-      statusCountMap[s] = (statusCountMap[s] ?? 0) + 1;
-    }
-    const ordersByStatus = Object.entries(statusCountMap).map(([status, count]) => ({
-      status,
-      count,
-    }));
-
-    // --- New users by day (last N days) ---
-    const newUsersRaw = await db
-      .collection("users")
-      .find({ created_at: { $gte: daysAgo.toISOString() } }, { projection: { created_at: 1 } })
-      .toArray();
-
-    const newUsersMap: Record<string, number> = {};
-    for (let i = 0; i < days; i++) {
-      const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-      const key = d.toISOString().split("T")[0];
-      newUsersMap[key] = 0;
-    }
-    for (const u of newUsersRaw) {
-      const key = ((u as Record<string, unknown>).created_at as string).split("T")[0];
-      if (key in newUsersMap) newUsersMap[key]++;
-    }
-    const newUsersByDay = Object.entries(newUsersMap)
-      .map(([date, count]) => ({ date, count }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    // --- Top products (by units sold via order items) ---
-    const orderItems = await db
-      .collection("order_items")
-      .find()
-      .toArray();
-
-    const productStatsMap: Record<string, { id: string; name: string; sold: number; revenue: number }> = {};
-    for (const item of orderItems) {
-      const pid = (item as Record<string, unknown>).product_id as string;
-      const pname = ((item as Record<string, unknown>).product as { name?: string } | null)?.name ?? "Unknown";
-      if (!productStatsMap[pid]) {
-        productStatsMap[pid] = { id: pid, name: pname, sold: 0, revenue: 0 };
+    for (const order of completedOrders) {
+      const key = order.created_at.split("T")[0];
+      if (revenueByDay[key]) {
+        revenueByDay[key].amount += Number(order.total_price);
+        ordersByDay[key] += 1;
       }
-      productStatsMap[pid].sold += ((item as Record<string, unknown>).quantity as number) ?? 0;
-      productStatsMap[pid].revenue += (((item as Record<string, unknown>).quantity as number) ?? 0) * (((item as Record<string, unknown>).unit_price as number) ?? 0);
     }
-    const topProducts = Object.values(productStatsMap)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
 
-    // --- Top sellers (by revenue) ---
-    const sellerOrders = await db
-      .collection("orders")
-      .find({ status: "paid", payment_status: "paid" }, { projection: { seller_id: 1, gross_amount: 1 } })
-      .toArray();
-
-    const sellerStatsMap: Record<string, { id: string; storeName: string; sales: number; revenue: number }> = {};
-    for (const o of sellerOrders) {
-      const sid = (o as Record<string, unknown>).seller_id as string;
-      if (!sid) continue;
-      if (!sellerStatsMap[sid]) {
-        sellerStatsMap[sid] = { id: sid, storeName: "Unknown", sales: 0, revenue: 0 };
+    for (const user of users) {
+      const key = user.created_at.split("T")[0];
+      if (newUsersByDayMap[key]) {
+        newUsersByDayMap[key].count += 1;
       }
-      sellerStatsMap[sid].sales++;
-      sellerStatsMap[sid].revenue += (o as Record<string, unknown>).gross_amount as number ?? 0;
     }
 
-    // Fetch seller store names
-    const sellerIds = Object.keys(sellerStatsMap);
-    if (sellerIds.length > 0) {
-      const sellersData = await db
-        .collection("sellers")
-        .find({ _id: { $in: sellerIds.map((id) => new (require("mongodb")).ObjectId(id)) } }, { projection: { store_name: 1 } })
-        .toArray();
-      for (const s of sellersData) {
-        const sid = s._id.toString();
-        if (sellerStatsMap[sid]) {
-          sellerStatsMap[sid].storeName = (s as Record<string, unknown>).store_name as string ?? "Unknown";
+    const revenueSeries = Object.values(revenueByDay).sort((a, b) => a.date.localeCompare(b.date));
+    const newUsersByDay = Object.values(newUsersByDayMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    const ordersByStatus = Object.entries(
+      filteredOrders.reduce<Record<string, number>>((acc, order) => {
+        acc[order.status] = (acc[order.status] ?? 0) + 1;
+        return acc;
+      }, {})
+    ).map(([status, count]) => ({ status, count }));
+
+    const productMetrics = filteredOrders.reduce<Record<string, { id: string; name: string; sold: number; revenue: number }>>(
+      (acc, order) => {
+        for (const item of order.items ?? []) {
+          const existing = acc[item.product_id] ?? {
+            id: item.product_id,
+            name: item.title,
+            sold: 0,
+            revenue: 0,
+          };
+          existing.sold += Number(item.quantity ?? 0);
+          existing.revenue += Number(item.price ?? 0) * Number(item.quantity ?? 0);
+          acc[item.product_id] = existing;
         }
-      }
-    }
-
-    const topSellers = Object.values(sellerStatsMap)
+        return acc;
+      },
+      {}
+    );
+    const topProducts = Object.values(productMetrics)
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
+
+    // Top sellers by revenue
+    const sellerRevenueMap: Record<string, { revenue: number; sales: number }> = {};
+    for (const order of completedOrders) {
+      if (order.seller_id) {
+        const existing = sellerRevenueMap[order.seller_id] ?? { revenue: 0, sales: 0 };
+        existing.revenue += Number(order.total_price);
+        existing.sales += 1;
+        sellerRevenueMap[order.seller_id] = existing;
+      }
+    }
+    const topSellerIds = Object.entries(sellerRevenueMap)
+      .sort(([, a], [, b]) => b.revenue - a.revenue)
+      .slice(0, 5)
+      .map(([id]) => id);
+    const topSellers = await Promise.all(
+      topSellerIds.map(async (id) => {
+        const seller = sellers.find((s) => s.id === id);
+        return {
+          id,
+          storeName: seller?.store_name ?? "Unknown",
+          revenue: sellerRevenueMap[id]?.revenue ?? 0,
+          sales: sellerRevenueMap[id]?.sales ?? 0,
+        };
+      })
+    );
+
+    const newUsers = newUsersByDay.reduce((sum, item) => sum + item.count, 0);
 
     return NextResponse.json({
-      revenueByDay,
+      period,
+      summary: {
+        totalOrders,
+        completedOrders: completedOrders.length,
+        pendingOrders: pendingOrders.length,
+        cancelledOrders: cancelledOrders.length,
+        totalRevenue,
+        totalCommission,
+        totalGross,
+        avgOrderValue: Math.round(avgOrderValue * 100) / 100,
+        activeSellers,
+        pendingSellers,
+        activeProducts,
+        outOfStockProducts,
+        newUsers,
+      },
+      revenueByDay: revenueSeries,
       ordersByStatus,
       topProducts,
       topSellers,
       newUsersByDay,
-      summary: {
-        totalRevenue,
-        totalOrders: orderCount,
-        newUsers: newUsers30d,
-        activeSellers,
-        avgOrderValue,
-      },
     });
   } catch (error) {
-    console.error("Admin analytics error:", error);
+    console.error("Admin analytics GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

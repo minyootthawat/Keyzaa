@@ -7,8 +7,6 @@ import { useLanguage } from "@/app/context/LanguageContext";
 import AdminSidebar from "@/app/components/AdminSidebar";
 import { useRouter } from "next/navigation";
 
-const shortcutHints = "D=Dashboard, O=Orders, P=Products, S=Sellers, U=Users, A=Analytics, T=Toggle theme, L=Toggle language";
-
 const roleConfig: Record<string, { labelTh: string; labelEn: string; emoji: string; className: string }> = {
   super_admin: {
     labelTh: "Super Admin",
@@ -55,14 +53,10 @@ export default function AdminAppLayout({ children }: { children: React.ReactNode
   useEffect(() => {
     const checkAdmin = async () => {
       try {
-        // Read token from localStorage (set by login page)
-        const token = localStorage.getItem("keyzaa_admin_token");
-        const headers: Record<string, string> = {};
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-
-        const res = await fetch("/api/admin/me", {
-          headers,
-        });
+        // /api/admin/me reads the admin_token cookie directly (HttpOnly cookie is
+        // automatically sent by the browser on any request to the same origin).
+        // No Authorization header is needed here — the cookie is the source of truth.
+        const res = await fetch("/api/admin/me");
         if (!res.ok) throw new Error("not authenticated");
         const data = await res.json();
         if (!data.user?.isAdmin) throw new Error("not admin");
