@@ -43,3 +43,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .gitnexus
+
+# Migration scripts (run manually with env vars)
+scripts/apply-migration.js
+scripts/apply-admins-fk-migration.js
+scripts/migrate-admin-auth.js
+supabase/migrations/*.sql
+.detect-secrets.baseline
