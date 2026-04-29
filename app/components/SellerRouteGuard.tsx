@@ -5,7 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 
 export default function SellerRouteGuard({ children }: { children: React.ReactNode }) {
-  const { isRegisteredSeller, loading, authUser } = useAuth();
+  const { isRegisteredSeller, loading, user: authUser } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 

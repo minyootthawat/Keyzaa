@@ -53,14 +53,14 @@ export default function AdminSellersPage() {
   const [selectedSellers, setSelectedSellers] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
 
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
   const canWrite = adminPermissions.includes("admin:sellers:write");
 
   const openSellerDetail = (sellerId: string) => {
-    setDetailLoading(true);
+    setDetailLoading(sellerId);
     setDetailError(null);
     fetch(`/api/backoffice/sellers/${sellerId}`)
       .then(async (res) => {
@@ -76,7 +76,7 @@ export default function AdminSellersPage() {
       .catch((err) => {
         setDetailError(err.message || (lang === "th" ? "โหลดรายละเอียดไม่สำเร็จ" : "Failed to load details."));
       })
-      .finally(() => setDetailLoading(false));
+      .finally(() => setDetailLoading(null));
   };
 
   const closeSellerDetail = () => {
