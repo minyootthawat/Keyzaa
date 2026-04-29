@@ -1,0 +1,84 @@
+# GitHub Secret Scanning Push Protection config
+# https://docs.github.com/en/code-security/secret-scanning
+
+[allowlist]
+  description = "Legitimate test fixtures"
+  files = [
+    "^package-lock\\.json$",
+    "^vitest\\.setup\\.ts$",
+    "__tests__/.*",
+  ]
+
+# Supabase
+[[rules]]
+  description = "Supabase Service Role Key"
+  regex = '''sb_secret_[a-zA-Z0-9]{20,}'''
+  tags = ["supabase", "key"]
+
+[[rules]]
+  description = "Supabase Publishable/anon Key"
+  regex = '''sb_(?:publishable|anon)_[a-zA-Z0-9_-]{10,}'''
+  tags = ["supabase", "key"]
+
+# PostgreSQL
+[[rules]]
+  description = "PostgreSQL connection string"
+  regex = '''postgres(?:ql)?://[a-zA-Z0-9_-]+:[^@]+@[a-zA-Z0-9_.-]+'''
+  tags = ["database", "postgresql"]
+
+# JWT
+[[rules]]
+  description = "Bare JWT token"
+  regex = '''\beyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\b'''
+  tags = ["jwt", "token"]
+
+# Stripe
+[[rules]]
+  description = "Stripe Secret Key (live)"
+  regex = '''sk_live_[a-zA-Z0-9]{24,}'''
+  tags = ["stripe", "key"]
+
+[[rules]]
+  description = "Stripe Secret Key (test)"
+  regex = '''sk_test_[a-zA-Z0-9]{24,}'''
+  tags = ["stripe", "key"]
+
+[[rules]]
+  description = "Stripe Publishable Key (live)"
+  regex = '''pk_live_[a-zA-Z0-9]{24,}'''
+  tags = ["stripe", "key"]
+
+[[rules]]
+  description = "Stripe Publishable Key (test)"
+  regex = '''pk_test_[a-zA-Z0-9]{24,}'''
+  tags = ["stripe", "key"]
+
+# AWS
+[[rules]]
+  description = "AWS Access Key ID"
+  regex = '''AKIA[0-9A-Z]{16}'''
+  tags = ["aws", "key"]
+
+# Generic API keys
+[[rules]]
+  description = "Generic API Key"
+  regex = '''api[_-]?key["\s:=]+["']?[a-zA-Z0-9_-]{20,}["']?'''
+  tags = ["key", "api"]
+
+# Authorization headers
+[[rules]]
+  description = "Authorization Bearer token"
+  regex = '''Bearer\s+[a-zA-Z0-9_.-]{20,}'''
+  tags = ["auth", "token"]
+
+# Private keys
+[[rules]]
+  description = "RSA/EC/DSA Private Key"
+  regex = '''-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'''
+  tags = ["key", "private"]
+
+# Vercel
+[[rules]]
+  description = "Vercel OIDC Token"
+  regex = '''eyJhbG[a-zA-Z0-9_-]*\.eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*'''
+  tags = ["vercel", "token"]

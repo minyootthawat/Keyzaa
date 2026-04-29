@@ -7,8 +7,12 @@ import { findUserById, findUserByEmail } from "@/lib/db/collections/users";
 import { getAdminByEmail } from "@/lib/db/collections/admins";
 import { auth } from "@/auth";
 
+const jwtSecretValue = process.env.JWT_SECRET;
+if (!jwtSecretValue) {
+  throw new Error("JWT_SECRET environment variable is required");
+}
 const JWT_SECRET = new TextEncoder().encode(
-  (process.env.JWT_SECRET || "").replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim() || "fallback-dev-secret"
+  jwtSecretValue.replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim()
 );
 
 export interface AdminRecord {

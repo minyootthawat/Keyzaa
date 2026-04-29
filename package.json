@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest --config ./vitest.config.mts",
     "test:run": "vitest run --config ./vitest.config.mts",
-    "seed:demo": "node scripts/seed-demo-users.js"
+    "seed:demo": "node scripts/seed-demo-users.js",
+    "prepare": "node -e \"const fs=require('fs'); const src=fs.readFileSync('.git/hooks/pre-commit','utf8'); fs.writeFileSync('.git/hooks/pre-commit', src.replace(/^#!\\/bin\\/sh/,'#!/bin/sh'));\" 2>/dev/null || true"
   },
   "dependencies": {
     "@auth/supabase-adapter": "^1.11.2",
@@ -39,6 +40,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "detect-secrets": "^1.0.6",
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",

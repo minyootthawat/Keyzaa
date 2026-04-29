@@ -7,8 +7,12 @@ import { redirect } from "next/navigation";
 import { findAdminByEmail } from "@/lib/db/supabase";
 import { normalizeAdminPermissions, type AdminRole } from "@/lib/auth/admin";
 
-const JWT_SECRET=*** TextEncoder().encode(
-  (process.env.JWT_SECRET || "").replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim() || "fallback-dev-secret"
+const jwtSecretValue = process.env.JWT_SECRET;
+if (!jwtSecretValue) {
+  throw new Error("JWT_SECRET environment variable is required");
+}
+const JWT_SECRET = new TextEncoder().encode(
+  jwtSecretValue.replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim()
 );
 
 export async function adminLogin(
