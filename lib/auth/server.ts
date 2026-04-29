@@ -36,7 +36,9 @@ export interface TokenUser {
  */
 async function getTokenFromRequest(req: NextRequest): Promise<TokenUser | null> {
   // Check admin_token first (set by /api/admin/login), then token (set by /api/auth/login for buyer/seller)
-  const token = req.cookies.get("admin_token")?.value ?? req.cookies.get("token")?.value;
+  const bearerToken = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
+  const cookieToken = req.cookies.get("admin_token")?.value ?? req.cookies.get("token")?.value;
+  const token = bearerToken ?? cookieToken;
   if (!token) return null;
 
   try {
@@ -51,8 +53,8 @@ async function getTokenFromRequest(req: NextRequest): Promise<TokenUser | null> 
  * Get the current user from the custom JWT cookie.
  * Returns null if no request context is available.
  */
-export async function getServerUser(req?: NextRequest): Promise<TokenUser | null> {
-  return null; // caller must pass request
+export async function getServerUser(req: NextRequest): Promise<TokenUser | null> {
+  return getTokenFromRequest(req);
 }
 
 /**
@@ -105,7 +107,8 @@ export async function getServerSellerAccess(req: NextRequest): Promise<{
     return { status: 404, error: "Seller not found" };
   }
 
-  const seller = await getSellerByUserId(user.id);
+  const userId = user.id;
+  const seller = await getSellerByUserId(userId);
   if (!seller) {
     return { status: 404, error: "Seller not found" };
   }
@@ -113,7 +116,7 @@ export async function getServerSellerAccess(req: NextRequest): Promise<{
   return {
     status: 200,
     access: {
-      userId: user.id,
+      userId,
       sellerId: seller.id,
       isVerified: seller.is_verified,
     },

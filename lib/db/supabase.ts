@@ -127,6 +127,7 @@ export interface DbAdmin {
   id: string;
   user_id: string | null;
   email: string;
+  password_hash: string;
   role: string;
   is_super_admin: boolean;
   permissions: string[];
@@ -210,6 +211,9 @@ export async function listUsers(opts?: {
 }): Promise<{ users: DbUser[]; total: number }> {
   let query = supabase.from("users").select("*", { count: "exact" });
   if (opts?.role) query = query.eq("role", opts.role);
+  if (opts?.search) {
+    query = query.or(`email.ilike.%${opts.search}%,name.ilike.%${opts.search}%`);
+  }
   if (opts?.limit) query = query.limit(opts.limit);
   if (opts?.offset) query = query.range(opts.offset, opts.offset + (opts.limit ?? 50) - 1);
 
@@ -692,20 +696,22 @@ export async function findAdminByUserId(userId: string): Promise<DbAdmin | null>
 }
 
 export async function createAdmin(adminData: {
-  userId: string;
   email: string;
+  passwordHash: string;
   role?: string;
   isSuperAdmin?: boolean;
   permissions?: string[];
+  createdBy?: string;
 }): Promise<DbAdmin | null> {
   const { data, error } = await supabase
     .from("admins")
     .insert({
-      user_id: adminData.userId,
       email: adminData.email.toLowerCase(),
+      password_hash: adminData.passwordHash,
       role: adminData.role ?? "super_admin",
       is_super_admin: adminData.isSuperAdmin ?? false,
       permissions: adminData.permissions ?? [],
+      created_by: adminData.createdBy ?? null,
     })
     .select()
     .single();

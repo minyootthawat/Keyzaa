@@ -9,13 +9,19 @@ import { formatThaiBaht } from "@/app/lib/marketplace";
 interface Seller {
   id: string;
   storeName: string;
+  storeSlug?: string;
+  description?: string;
+  avatarUrl?: string;
   phone: string;
+  idCardUrl?: string;
+  status: string;
   verified: boolean;
   balance: number;
   pendingBalance: number;
   salesCount: number;
   rating: number;
   createdAt: string;
+  updatedAt?: string;
   user: {
     id: string;
     email: string;
@@ -46,9 +52,37 @@ export default function AdminSellersPage() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [selectedSellers, setSelectedSellers] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
   const canWrite = adminPermissions.includes("admin:sellers:write");
+
+  const openSellerDetail = (sellerId: string) => {
+    setDetailLoading(true);
+    setDetailError(null);
+    fetch(`/api/backoffice/sellers/${sellerId}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || `HTTP ${res.status}`);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setSelectedSeller(data.seller as Seller);
+      })
+      .catch((err) => {
+        setDetailError(err.message || (lang === "th" ? "โหลดรายละเอียดไม่สำเร็จ" : "Failed to load details."));
+      })
+      .finally(() => setDetailLoading(false));
+  };
+
+  const closeSellerDetail = () => {
+    setSelectedSeller(null);
+    setDetailError(null);
+  };
 
   const fetchSellers = (pageNum: number, filterVal: typeof filter) => {
     setLoading(true);
@@ -402,6 +436,13 @@ export default function AdminSellersPage() {
                       </td>
                       {canWrite && (
                         <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => openSellerDetail(seller.id)}
+                            disabled={detailLoading === seller.id}
+                            className="mb-1.5 mr-1 shrink-0 rounded-xl border border-border-subtle bg-bg-surface px-3 py-1.5 text-xs font-semibold text-text-subtle transition-colors hover:border-brand-primary/30 hover:text-brand-primary disabled:opacity-50"
+                          >
+                            {detailLoading === seller.id ? "..." : lang === "th" ? "รายละเอียด" : "Details"}
+                          </button>
                           {!seller.verified ? (
                             <div className="flex justify-end gap-2">
                               <button
@@ -480,6 +521,164 @@ export default function AdminSellersPage() {
           </>
         )}
       </div>
+
+      {/* Seller Detail Modal */}
+      {(selectedSeller || detailLoading) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-bg-base/80 backdrop-blur-sm" onClick={closeSellerDetail} />
+          <div className="relative surface-card glass-panel w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={closeSellerDetail}
+              className="absolute right-4 top-4 text-text-muted hover:text-text-main transition-colors"
+              aria-label="Close"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {detailLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="h-8 w-8 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+              </div>
+            ) : detailError ? (
+              <div className="text-center py-8">
+                <p className="text-danger">{detailError}</p>
+                <button onClick={closeSellerDetail} className="mt-4 text-sm text-text-muted hover:text-text-main">
+                  {lang === "th" ? "ปิด" : "Close"}
+                </button>
+              </div>
+            ) : selectedSeller ? (
+              <div className="space-y-5">
+                {/* Header */}
+                <div className="flex items-start gap-4">
+                  <div className="h-14 w-14 rounded-2xl bg-brand-primary/20 flex items-center justify-center shrink-0 overflow-hidden">
+                    {selectedSeller.avatarUrl ? (
+                      <img src={selectedSeller.avatarUrl} alt={selectedSeller.storeName} className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-2xl font-bold text-brand-primary">
+                        {selectedSeller.storeName.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="type-h2">{selectedSeller.storeName}</h3>
+                    <p className="text-sm text-text-muted">{selectedSeller.storeSlug}</p>
+                    <div className="mt-2">
+                      {selectedSeller.status === "active" ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-xs font-semibold text-success">
+                          {lang === "th" ? "✓ เปิดใช้งาน" : "✓ Active"}
+                        </span>
+                      ) : selectedSeller.status === "pending_verification" ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2.5 py-1 text-xs font-semibold text-warning">
+                          {lang === "th" ? "◔ รอตรวจสอบ" : "◔ Pending"}
+                        </span>
+                      ) : selectedSeller.status === "rejected" ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-danger/15 px-2.5 py-1 text-xs font-semibold text-danger">
+                          {lang === "th" ? "✗ ถูกปฏิเสธ" : "✗ Rejected"}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-text-muted/15 px-2.5 py-1 text-xs font-semibold text-text-muted">
+                          {selectedSeller.status}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div className="grid grid-cols-3 gap-3 rounded-2xl bg-bg-surface p-4">
+                  <div className="text-center">
+                    <p className="text-lg font-bold text-text-main">{selectedSeller.salesCount.toLocaleString()}</p>
+                    <p className="text-xs text-text-muted">{lang === "th" ? "ยอดขาย" : "Sales"}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-lg font-bold text-text-main">
+                      ฿{formatThaiBaht(selectedSeller.balance)}
+                    </p>
+                    <p className="text-xs text-text-muted">{lang === "th" ? "ยอดคงเหลือ" : "Balance"}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-lg font-bold text-text-main">{selectedSeller.rating > 0 ? selectedSeller.rating.toFixed(1) : "—"}</p>
+                    <p className="text-xs text-text-muted">{lang === "th" ? "เรตติ้ง" : "Rating"}</p>
+                  </div>
+                </div>
+
+                {/* Details */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-widest text-text-muted">
+                    {lang === "th" ? "รายละเอียด" : "Details"}
+                  </h4>
+
+                  <div className="space-y-2.5">
+                    <div className="flex justify-between items-center py-2 border-b border-border-subtle">
+                      <span className="text-sm text-text-muted">{lang === "th" ? "เจ้าของ" : "Owner"}</span>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-text-main">{selectedSeller.user.name || "—"}</p>
+                        <p className="text-xs text-text-muted">{selectedSeller.user.email}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center py-2 border-b border-border-subtle">
+                      <span className="text-sm text-text-muted">{lang === "th" ? "เบอร์โทร" : "Phone"}</span>
+                      <span className="text-sm font-medium text-text-main">{selectedSeller.phone || "—"}</span>
+                    </div>
+
+                    {selectedSeller.description && (
+                      <div className="py-2 border-b border-border-subtle">
+                        <span className="text-sm text-text-muted block mb-1.5">{lang === "th" ? "คำอธิบายร้าน" : "Description"}</span>
+                        <p className="text-sm text-text-main leading-relaxed">{selectedSeller.description}</p>
+                      </div>
+                    )}
+
+                    {selectedSeller.idCardUrl && (
+                      <div className="py-2 border-b border-border-subtle">
+                        <span className="text-sm text-text-muted block mb-1.5">{lang === "th" ? "สำเนาบัตร ปชช." : "ID Card"}</span>
+                        <a href={selectedSeller.idCardUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-primary hover:underline">
+                          {lang === "th" ? "ดูรูป" : "View image"} →
+                        </a>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-sm text-text-muted">{lang === "th" ? "วันที่สมัคร" : "Registered"}</span>
+                      <span className="text-sm font-medium text-text-main">
+                        {new Date(selectedSeller.createdAt).toLocaleDateString(lang === "th" ? "th-TH" : "en-US", { year: "numeric", month: "short", day: "numeric" })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                {canWrite && selectedSeller.status === "pending_verification" && (
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={async () => {
+                        await handleAction(selectedSeller.id, "approve");
+                        closeSellerDetail();
+                      }}
+                      disabled={actionLoading === selectedSeller.id}
+                      className="flex-1 rounded-xl bg-success py-3 text-sm font-semibold text-white transition-opacity hover:opacity-85 disabled:opacity-50"
+                    >
+                      {actionLoading === selectedSeller.id ? "..." : (lang === "th" ? "✓ อนุมัติ" : "✓ Approve")}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        await handleAction(selectedSeller.id, "reject");
+                        closeSellerDetail();
+                      }}
+                      disabled={actionLoading === selectedSeller.id}
+                      className="flex-1 rounded-xl bg-error/80 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-85 disabled:opacity-50"
+                    >
+                      {actionLoading === selectedSeller.id ? "..." : (lang === "th" ? "✗ ปฏิเสธ" : "✗ Reject")}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
     </AdminRouteGuard>
   );
 }

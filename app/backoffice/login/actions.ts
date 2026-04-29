@@ -4,10 +4,10 @@ import { SignJWT } from "jose";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { findAdminByEmail, findUserByEmail } from "@/lib/db/supabase";
+import { findAdminByEmail } from "@/lib/db/supabase";
 import { normalizeAdminPermissions, type AdminRole } from "@/lib/auth/admin";
 
-const JWT_SECRET = new TextEncoder().encode(
+const JWT_SECRET=*** TextEncoder().encode(
   (process.env.JWT_SECRET || "").replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim() || "fallback-dev-secret"
 );
 
@@ -28,12 +28,7 @@ export async function adminLogin(
       return { error: "Invalid credentials" };
     }
 
-    const adminUser = await findUserByEmail(email.toLowerCase());
-    if (!adminUser || !adminUser.password_hash) {
-      return { error: "Invalid credentials" };
-    }
-
-    const passwordMatch = await bcrypt.compare(password, adminUser.password_hash);
+    const passwordMatch = await bcrypt.compare(password, admin.password_hash);
     if (!passwordMatch) {
       return { error: "Invalid credentials" };
     }
@@ -45,8 +40,8 @@ export async function adminLogin(
     );
 
     const token = await new SignJWT({
-      id: String(admin.user_id),
-      sub: String(admin.user_id),
+      id: String(admin.id),
+      sub: String(admin.id),
       email: admin.email,
       isAdmin: true,
       adminRole: admin.role,

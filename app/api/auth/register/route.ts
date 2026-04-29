@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     const adminAccess = await getAdminAccessForEmail(user.email);
 
     const token = await new SignJWT({
-      userId,
+      id: userId,
       email: user.email,
     })
       .setProtectedHeader({ alg: "HS256" })

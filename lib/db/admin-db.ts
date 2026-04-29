@@ -1,18 +1,15 @@
 import { createServiceRoleClient } from "@/lib/supabase/supabase";
-import { findUserById } from "@/lib/db/collections/users";
 import { ADMIN_ROLE_PERMISSIONS } from "@/lib/auth/admin";
 
 export type AdminRole = "super_admin" | "ops_admin" | "support_admin" | "catalog_admin";
 
 export interface Admin {
   id: string;
-  user_id: string;
+  email: string;
   role: AdminRole;
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  user_email?: string;
-  user_name?: string;
 }
 
 export interface AdminAuditLog {
@@ -68,34 +65,26 @@ function isMissingTableError(error: unknown): boolean {
 export async function getAdmins(): Promise<Admin[]> {
   const { data, error } = await supabase
     .from("admins")
-    .select(`
-      *,
-      user:users!admins_user_id_fkey(id, email, name)
-    `)
+    .select(`*`)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
 
   return (data ?? []).map((row: Record<string, unknown>) => ({
     id: row.id as string,
-    user_id: row.user_id as string,
+    email: row.email as string,
     role: row.role as AdminRole,
     created_by: row.created_by as string | null,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
-    user_email: (row.user as Record<string, unknown>)?.email as string,
-    user_name: (row.user as Record<string, unknown>)?.name as string,
   }));
 }
 
-export async function getAdminByUserId(userId: string): Promise<Admin | null> {
+export async function getAdminById(adminId: string): Promise<Admin | null> {
   const { data, error } = await supabase
     .from("admins")
-    .select(`
-      *,
-      user:users!admins_user_id_fkey(id, email, name)
-    `)
-    .eq("user_id", userId)
+    .select("*")
+    .eq("id", adminId)
     .maybeSingle();
 
   if (error) throw error;
@@ -104,40 +93,29 @@ export async function getAdminByUserId(userId: string): Promise<Admin | null> {
   const row = data as Record<string, unknown>;
   return {
     id: row.id as string,
-    user_id: row.user_id as string,
+    email: row.email as string,
     role: row.role as AdminRole,
     created_by: row.created_by as string | null,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
-    user_email: (row.user as Record<string, unknown>)?.email as string,
-    user_name: (row.user as Record<string, unknown>)?.name as string,
   };
 }
 
 export async function createAdmin(
-  userId: string,
+  email: string,
   role: AdminRole,
   createdBy: string
 ): Promise<Admin> {
-  const user = await findUserById(userId);
-  if (!user) {
-    throw new Error("User not found");
-  }
-
   const { data, error } = await supabase
     .from("admins")
     .insert({
-      user_id: userId,
-      email: user.email,
+      email,
       role,
       is_super_admin: role === "super_admin",
       permissions: ADMIN_ROLE_PERMISSIONS[role],
       created_by: createdBy,
     })
-    .select(`
-      *,
-      user:users!admins_user_id_fkey(id, email, name)
-    `)
+    .select("*")
     .single();
 
   if (error) throw error;
@@ -145,13 +123,11 @@ export async function createAdmin(
   const row = data as Record<string, unknown>;
   return {
     id: row.id as string,
-    user_id: row.user_id as string,
+    email: row.email as string,
     role: row.role as AdminRole,
     created_by: row.created_by as string | null,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
-    user_email: (row.user as Record<string, unknown>)?.email as string,
-    user_name: (row.user as Record<string, unknown>)?.name as string,
   };
 }
 
@@ -167,10 +143,7 @@ export async function updateAdminRole(
       permissions: ADMIN_ROLE_PERMISSIONS[role],
     })
     .eq("id", adminId)
-    .select(`
-      *,
-      user:users!admins_user_id_fkey(id, email, name)
-    `)
+    .select("*")
     .single();
 
   if (error) throw error;
@@ -178,13 +151,11 @@ export async function updateAdminRole(
   const row = data as Record<string, unknown>;
   return {
     id: row.id as string,
-    user_id: row.user_id as string,
+    email: row.email as string,
     role: row.role as AdminRole,
     created_by: row.created_by as string | null,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
-    user_email: (row.user as Record<string, unknown>)?.email as string,
-    user_name: (row.user as Record<string, unknown>)?.name as string,
   };
 }
 

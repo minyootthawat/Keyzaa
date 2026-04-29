@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSellerAccess } from "@/lib/auth/server";
+import { getServerUser } from "@/lib/auth/server";
+import { getSellerByUserId } from "@/lib/db/collections/sellers";
 import { getProductsBySeller, createProduct } from "@/lib/db/collections/products";
 
 function mapRowToProduct(row: { id: string; seller_id: string; name: string; description?: string | null; category: string; price: number; stock: number; image_url?: string | null; status: "active" | "inactive" | "out_of_stock" | "deleted" }) {
@@ -23,12 +24,23 @@ function mapRowToProduct(row: { id: string; seller_id: string; name: string; des
 
 export async function GET(req: NextRequest) {
   try {
-    const authResult = await getServerSellerAccess(req);
-    if (authResult.status !== 200) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    const user = await getServerUser(req);
+    const userId = user?.id ?? null;
+
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { sellerId } = authResult.access!;
+    const seller = await getSellerByUserId(userId);
+    if (!seller) {
+      return NextResponse.json({ error: "Seller not found" }, { status: 404 });
+    }
+
+    if (seller.status !== "active") {
+      return NextResponse.json({ error: "Seller account is not active" }, { status: 403 });
+    }
+
+    const { id: sellerId } = seller;
 
     const products = await getProductsBySeller(sellerId);
 
@@ -44,16 +56,23 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const authResult = await getServerSellerAccess(req);
-    if (authResult.status !== 200) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    const user = await getServerUser(req);
+    const userId = user?.id ?? null;
+
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { sellerId, isVerified } = authResult.access!;
-
-    if (!isVerified) {
-      return NextResponse.json({ error: "Seller not verified" }, { status: 403 });
+    const seller = await getSellerByUserId(userId);
+    if (!seller) {
+      return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
+
+    if (seller.status !== "active") {
+      return NextResponse.json({ error: "Seller account is not active" }, { status: 403 });
+    }
+
+    const { id: sellerId } = seller;
 
     const body = await req.json();
 

@@ -15,7 +15,7 @@ function slugify(text: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await getServerUser();
+    const user = await getServerUser(req);
     const userId = user?.id ?? null;
 
     if (!userId) {
@@ -66,7 +66,8 @@ export async function POST(req: NextRequest) {
         userId: seller.user_id,
         shopName: seller.store_name,
         phone: seller.phone,
-        verified: seller.is_verified,
+        status: seller.status,
+        isVerified: seller.is_verified,
         createdAt: seller.created_at,
       },
       user: { id: userId, role: newRole },

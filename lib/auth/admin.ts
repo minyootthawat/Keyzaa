@@ -36,11 +36,10 @@ export async function verifyAdminPassword(
     return null;
   }
 
-  const dbUser = await findUserByEmail(normalizedEmail);
-  const hash = dbUser?.password_hash;
+  const hash = dbAdmin.password_hash;
 
   if (!hash) {
-    console.log("[verifyAdminPassword] user has no password_hash");
+    console.log("[verifyAdminPassword] admin has no password_hash");
     return null;
   }
 
@@ -52,8 +51,8 @@ export async function verifyAdminPassword(
   }
 
   return {
-    id: dbAdmin.user_id ?? dbAdmin.id,
-    userId: dbAdmin.user_id ?? dbAdmin.id,
+    id: dbAdmin.id,
+    userId: dbAdmin.id,
     email: dbAdmin.email,
     role: (dbAdmin.role ?? "super_admin") as AdminRole,
     permissions: normalizeAdminPermissions(
@@ -275,18 +274,17 @@ export async function getAdminAccessFromRequest(req: NextRequest): Promise<{
   userId?: string;
 }> {
   const payload = await getBearerPayload(req);
-  const userId = typeof payload?.userId === "string" ? payload.userId : null;
+  // Admin token uses "id" + "email" fields
+  const email =
+    typeof payload?.email === "string"
+      ? payload.email
+      : null;
 
-  if (!userId) {
+  if (!email) {
     return { status: 401, error: "Unauthorized" };
   }
 
-  const user = await findUserById(userId);
-  if (!user) {
-    return { status: 404, error: "User not found" };
-  }
-
-  const access = await getAdminAccessForEmail(user.email);
+  const access = await getAdminAccessForEmail(email);
   if (!access.isAdmin) {
     return { status: 403, error: "Forbidden" };
   }
@@ -294,7 +292,7 @@ export async function getAdminAccessFromRequest(req: NextRequest): Promise<{
   return {
     status: 200,
     access,
-    userId,
+    userId: String(payload?.id ?? ""),
   };
 }
 

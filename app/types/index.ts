@@ -26,6 +26,8 @@ export interface Seller {
   salesCount: number;
   balance: number;
   pendingBalance: number;
+  status?: "pending_verification" | "active" | "rejected" | "suspended";
+  isVerified?: boolean;
   verificationStatus?: SellerVerificationStatus;
   responseTimeMinutes?: number;
   fulfillmentRate?: number;

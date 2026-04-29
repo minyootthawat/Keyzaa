@@ -15,7 +15,7 @@ export async function getSellerAccessFromRequest(req: NextRequest): Promise<{
   access?: SellerAccess;
 }> {
   const payload = await getBearerPayload(req);
-  const userId = typeof payload?.userId === "string" ? payload.userId : null;
+  const userId = typeof payload?.id === "string" ? payload.id : null;
 
   if (!userId) {
     return { status: 401, error: "Unauthorized" };

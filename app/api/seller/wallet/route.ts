@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerUser } from "@/lib/auth/server";
 import { getSellerByUserId } from "@/lib/db/collections/sellers";
 import { getLedgerBySeller } from "@/lib/db/collections/ledger";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const user = await getServerUser();
+    const user = await getServerUser(req);
     const userId = user?.id ?? null;
 
     if (!userId) {

@@ -5,13 +5,20 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 
 export default function SellerRouteGuard({ children }: { children: React.ReactNode }) {
-  const { isRegisteredSeller } = useAuth();
+  const { isRegisteredSeller, loading, authUser } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   const isRegisterPage = pathname === "/seller/register";
 
+  // Derive hasSellerId from JWT to avoid waiting for fetchSeller()
+  // (sellerId is embedded in JWT at login time)
+  const hasSellerIdInToken = !!authUser?.sellerId;
+
   useEffect(() => {
+    // Wait for auth to finish loading before making any redirect decisions
+    if (loading) return;
+
     if (isRegisterPage) {
       // Already a seller → go to dashboard
       if (isRegisteredSeller) {
@@ -19,24 +26,24 @@ export default function SellerRouteGuard({ children }: { children: React.ReactNo
         return;
       }
       // Not a seller → stay on register page (authenticated buyer can register)
-      // No action needed, stay here
       return;
     }
 
     // Non-register seller routes: require registered seller
-    if (!isRegisteredSeller) {
+    if (!isRegisteredSeller && !hasSellerIdInToken) {
       router.push("/seller/register");
     }
-  }, [isRegisteredSeller, isRegisterPage, router]);
+  }, [isRegisteredSeller, loading, isRegisterPage, router, hasSellerIdInToken]);
+
+  // Show nothing while auth is still loading (prevents premature redirect)
+  if (loading) return null;
 
   if (isRegisterPage) {
-    // Non-seller visiting register page → show form (buyer can register as seller)
-    // Redirecting to "/" only happens if we add auth requirement at API level
     return <>{children}</>;
   }
 
   // Non-register page: redirect if not a registered seller
-  if (!isRegisteredSeller) return null;
+  if (!isRegisteredSeller && !hasSellerIdInToken) return null;
 
   return <>{children}</>;
 }

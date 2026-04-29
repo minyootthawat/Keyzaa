@@ -109,17 +109,18 @@ create table public.ledger_entries (
 
 -- ─── ADMINS ──────────────────────────────────────────────────────────────────
 create table public.admins (
-  id           uuid primary key default gen_random_uuid(),
-  user_id      uuid unique
-               references public.users(id) on delete cascade,
-  email        text not null unique,
-  password_hash text,
-  role         text not null default 'super_admin',
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid references public.users(id) on delete cascade,
+  email         text not null unique,
+  password_hash text not null,
+  role          text not null default 'super_admin',
   is_super_admin boolean not null default false,
-  permissions  jsonb not null default '[]',
-  created_by   uuid references public.admins(id) on delete set null,
-  created_at   timestamptz not null default now()
+  permissions   jsonb not null default '[]',
+  created_by    uuid references public.admins(id) on delete set null,
+  created_at    timestamptz not null default now()
 );
+
+create index idx_admins_email on public.admins(email);
 
 -- ─── GAME_ACCOUNTS ───────────────────────────────────────────────────────────
 create table public.game_accounts (

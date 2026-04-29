@@ -32,7 +32,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const user = await getServerUser();
+    const user = await getServerUser(req);
     const userId = user?.id ?? null;
 
     if (!userId) {
@@ -42,6 +42,10 @@ export async function GET(
     const seller = await getSellerByUserId(userId);
     if (!seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
+    }
+
+    if (seller.status !== "active") {
+      return NextResponse.json({ error: "Seller account is not active" }, { status: 403 });
     }
 
     const sellerId = seller.id;
@@ -69,7 +73,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const user = await getServerUser();
+    const user = await getServerUser(req);
     const userId = user?.id ?? null;
 
     if (!userId) {
@@ -79,6 +83,10 @@ export async function PATCH(
     const seller = await getSellerByUserId(userId);
     if (!seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
+    }
+
+    if (seller.status !== "active") {
+      return NextResponse.json({ error: "Seller account is not active" }, { status: 403 });
     }
 
     const sellerId = seller.id;
@@ -158,7 +166,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const user = await getServerUser();
+    const user = await getServerUser(req);
     const userId = user?.id ?? null;
 
     if (!userId) {
@@ -168,6 +176,10 @@ export async function DELETE(
     const seller = await getSellerByUserId(userId);
     if (!seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
+    }
+
+    if (seller.status !== "active") {
+      return NextResponse.json({ error: "Seller account is not active" }, { status: 403 });
     }
 
     const sellerId = seller.id;

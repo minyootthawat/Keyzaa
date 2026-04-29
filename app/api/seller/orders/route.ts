@@ -1,13 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerUser } from "@/lib/auth/server";
 import { getSellerByUserId } from "@/lib/db/collections/sellers";
 import { getOrdersBySeller } from "@/lib/db/collections/orders";
 import { findUserById } from "@/lib/db/collections/users";
 import type { OrderItem } from "@/lib/db/collections/orders";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const user = await getServerUser();
+    const user = await getServerUser(req);
     const userId = user?.id ?? null;
 
     if (!userId) {
@@ -18,6 +18,14 @@ export async function GET() {
     const seller = await getSellerByUserId(userId);
     if (!seller) {
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
+    }
+
+    // Block if seller status is not active
+    if (seller.status !== "active") {
+      return NextResponse.json(
+        { error: "Seller account is not active" },
+        { status: 403 }
+      );
     }
 
     const sellerId = seller.id;

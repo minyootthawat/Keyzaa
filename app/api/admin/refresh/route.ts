@@ -59,8 +59,8 @@ export async function POST(request: NextRequest) {
 
     // ── Issue new tokens ───────────────────────────────────────────────────
     const newAccessToken = await new SignJWT({
-      id: user?.id ?? admin.user_id ?? "",
-      sub: user?.id ?? admin.user_id ?? "",
+      id: admin.id,
+      sub: admin.id,
       email: admin.email,
       isAdmin: true,
       adminRole: admin.role,
@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
       .sign(JWT_SECRET);
 
     const newRefreshToken = await new SignJWT({
-      id: user?.id ?? admin.user_id ?? "",
-      sub: user?.id ?? admin.user_id ?? "",
+      id: admin.id,
+      sub: admin.id,
       email: admin.email,
       isAdmin: true,
       adminRole: admin.role,
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
         success: true,
         token: newAccessToken,
         user: {
-          id: user?.id ?? admin.user_id,
+          id: admin.id,
           email: admin.email,
           name: userName,
           isAdmin: true,

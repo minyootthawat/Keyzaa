@@ -27,13 +27,19 @@ export async function GET(
       seller: {
         id: seller.id,
         storeName: seller.store_name,
+        storeSlug: seller.store_slug,
+        description: seller.description ?? "",
+        avatarUrl: seller.avatar_url ?? "",
         phone: seller.phone ?? "",
+        idCardUrl: seller.id_card_url ?? "",
+        status: seller.status,
         verified: seller.is_verified,
         balance: seller.balance ?? 0,
         pendingBalance: seller.pending_balance ?? 0,
         salesCount: seller.total_sales ?? 0,
         rating: seller.rating ?? 0,
         createdAt: seller.created_at,
+        updatedAt: seller.updated_at,
         user: {
           id: seller.user_id,
           email: user?.email ?? "",
@@ -65,7 +71,10 @@ export async function PATCH(
     }
 
     const is_verified = action === "approve";
-    const updated = await updateSeller(id, { is_verified });
+    const status = action === "approve" ? "active" : action === "reject" ? "rejected" : undefined;
+    const updates: Record<string, unknown> = { is_verified };
+    if (status) updates.status = status;
+    const updated = await updateSeller(id, updates);
 
     if (!updated) {
       return NextResponse.json({ error: "Failed to update seller" }, { status: 500 });

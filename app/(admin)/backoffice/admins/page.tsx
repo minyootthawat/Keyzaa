@@ -9,10 +9,7 @@ import type { Admin, AdminAuditLog, AdminIpAllowlist } from "@/lib/db/admin-db";
 
 type TabId = "admins" | "roles" | "audit" | "ip";
 
-interface AdminRow extends Admin {
-  user_email?: string;
-  user_name?: string;
-}
+interface AdminRow extends Admin {}
 
 const ROLE_CONFIG: Record<AdminRole, { labelTh: string; labelEn: string; emoji: string; color: string; bg: string; border: string }> = {
   super_admin: { labelTh: "Super Admin", labelEn: "Super Admin", emoji: "👑", color: "text-purple-400", bg: "bg-purple-500/15", border: "border-purple-500/25" },
@@ -49,12 +46,8 @@ function AdminAdminsContent() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   // Add form
-  const [addUserId, setAddUserId] = useState("");
+  const [addEmail, setAddEmail] = useState("");
   const [addRole, setAddRole] = useState<AdminRole>("support_admin");
-
-  // Search users for add
-  const [userSearch, setUserSearch] = useState("");
-  const [userResults, setUserResults] = useState<{ id: string; email: string; name: string }[]>([]);
 
   // Edit role
   const [editRole, setEditRole] = useState<AdminRole>("support_admin");
@@ -114,6 +107,11 @@ function AdminAdminsContent() {
       applyFilter: lang === "th" ? "ค้นหา" : "Search",
       clearFilter: lang === "th" ? "ล้าง" : "Clear",
       createdAt: lang === "th" ? "สร้างเมื่อ" : "Created",
+      selectExistingUser: lang === "th" ? "เลือกผู้ใช้ที่มีอยู่" : "Select Existing User",
+      createNewUser: lang === "th" ? "สร้างผู้ใช้ใหม่" : "Create New User",
+      enterEmail: lang === "th" ? "กรอกอีเมล" : "Enter email",
+      enterName: lang === "th" ? "กรอกชื่อ" : "Enter name",
+      creatingUser: lang === "th" ? "กำลังสร้างผู้ใช้..." : "Creating user...",
     }[key] ?? key);
 
   const tabs: { id: TabId; label: string }[] = [
@@ -136,29 +134,12 @@ function AdminAdminsContent() {
       .finally(() => setAdminsLoading(false));
   };
 
-  // Search users
-  const searchUsers = (query: string) => {
-    if (!query.trim()) { setUserResults([]); return; }
-    fetch(`/api/backoffice/users?search=${encodeURIComponent(query)}&limit=10`)
-      .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((d) => setUserResults(d.users ?? []))
-      .catch(() => setUserResults([]));
-  };
-
   useEffect(() => {
     const timer = setTimeout(() => {
       if (activeTab === "admins") fetchAdmins();
     }, 150);
     return () => clearTimeout(timer);
   }, [activeTab]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (userSearch) searchUsers(userSearch);
-      else setUserResults([]);
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [userSearch]);
 
   // Fetch audit logs
   useEffect(() => {
@@ -189,24 +170,25 @@ function AdminAdminsContent() {
 
   // Add admin
   const handleAddAdmin = async () => {
-    if (!addUserId) return;
     setModalLoading(true);
     setModalError(null);
     try {
+      if (!addEmail) {
+        throw new Error(lang === "th" ? "กรุณากรอกอีเมล" : "Please enter email");
+      }
+
       const res = await fetch("/api/backoffice/admins", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: addUserId, role: addRole }),
+        body: JSON.stringify({ email: addEmail, role: addRole }),
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
         throw new Error(b.error || `HTTP ${res.status}`);
       }
       setShowAddModal(false);
-      setAddUserId("");
+      setAddEmail("");
       setAddRole("support_admin");
-      setUserSearch("");
-      setUserResults([]);
       fetchAdmins();
       setActionSuccess(lang === "th" ? "เพิ่มแอดมินแล้ว" : "Admin added");
       setTimeout(() => setActionSuccess(null), 4000);
@@ -412,7 +394,6 @@ function AdminAdminsContent() {
                 <thead>
                   <tr className="border-b border-border-subtle bg-bg-surface/70">
                     <th className="px-4 py-3 text-left font-semibold text-text-muted">{t("email")}</th>
-                    <th className="px-4 py-3 text-left font-semibold text-text-muted">{t("name")}</th>
                     <th className="px-4 py-3 text-left font-semibold text-text-muted">{t("role")}</th>
                     <th className="px-4 py-3 text-left font-semibold text-text-muted">{t("createdAt")}</th>
                     {canWrite && <th className="px-4 py-3 text-right font-semibold text-text-muted">{t("actions")}</th>}
@@ -423,8 +404,7 @@ function AdminAdminsContent() {
                     const cfg = ROLE_CONFIG[admin.role];
                     return (
                       <tr key={admin.id} className="bg-bg-base hover:bg-bg-surface/50 transition-colors">
-                        <td className="px-4 py-3 text-text-main">{admin.user_email ?? "—"}</td>
-                        <td className="px-4 py-3 text-text-subtle">{admin.user_name ?? "—"}</td>
+                        <td className="px-4 py-3 text-text-main">{admin.email ?? "—"}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
                             {cfg.emoji} {cfg.labelEn}
@@ -677,31 +657,19 @@ function AdminAdminsContent() {
             {modalError && (
               <div className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">{modalError}</div>
             )}
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-text-main">{t("email")}</label>
                 <input
-                  type="text"
-                  placeholder={t("searchUser")}
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
+                  type="email"
+                  placeholder={t("enterEmail")}
+                  value={addEmail}
+                  onChange={(e) => setAddEmail(e.target.value)}
                   className="w-full rounded-xl border border-border-subtle bg-bg-base px-4 py-2.5 text-sm text-text-main placeholder:text-text-muted focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
                 />
-                {userResults.length > 0 && (
-                  <div className="max-h-40 overflow-y-auto rounded-xl border border-border-subtle bg-bg-elevated">
-                    {userResults.map((u) => (
-                      <button
-                        key={u.id}
-                        onClick={() => { setAddUserId(u.id); setUserSearch(u.email); setUserResults([]); }}
-                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-bg-surface-hover transition-colors"
-                      >
-                        <p className="font-semibold text-text-main">{u.email}</p>
-                        <p className="text-xs text-text-muted">{u.name}</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
+
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-text-main">{t("role")}</label>
                 <select
@@ -715,16 +683,21 @@ function AdminAdminsContent() {
                 </select>
               </div>
             </div>
+
             <div className="mt-6 flex justify-end gap-3">
               <button
-                onClick={() => { setShowAddModal(false); setModalError(null); setUserSearch(""); setUserResults([]); }}
+                onClick={() => {
+                  setShowAddModal(false);
+                  setModalError(null);
+                  setAddEmail("");
+                }}
                 className="rounded-xl border border-border-subtle bg-bg-surface px-4 py-2.5 text-sm font-semibold text-text-subtle transition-colors hover:text-text-main"
               >
                 {t("cancel")}
               </button>
               <button
                 onClick={handleAddAdmin}
-                disabled={!addUserId || modalLoading}
+                disabled={!addEmail || modalLoading}
                 className="rounded-xl bg-brand-primary px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-secondary disabled:opacity-50"
               >
                 {modalLoading ? "..." : t("save")}
@@ -739,7 +712,7 @@ function AdminAdminsContent() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="surface-card glass-panel w-full max-w-md rounded-2xl p-6">
             <h2 className="type-h2 mb-2">{t("editAdmin")}</h2>
-            <p className="mb-4 text-sm text-text-muted">{selectedAdmin.user_email}</p>
+            <p className="mb-4 text-sm text-text-muted">{selectedAdmin.email}</p>
             {modalError && (
               <div className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">{modalError}</div>
             )}
@@ -781,7 +754,7 @@ function AdminAdminsContent() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="surface-card glass-panel w-full max-w-sm rounded-2xl p-6">
             <h2 className="type-h2 mb-2">{t("deleteAdmin")}</h2>
-            <p className="mb-4 text-sm text-text-muted">{selectedAdmin.user_email}</p>
+            <p className="mb-4 text-sm text-text-muted">{selectedAdmin.email}</p>
             <p className="mb-6 text-sm text-error">{t("confirmDelete")}</p>
             {modalError && (
               <div className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">{modalError}</div>

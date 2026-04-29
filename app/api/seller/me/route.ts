@@ -46,6 +46,8 @@ export async function GET(req: NextRequest) {
         salesCount: seller.total_sales ?? 0,
         balance: Number(seller.balance ?? 0),
         pendingBalance: Number(seller.pending_balance ?? 0),
+        status: seller.status,
+        isVerified: seller.is_verified,
         verificationStatus: seller.is_verified ? "verified" : "new",
         payoutStatus: seller.payout_status ?? "manual",
         responseTimeMinutes: seller.response_time_minutes ?? 5,

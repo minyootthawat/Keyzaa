@@ -32,7 +32,12 @@ export async function GET(req: NextRequest) {
         return {
           id: s.id,
           storeName: s.store_name,
+          storeSlug: s.store_slug,
+          description: s.description ?? "",
+          avatarUrl: s.avatar_url ?? "",
           phone: s.phone ?? "",
+          idCardUrl: s.id_card_url ?? "",
+          status: s.status,
           verified: s.is_verified,
           balance: s.balance ?? 0,
           pendingBalance: s.pending_balance ?? 0,

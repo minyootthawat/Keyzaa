@@ -10,23 +10,9 @@ delete from public.sellers;
 delete from public.admins;
 delete from public.users;
 
--- ─── Admin user (user record) ────────────────────────────────────────────────
-insert into public.users (id, email, name, role, password_hash, is_email_verified, created_at, updated_at)
-values (
-  '00000000-0000-0000-0000-000000000001'::uuid,
-  'admin@keyzaa.local',
-  'Admin User',
-  'buyer',
-  -- bcrypt hash of 'demo123' — replace with real hash in production
-  '$2b$10$zoXnY4DxhBowUHjw9UbybeAYPU4UH2GmGHaLm1JsV/jRUeEJ8L.TW',
-  true,
-  now(),
-  now()
-);
-
--- ─── Admin entry ─────────────────────────────────────────────────────────────
--- bcrypt hash of 'demo123'
-insert into public.admins (user_id, email, password_hash, role, is_super_admin, permissions, created_at)
+-- ─── Admin entry (password_hash lives on admins table directly, no linked user needed) ───
+-- password: demo123
+insert into public.admins (id, email, password_hash, role, is_super_admin, permissions, created_at)
 values (
   '00000000-0000-0000-0000-000000000001'::uuid,
   'admin@keyzaa.local',

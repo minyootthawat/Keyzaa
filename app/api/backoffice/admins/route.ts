@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdminPermission } from "@/lib/auth/admin";
 import type { AdminRole } from "@/lib/auth/admin";
-import { getAdmins, createAdmin, getAdminByUserId } from "@/lib/db/admin-db";
+import { getAdmins, createAdmin } from "@/lib/db/admin-db";
+import { getAdminByEmail } from "@/lib/db/collections/admins";
 
 export async function GET() {
   try {
@@ -25,10 +26,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
-    const { userId, role } = await req.json();
+    const { email, role } = await req.json();
 
-    if (!userId || typeof userId !== "string") {
-      return NextResponse.json({ error: "userId is required" }, { status: 400 });
+    if (!email || typeof email !== "string") {
+      return NextResponse.json({ error: "email is required" }, { status: 400 });
     }
 
     const validRoles: AdminRole[] = ["super_admin", "ops_admin", "support_admin", "catalog_admin"];
@@ -36,15 +37,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Valid role is required" }, { status: 400 });
     }
 
-    const existing = await getAdminByUserId(userId);
+    const normalizedEmail = email.trim().toLowerCase();
+    const existing = await getAdminByEmail(normalizedEmail);
     if (existing) {
       return NextResponse.json({ error: "User is already an admin" }, { status: 409 });
     }
 
-    const admin = await createAdmin(userId, role, access.userId!);
+    const admin = await createAdmin(normalizedEmail, role, access.userId!);
     return NextResponse.json({ admin }, { status: 201 });
   } catch (error) {
-    console.error("Admin create POST error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error("Admin create POST error:", message, { stack, error });
+    return NextResponse.json({ error: "Internal server error", details: message }, { status: 500 });
   }
 }
